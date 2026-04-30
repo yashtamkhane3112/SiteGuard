@@ -18,8 +18,11 @@ def signup(request):
     return render(request, 'monitor/signup.html')
 
 
+@login_required
 def dashboard(request):
-    return render(request, 'monitor/dashboard.html')
+    """Dashboard view showing user's websites."""
+    websites = Website.objects.filter(user=request.user).order_by('-created_at')
+    return render(request, 'monitor/dashboard.html', {'websites': websites})
 
 
 def status(request):

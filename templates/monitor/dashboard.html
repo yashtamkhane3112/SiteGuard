@@ -263,17 +263,18 @@
           </div>
 
           <div class="dash-panel mb-4">
-            <h5 class="panel-title">Uptime Timeline</h5>
-            <p class="panel-subtitle mb-4">48 check intervals...</p>
+            <h5 class="panel-title">Your Websites</h5>
+            <p class="panel-subtitle mb-4">Websites being monitored...</p>
 
+            {% if websites %} {% for site in websites %}
             <div class="d-flex justify-content-between mb-2 align-items-center">
-              <span class="font-mono text-light text-sm">example.com</span>
+              <span class="font-mono text-light text-sm">{{ site.url }}</span>
               <a
                 href="{% url 'reports' %}"
                 class="text-sm fw-bold uptime-link"
                 title="View full uptime report"
               >
-                93.8% uptime today
+                Added {{ site.created_at|date:"M d, Y" }}
                 <i
                   data-lucide="external-link"
                   style="
@@ -285,63 +286,15 @@
                 ></i>
               </a>
             </div>
-
-            <div class="timeline-container" id="timelineContainer">
-              <div class="segment segment-up" title="UP - 12:00 AM"></div>
-              <div class="segment segment-up" title="UP - 12:30 AM"></div>
-              <div class="segment segment-up" title="UP - 1:00 AM"></div>
-              <div class="segment segment-up" title="UP - 1:30 AM"></div>
-              <div class="segment segment-up" title="UP - 2:00 AM"></div>
-              <div class="segment segment-up" title="UP - 2:30 AM"></div>
-              <div class="segment segment-up" title="UP - 3:00 AM"></div>
-              <div class="segment segment-up" title="UP - 3:30 AM"></div>
-              <div class="segment segment-up" title="UP - 4:00 AM"></div>
-              <div class="segment segment-up" title="UP - 4:30 AM"></div>
-              <div class="segment segment-up" title="UP - 5:00 AM"></div>
-              <div class="segment segment-up" title="UP - 5:30 AM"></div>
-              <div class="segment segment-up" title="UP - 6:00 AM"></div>
-              <div class="segment segment-up" title="UP - 6:30 AM"></div>
-              <div class="segment segment-up" title="UP - 7:00 AM"></div>
-              <div class="segment segment-up" title="UP - 7:30 AM"></div>
-              <div class="segment segment-up" title="UP - 8:00 AM"></div>
-              <div class="segment segment-up" title="UP - 8:30 AM"></div>
-              <div class="segment segment-up" title="UP - 9:00 AM"></div>
-              <div class="segment segment-up" title="UP - 9:30 AM"></div>
-              <div class="segment segment-up" title="UP - 10:00 AM"></div>
-              <div class="segment segment-up" title="UP - 10:30 AM"></div>
-              <div class="segment segment-up" title="UP - 11:00 AM"></div>
-              <div class="segment segment-up" title="UP - 11:30 AM"></div>
-              <div class="segment segment-up" title="UP - 12:00 PM"></div>
-              <div class="segment segment-up" title="UP - 12:30 PM"></div>
-              <div class="segment segment-up" title="UP - 1:00 PM"></div>
-              <div class="segment segment-up" title="UP - 1:30 PM"></div>
-              <div class="segment segment-up" title="UP - 2:00 PM"></div>
-              <div class="segment segment-up" title="UP - 2:30 PM"></div>
-              <div class="segment segment-up" title="UP - 3:00 PM"></div>
-              <div class="segment segment-up" title="UP - 3:30 PM"></div>
-              <div class="segment segment-warn" title="SLOW - 4:00 PM"></div>
-              <div class="segment segment-up" title="UP - 4:30 PM"></div>
-              <div class="segment segment-up" title="UP - 5:00 PM"></div>
-              <div class="segment segment-up" title="UP - 5:30 PM"></div>
-              <div class="segment segment-up" title="UP - 6:00 PM"></div>
-              <div class="segment segment-up" title="UP - 6:30 PM"></div>
-              <div class="segment segment-up" title="UP - 7:00 PM"></div>
-              <div class="segment segment-up" title="UP - 7:30 PM"></div>
-              <div class="segment segment-up" title="UP - 8:00 PM"></div>
-              <div class="segment segment-up" title="UP - 8:30 PM"></div>
-              <div class="segment segment-up" title="UP - 9:00 PM"></div>
-              <div class="segment segment-up" title="UP - 9:30 PM"></div>
-              <div class="segment segment-up" title="UP - 10:00 PM"></div>
-              <div class="segment segment-down" title="DOWN - 10:30 PM"></div>
-              <div class="segment segment-up" title="UP - 11:00 PM"></div>
-              <div class="segment segment-up" title="UP - 11:30 PM"></div>
+            {% endfor %} {% else %}
+            <div class="empty-state">
+              <i data-lucide="globe"></i>
+              <h6>No websites added yet</h6>
+              <p class="text-sm mb-0">
+                Add your first website using the form above.
+              </p>
             </div>
-
-            <div class="d-flex justify-content-between mt-2 text-muted text-sm">
-              <span>00:00</span>
-              <span>12:00</span>
-              <span>Now</span>
-            </div>
+            {% endif %}
           </div>
 
           <div class="dash-panel p-0 overflow-hidden">
