@@ -1,0 +1,463 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dashboard | SiteGuard</title>
+
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="{% static 'css/style.css' %}" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <div class="overlay" id="mobileOverlay"></div>
+
+      <aside class="sidebar" id="sidebar">
+        <a href="{% url 'index' %}" style="text-decoration: none">
+          <div class="sidebar-brand">
+            <div class="logo-icon"><i data-lucide="activity"></i></div>
+            <span>Site Guard</span>
+          </div>
+        </a>
+
+        <nav class="sidebar-nav">
+          <a href="{% url 'dashboard' %}" class="nav-item active"
+            ><i data-lucide="layout-dashboard"></i> Dashboard</a
+          >
+          <a href="{% url 'status' %}" class="nav-item"
+            ><i data-lucide="globe"></i> Status Check</a
+          >
+          <a href="{% url 'reports' %}" class="nav-item"
+            ><i data-lucide="bar-chart-2"></i> Reports</a
+          >
+          <a href="{% url 'incidents' %}" class="nav-item"
+            ><i data-lucide="alert-triangle"></i> Incidents</a
+          >
+          <a href="{% url 'logs' %}" class="nav-item"
+            ><i data-lucide="file-text"></i> Logs</a
+          >
+          <a href="{% url 'utilities' %}" class="nav-item"
+            ><i data-lucide="wrench"></i> Utilities</a
+          >
+          <a href="{% url 'alerts' %}" class="nav-item"
+            ><i data-lucide="bell"></i> Alerts</a
+          >
+          <div style="flex-grow: 1"></div>
+          <a href="{% url 'login' %}" class="nav-item"
+            ><i data-lucide="log-in"></i> Sign In</a
+          >
+        </nav>
+
+        <div class="pro-tip-card mt-4">
+          <h6>Pro Tip</h6>
+          <p>
+            Enable alerts to get notified instantly when your sites go down.
+          </p>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="top-header">
+          <div class="d-flex align-items-center">
+            <button class="mobile-toggle" id="mobileToggle">
+              <i data-lucide="menu"></i>
+            </button>
+            <div class="search-bar">
+              <i data-lucide="search" class="search-icon"></i>
+              <input
+                type="text"
+                id="globalSearch"
+                placeholder="Search websites..."
+              />
+            </div>
+          </div>
+
+          <div class="header-actions">
+            <div class="dropdown">
+              <button
+                class="icon-btn"
+                type="button"
+                id="notificationMenu"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+              >
+                <i data-lucide="bell"></i>
+                <span class="notification-dot"></span>
+              </button>
+              <div
+                class="dropdown-menu dropdown-menu-end notification-dropdown"
+                aria-labelledby="notificationMenu"
+              >
+                <div
+                  class="p-3 border-bottom border-secondary"
+                  style="border-color: rgba(255, 255, 255, 0.05) !important"
+                >
+                  <div
+                    class="d-flex justify-content-between align-items-center"
+                  >
+                    <h6 class="m-0 text-white fw-bold">Notifications</h6>
+                    <span
+                      class="badge bg-purple-light text-white"
+                      style="background: #a855f7"
+                      >2 New</span
+                    >
+                  </div>
+                </div>
+                <div class="notification-list">
+                  <a href="#" class="notification-item unread">
+                    <div class="notif-icon bg-critical-light text-critical">
+                      <i data-lucide="zap"></i>
+                    </div>
+                    <div>
+                      <p class="m-0 text-white text-sm fw-medium">
+                        Complete Outage Detected
+                      </p>
+                      <span class="text-xs text-muted"
+                        >myshop.io went down 2 mins ago</span
+                      >
+                    </div>
+                  </a>
+                  <a href="#" class="notification-item">
+                    <div class="notif-icon bg-good-light text-good">
+                      <i data-lucide="file-text"></i>
+                    </div>
+                    <div>
+                      <p class="m-0 text-slate-300 text-sm">
+                        Weekly Report Ready
+                      </p>
+                      <span class="text-xs text-muted"
+                        >Your analytics report is available.</span
+                      >
+                    </div>
+                  </a>
+                </div>
+                <div
+                  class="p-2 text-center border-top border-secondary"
+                  style="border-color: rgba(255, 255, 255, 0.05) !important"
+                >
+                  <a
+                    href="#"
+                    class="text-xs text-purple text-decoration-none fw-bold"
+                    >Mark all as read</a
+                  >
+                </div>
+              </div>
+            </div>
+
+            <a href="{% url 'profile' %}" class="text-decoration-none">
+              <div class="user-avatar" title="Profile Settings">U</div>
+            </a>
+          </div>
+        </header>
+
+        <div class="content-wrapper">
+          <div class="mb-4">
+            <h2 class="page-title">Dashboard</h2>
+            <p class="page-subtitle">
+              Monitor your websites and check their health status.
+            </p>
+          </div>
+
+          <div class="dash-panel mb-4">
+            <label class="panel-label">Add New Website</label>
+            <form method="POST" action="{% url 'add_website' %}">
+              {% csrf_token %}
+              <div class="url-check-group">
+                <div class="url-input-wrapper">
+                  <i data-lucide="globe" class="url-icon"></i>
+                  <input
+                    type="text"
+                    class="url-input"
+                    name="url"
+                    id="websiteUrl"
+                    placeholder="https://example.com"
+                    required
+                  />
+                </div>
+                <button type="submit" class="btn btn-primary-custom">
+                  <i
+                    data-lucide="plus"
+                    class="me-2"
+                    style="width: 16px; height: 16px"
+                  ></i>
+                  Add Website
+                </button>
+              </div>
+            </form>
+
+            <!-- Display Messages -->
+            {% if messages %}
+            <div class="mt-3">
+              {% for message in messages %}
+              <div
+                class="alert {% if message.tags == 'success' %}alert-success{% else %}alert-danger{% endif %} alert-dismissible fade show"
+                role="alert"
+              >
+                {{ message }}
+                <button
+                  type="button"
+                  class="btn-close"
+                  data-bs-dismiss="alert"
+                  aria-label="Close"
+                ></button>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="dash-panel mb-4">
+            <div class="stats-grid">
+              <!-- Card 1: Website Status -->
+              <div class="stat-card">
+                <span class="panel-label">Website Status</span>
+                <div class="status-badge badge-up">
+                  <span class="dot"></span> UP
+                </div>
+                <span class="stat-subtext text-success"
+                  >All systems operational</span
+                >
+              </div>
+
+              <!-- Card 2: Response Time -->
+              <div class="stat-card">
+                <span class="panel-label">Response Time</span>
+                <span class="stat-value" data-target="120" data-suffix="ms"
+                  >120ms</span
+                >
+                <span class="stat-subtext text-success"
+                  >-15ms from last check</span
+                >
+              </div>
+
+              <!-- Card 3: Uptime (30d) -->
+              <div class="stat-card">
+                <span class="panel-label">Uptime (30d)</span>
+                <span class="stat-value" data-target="99.8" data-suffix="%"
+                  >99.8%</span
+                >
+                <span class="stat-subtext text-success"
+                  >+0.2% vs last month</span
+                >
+              </div>
+
+              <!-- Card 4: Active Incidents -->
+              <div class="stat-card">
+                <span class="panel-label">Active Incidents</span>
+                <span class="stat-value incidents-value">2</span>
+                <span class="stat-subtext" style="color: #f59e0b"
+                  >1 critical, 1 warning</span
+                >
+              </div>
+            </div>
+          </div>
+
+          <div class="dash-panel mb-4">
+            <h5 class="panel-title">Uptime Timeline</h5>
+            <p class="panel-subtitle mb-4">48 check intervals...</p>
+
+            <div class="d-flex justify-content-between mb-2 align-items-center">
+              <span class="font-mono text-light text-sm">example.com</span>
+              <a
+                href="{% url 'reports' %}"
+                class="text-sm fw-bold uptime-link"
+                title="View full uptime report"
+              >
+                93.8% uptime today
+                <i
+                  data-lucide="external-link"
+                  style="
+                    width: 14px;
+                    height: 14px;
+                    margin-bottom: 2px;
+                    margin-left: 2px;
+                  "
+                ></i>
+              </a>
+            </div>
+
+            <div class="timeline-container" id="timelineContainer">
+              <div class="segment segment-up" title="UP - 12:00 AM"></div>
+              <div class="segment segment-up" title="UP - 12:30 AM"></div>
+              <div class="segment segment-up" title="UP - 1:00 AM"></div>
+              <div class="segment segment-up" title="UP - 1:30 AM"></div>
+              <div class="segment segment-up" title="UP - 2:00 AM"></div>
+              <div class="segment segment-up" title="UP - 2:30 AM"></div>
+              <div class="segment segment-up" title="UP - 3:00 AM"></div>
+              <div class="segment segment-up" title="UP - 3:30 AM"></div>
+              <div class="segment segment-up" title="UP - 4:00 AM"></div>
+              <div class="segment segment-up" title="UP - 4:30 AM"></div>
+              <div class="segment segment-up" title="UP - 5:00 AM"></div>
+              <div class="segment segment-up" title="UP - 5:30 AM"></div>
+              <div class="segment segment-up" title="UP - 6:00 AM"></div>
+              <div class="segment segment-up" title="UP - 6:30 AM"></div>
+              <div class="segment segment-up" title="UP - 7:00 AM"></div>
+              <div class="segment segment-up" title="UP - 7:30 AM"></div>
+              <div class="segment segment-up" title="UP - 8:00 AM"></div>
+              <div class="segment segment-up" title="UP - 8:30 AM"></div>
+              <div class="segment segment-up" title="UP - 9:00 AM"></div>
+              <div class="segment segment-up" title="UP - 9:30 AM"></div>
+              <div class="segment segment-up" title="UP - 10:00 AM"></div>
+              <div class="segment segment-up" title="UP - 10:30 AM"></div>
+              <div class="segment segment-up" title="UP - 11:00 AM"></div>
+              <div class="segment segment-up" title="UP - 11:30 AM"></div>
+              <div class="segment segment-up" title="UP - 12:00 PM"></div>
+              <div class="segment segment-up" title="UP - 12:30 PM"></div>
+              <div class="segment segment-up" title="UP - 1:00 PM"></div>
+              <div class="segment segment-up" title="UP - 1:30 PM"></div>
+              <div class="segment segment-up" title="UP - 2:00 PM"></div>
+              <div class="segment segment-up" title="UP - 2:30 PM"></div>
+              <div class="segment segment-up" title="UP - 3:00 PM"></div>
+              <div class="segment segment-up" title="UP - 3:30 PM"></div>
+              <div class="segment segment-warn" title="SLOW - 4:00 PM"></div>
+              <div class="segment segment-up" title="UP - 4:30 PM"></div>
+              <div class="segment segment-up" title="UP - 5:00 PM"></div>
+              <div class="segment segment-up" title="UP - 5:30 PM"></div>
+              <div class="segment segment-up" title="UP - 6:00 PM"></div>
+              <div class="segment segment-up" title="UP - 6:30 PM"></div>
+              <div class="segment segment-up" title="UP - 7:00 PM"></div>
+              <div class="segment segment-up" title="UP - 7:30 PM"></div>
+              <div class="segment segment-up" title="UP - 8:00 PM"></div>
+              <div class="segment segment-up" title="UP - 8:30 PM"></div>
+              <div class="segment segment-up" title="UP - 9:00 PM"></div>
+              <div class="segment segment-up" title="UP - 9:30 PM"></div>
+              <div class="segment segment-up" title="UP - 10:00 PM"></div>
+              <div class="segment segment-down" title="DOWN - 10:30 PM"></div>
+              <div class="segment segment-up" title="UP - 11:00 PM"></div>
+              <div class="segment segment-up" title="UP - 11:30 PM"></div>
+            </div>
+
+            <div class="d-flex justify-content-between mt-2 text-muted text-sm">
+              <span>00:00</span>
+              <span>12:00</span>
+              <span>Now</span>
+            </div>
+          </div>
+
+          <div class="dash-panel p-0 overflow-hidden">
+            <div
+              class="p-4 border-bottom"
+              style="border-color: rgba(255, 255, 255, 0.05) !important"
+            >
+              <h5 class="panel-title m-0">Recent Activity</h5>
+              <p class="panel-subtitle mt-1 m-0">
+                Latest website check results
+              </p>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table custom-table" id="activityTable">
+                <thead>
+                  <tr>
+                    <th>URL</th>
+                    <th>Status</th>
+                    <th>Response Time</th>
+                    <th>Change</th>
+                    <th class="text-end">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    class="activity-row"
+                    onclick="window.location.href='{% url 'reports' %}'"
+                  >
+                    <td class="font-mono text-light fw-medium">example.com</td>
+                    <td>
+                      <span class="status-badge badge-down"
+                        ><span class="dot"></span> DOWN</span
+                      >
+                    </td>
+                    <td class="text-muted">Timeout</td>
+                    <td class="text-danger fw-medium">Critical</td>
+                    <td class="text-end text-muted font-mono text-sm">
+                      2026-02-09 14:30
+                    </td>
+                  </tr>
+                  <tr
+                    class="activity-row"
+                    onclick="window.location.href='{% url 'reports' %}'"
+                  >
+                    <td class="font-mono text-light fw-medium">
+                      api.example.com
+                    </td>
+                    <td>
+                      <span class="status-badge badge-up"
+                        ><span class="dot"></span> UP</span
+                      >
+                    </td>
+                    <td class="text-muted">118ms</td>
+                    <td class="text-success">-12ms</td>
+                    <td class="text-end text-muted font-mono text-sm">
+                      2026-02-09 14:29
+                    </td>
+                  </tr>
+                  <tr
+                    class="activity-row"
+                    onclick="window.location.href='{% url 'reports' %}'"
+                  >
+                    <td class="font-mono text-light fw-medium">
+                      cdn.example.com
+                    </td>
+                    <td>
+                      <span class="status-badge badge-warn"
+                        ><span class="dot"></span> SLOW</span
+                      >
+                    </td>
+                    <td class="text-muted">850ms</td>
+                    <td class="text-warning">+732ms</td>
+                    <td class="text-end text-muted font-mono text-sm">
+                      2026-02-09 14:28
+                    </td>
+                  </tr>
+                  <tr
+                    class="activity-row"
+                    onclick="window.location.href='{% url 'reports' %}'"
+                  >
+                    <td class="font-mono text-light fw-medium">
+                      app.example.com
+                    </td>
+                    <td>
+                      <span class="status-badge badge-up"
+                        ><span class="dot"></span> UP</span
+                      >
+                    </td>
+                    <td class="text-muted">115ms</td>
+                    <td class="text-success">-5ms</td>
+                    <td class="text-end text-muted font-mono text-sm">
+                      2026-02-09 14:27
+                    </td>
+                  </tr>
+
+                  <tr id="noResultsRow" style="display: none">
+                    <td colspan="5">
+                      <div class="empty-state">
+                        <i data-lucide="search-x"></i>
+                        <h6>No websites found</h6>
+                        <p class="text-sm mb-0">
+                          Try adjusting your search criteria.
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{% static 'js/script.js' %}"></script>
+  </body>
+</html>

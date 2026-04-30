@@ -1,0 +1,272 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Status Checker | SiteGuard</title>
+
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="{% static 'css/style.css' %}" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <div class="overlay" id="mobileOverlay"></div>
+
+      <aside class="sidebar" id="sidebar">
+        <a href="{% url 'index' %}" style="text-decoration: none">
+          <div class="sidebar-brand">
+            <div class="logo-icon"><i data-lucide="activity"></i></div>
+            <span>Site Guard</span>
+          </div>
+        </a>
+
+        <nav class="sidebar-nav">
+          <a href="{% url 'dashboard' %}" class="nav-item"
+            ><i data-lucide="layout-dashboard"></i> Dashboard</a
+          >
+          <a href="{% url 'status' %}" class="nav-item active"
+            ><i data-lucide="globe"></i> Status Check</a
+          >
+          <a href="{% url 'reports' %}" class="nav-item"
+            ><i data-lucide="bar-chart-2"></i> Reports</a
+          >
+          <a href="{% url 'logs' %}" class="nav-item"
+            ><i data-lucide="file-text"></i> Logs</a
+          >
+          <a href="{% url 'utilities' %}" class="nav-item"
+            ><i data-lucide="wrench"></i> Utilities</a
+          >
+          <a href="{% url 'alerts' %}" class="nav-item"
+            ><i data-lucide="bell"></i> Alerts</a
+          >
+          <div style="flex-grow: 1"></div>
+          <a href="{% url 'login' %}" class="nav-item"
+            ><i data-lucide="log-out"></i> Sign Out</a
+          >
+        </nav>
+
+        <div class="pro-tip-card mt-4">
+          <h6>Pro Tip</h6>
+          <p>
+            Enable alerts to get notified instantly when your sites go down.
+          </p>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="top-header">
+          <div class="d-flex align-items-center">
+            <button class="mobile-toggle" id="mobileToggle">
+              <i data-lucide="menu"></i>
+            </button>
+            <div class="search-bar">
+              <i data-lucide="search" class="search-icon"></i>
+              <input
+                type="text"
+                id="globalSearch"
+                placeholder="Search websites..."
+              />
+            </div>
+          </div>
+
+          <div class="header-actions">
+            <div class="dropdown">
+              <button
+                class="icon-btn"
+                type="button"
+                id="notificationMenu"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+              >
+                <i data-lucide="bell"></i>
+                <span class="notification-dot"></span>
+              </button>
+              <div
+                class="dropdown-menu dropdown-menu-end notification-dropdown"
+                aria-labelledby="notificationMenu"
+              >
+                <div
+                  class="p-3 border-bottom border-secondary"
+                  style="border-color: rgba(255, 255, 255, 0.05) !important"
+                >
+                  <div
+                    class="d-flex justify-content-between align-items-center"
+                  >
+                    <h6 class="m-0 text-white fw-bold">Notifications</h6>
+                    <span
+                      class="badge bg-purple-light text-white"
+                      style="background: #a855f7"
+                      >2 New</span
+                    >
+                  </div>
+                </div>
+                <div class="notification-list">
+                  <a href="#" class="notification-item unread">
+                    <div class="notif-icon bg-critical-light text-critical">
+                      <i data-lucide="zap"></i>
+                    </div>
+                    <div>
+                      <p class="m-0 text-white text-sm fw-medium">
+                        Complete Outage Detected
+                      </p>
+                      <span class="text-xs text-muted"
+                        >myshop.io went down 2 mins ago</span
+                      >
+                    </div>
+                  </a>
+                  <a href="#" class="notification-item">
+                    <div class="notif-icon bg-good-light text-good">
+                      <i data-lucide="file-text"></i>
+                    </div>
+                    <div>
+                      <p class="m-0 text-slate-300 text-sm">
+                        Weekly Report Ready
+                      </p>
+                      <span class="text-xs text-muted"
+                        >Your analytics report is available.</span
+                      >
+                    </div>
+                  </a>
+                </div>
+                <div
+                  class="p-2 text-center border-top border-secondary"
+                  style="border-color: rgba(255, 255, 255, 0.05) !important"
+                >
+                  <a
+                    href="#"
+                    class="text-xs text-purple text-decoration-none fw-bold"
+                    >Mark all as read</a
+                  >
+                </div>
+              </div>
+            </div>
+
+            <a href="{% url 'profile' %}" class="text-decoration-none">
+              <div class="user-avatar" title="Profile Settings">U</div>
+            </a>
+          </div>
+        </header>
+
+        <div class="content-wrapper">
+          <div
+            class="d-flex flex-column flex-md-row justify-content-between align-items-md-end mb-4 gap-3"
+          >
+            <div>
+              <h2 class="page-title">Status Checker</h2>
+              <p class="page-subtitle">
+                Check the real-time status and latency of your monitored
+                domains.
+              </p>
+            </div>
+
+            <div
+              class="d-flex align-items-center gap-3 w-100"
+              style="max-width: 400px"
+            >
+              <div class="url-input-wrapper mb-0 flex-grow-1">
+                <i data-lucide="globe" class="url-icon"></i>
+                <input
+                  type="text"
+                  class="url-input"
+                  id="websiteUrl"
+                  placeholder="https://example.com"
+                />
+              </div>
+              <button class="btn btn-primary-custom" id="checkStatusBtn">
+                <i
+                  data-lucide="search"
+                  class="me-2"
+                  style="width: 16px; height: 16px"
+                ></i>
+                Check
+              </button>
+            </div>
+          </div>
+
+          <div class="results-grid" id="resultsGrid">
+            <div
+              class="result-card"
+              onclick="alert('Viewing detailed metrics for google.com')"
+            >
+              <div class="result-icon"><i data-lucide="globe"></i></div>
+              <div class="result-details">
+                <div class="result-url">google.com</div>
+                <div class="result-meta">
+                  <span class="status-badge badge-up"
+                    ><span class="dot"></span> UP</span
+                  >
+                  <span>45ms</span>
+                  <span>SSL: Valid</span>
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="result-card"
+              onclick="alert('Viewing detailed metrics for github.com')"
+            >
+              <div class="result-icon"><i data-lucide="globe"></i></div>
+              <div class="result-details">
+                <div class="result-url">github.com</div>
+                <div class="result-meta">
+                  <span class="status-badge badge-up"
+                    ><span class="dot"></span> UP</span
+                  >
+                  <span>110ms</span>
+                  <span>SSL: Valid</span>
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="result-card"
+              onclick="alert('Viewing detailed metrics for offline-site.test')"
+            >
+              <div class="result-icon"><i data-lucide="globe"></i></div>
+              <div class="result-details">
+                <div class="result-url">offline-site.test</div>
+                <div class="result-meta">
+                  <span class="status-badge badge-down"
+                    ><span class="dot"></span> DOWN</span
+                  >
+                  <span>—</span>
+                  <span>SSL: —</span>
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="result-card"
+              onclick="alert('Viewing detailed metrics for slow-server.demo')"
+            >
+              <div class="result-icon"><i data-lucide="globe"></i></div>
+              <div class="result-details">
+                <div class="result-url">slow-server.demo</div>
+                <div class="result-meta">
+                  <span class="status-badge badge-warn"
+                    ><span class="dot"></span> SLOW</span
+                  >
+                  <span>4500ms</span>
+                  <span>SSL: Valid</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{% static 'js/script.js' %}"></script>
+  </body>
+</html>

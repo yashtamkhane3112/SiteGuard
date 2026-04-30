@@ -1,0 +1,626 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reports & Analytics | SiteGuard</title>
+
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <link rel="stylesheet" href="{% static 'css/style.css' %}" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <div class="overlay" id="mobileOverlay"></div>
+
+      <aside class="sidebar" id="sidebar">
+        <a href="{% url 'index' %}" style="text-decoration: none">
+          <div class="sidebar-brand">
+            <div class="logo-icon"><i data-lucide="activity"></i></div>
+            <span>Site Guard</span>
+          </div>
+        </a>
+
+        <nav class="sidebar-nav">
+          <a href="{% url 'dashboard' %}" class="nav-item"
+            ><i data-lucide="layout-dashboard"></i> Dashboard</a
+          >
+          <a href="{% url 'status' %}" class="nav-item"
+            ><i data-lucide="globe"></i> Status Check</a
+          >
+          <a href="{% url 'reports' %}" class="nav-item active"
+            ><i data-lucide="bar-chart-2"></i> Reports</a
+          >
+          <a href="{% url 'logs' %}" class="nav-item"
+            ><i data-lucide="file-text"></i> Logs</a
+          >
+          <a href="{% url 'utilities' %}" class="nav-item"
+            ><i data-lucide="wrench"></i> Utilities</a
+          >
+          <a href="{% url 'alerts' %}" class="nav-item"
+            ><i data-lucide="bell"></i> Alerts</a
+          >
+          <div style="flex-grow: 1"></div>
+          <a href="{% url 'login' %}" class="nav-item"
+            ><i data-lucide="log-out"></i> Sign Out</a
+          >
+        </nav>
+        <div class="pro-tip-card mt-4">
+          <h6>Pro Tip</h6>
+          <p>
+            Enable alerts to get notified instantly when your sites go down.
+          </p>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="top-header">
+          <div class="d-flex align-items-center">
+            <button class="mobile-toggle" id="mobileToggle">
+              <i data-lucide="menu"></i>
+            </button>
+            <div class="search-bar d-none d-sm-flex">
+              <i data-lucide="search" class="search-icon"></i>
+              <input type="text" placeholder="Search reports..." />
+            </div>
+          </div>
+
+          <div class="header-actions">
+            <div class="dropdown">
+              <button
+                class="icon-btn"
+                type="button"
+                id="notificationMenu"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+              >
+                <i data-lucide="bell"></i>
+                <span class="notification-dot"></span>
+              </button>
+              <div
+                class="dropdown-menu dropdown-menu-end notification-dropdown"
+                aria-labelledby="notificationMenu"
+              >
+                <div
+                  class="p-3 border-bottom border-secondary"
+                  style="border-color: rgba(255, 255, 255, 0.05) !important"
+                >
+                  <div
+                    class="d-flex justify-content-between align-items-center"
+                  >
+                    <h6 class="m-0 text-white fw-bold">Notifications</h6>
+                    <span
+                      class="badge bg-purple-light text-white"
+                      style="background: #a855f7"
+                      >2 New</span
+                    >
+                  </div>
+                </div>
+                <div class="notification-list">
+                  <a href="#" class="notification-item unread">
+                    <div class="notif-icon bg-critical-light text-critical">
+                      <i data-lucide="zap"></i>
+                    </div>
+                    <div>
+                      <p class="m-0 text-white text-sm fw-medium">
+                        Complete Outage Detected
+                      </p>
+                      <span class="text-xs text-muted"
+                        >myshop.io went down 2 mins ago</span
+                      >
+                    </div>
+                  </a>
+                  <a href="#" class="notification-item">
+                    <div class="notif-icon bg-good-light text-good">
+                      <i data-lucide="file-text"></i>
+                    </div>
+                    <div>
+                      <p class="m-0 text-slate-300 text-sm">
+                        Weekly Report Ready
+                      </p>
+                      <span class="text-xs text-muted"
+                        >Your analytics report is available.</span
+                      >
+                    </div>
+                  </a>
+                </div>
+                <div
+                  class="p-2 text-center border-top border-secondary"
+                  style="border-color: rgba(255, 255, 255, 0.05) !important"
+                >
+                  <a
+                    href="#"
+                    class="text-xs text-purple text-decoration-none fw-bold"
+                    >Mark all as read</a
+                  >
+                </div>
+              </div>
+            </div>
+
+            <a href="{% url 'profile' %}" class="text-decoration-none">
+              <div class="user-avatar" title="Profile Settings">U</div>
+            </a>
+          </div>
+        </header>
+
+        <div class="content-wrapper">
+          <div
+            class="d-flex flex-column flex-md-row justify-content-between align-items-md-end mb-4 gap-3"
+          >
+            <div>
+              <h2 class="page-title">Reports & Analytics</h2>
+              <p class="page-subtitle">
+                Daily summaries, error frequency, heatmaps, and trend analysis.
+              </p>
+            </div>
+
+            <div class="report-header-actions d-flex gap-3">
+              <div class="position-relative flex-grow-1">
+                <select
+                  class="form-select custom-select-dark w-100"
+                  id="dateRangeFilter"
+                >
+                  <option value="24h">Last 24 Hours</option>
+                  <option value="7d" selected>Last 7 Days</option>
+                  <option value="30d">Last 30 Days</option>
+                </select>
+              </div>
+
+              <div class="dropdown flex-grow-1">
+                <button
+                  class="btn btn-primary-custom dropdown-toggle w-100 d-flex justify-content-center align-items-center"
+                  type="button"
+                  id="exportMenuBtn"
+                  data-bs-toggle="dropdown"
+                  aria-expanded="false"
+                >
+                  <i
+                    data-lucide="download"
+                    class="me-2"
+                    style="width: 16px; height: 16px"
+                  ></i>
+                  <span id="exportBtnText">Export</span>
+                </button>
+                <ul
+                  class="dropdown-menu dropdown-menu-end custom-dropdown w-100"
+                  aria-labelledby="exportMenuBtn"
+                >
+                  <li>
+                    <a class="dropdown-item" href="#" id="exportPdf"
+                      ><i data-lucide="file-text" class="me-2 size-sm"></i>
+                      Download PDF</a
+                    >
+                  </li>
+                  <li>
+                    <a class="dropdown-item" href="#" id="exportPng"
+                      ><i data-lucide="image" class="me-2 size-sm"></i> Save as
+                      PNG</a
+                    >
+                  </li>
+                  <li><hr class="dropdown-divider" /></li>
+                  <li>
+                    <a class="dropdown-item" href="#" id="exportCsv"
+                      ><i data-lucide="table" class="me-2 size-sm"></i> Export
+                      CSV</a
+                    >
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div id="report-canvas-area">
+            <div class="row g-4 mb-4">
+              <div class="col-md-4">
+                <div class="report-stat-card stat-issues">
+                  <div class="d-flex justify-content-between align-items-start">
+                    <span class="text-slate-300 text-sm fw-medium"
+                      >Total Issues Today</span
+                    >
+                    <i
+                      data-lucide="alert-triangle"
+                      class="text-warning size-sm"
+                    ></i>
+                  </div>
+                  <h2
+                    class="mt-2 mb-1 stat-value-lg counter"
+                    data-target="23"
+                    data-suffix=""
+                  >
+                    0
+                  </h2>
+                  <span class="text-danger text-xs fw-bold"
+                    >+5 from yesterday</span
+                  >
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="report-stat-card stat-uptime">
+                  <div class="d-flex justify-content-between align-items-start">
+                    <span class="text-slate-300 text-sm fw-medium"
+                      >Average Uptime</span
+                    >
+                    <i data-lucide="activity" class="text-success size-sm"></i>
+                  </div>
+                  <h2
+                    class="mt-2 mb-1 stat-value-lg counter"
+                    data-target="99.2"
+                    data-suffix="%"
+                  >
+                    0
+                  </h2>
+                  <span class="text-success text-xs fw-bold">Stable</span>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="report-stat-card stat-response">
+                  <div class="d-flex justify-content-between align-items-start">
+                    <span class="text-slate-300 text-sm fw-medium"
+                      >Avg Response Time</span
+                    >
+                    <i data-lucide="zap" class="text-purple size-sm"></i>
+                  </div>
+                  <h2 class="mt-2 mb-1 stat-value-lg">
+                    <span class="counter" data-target="169" data-suffix=""
+                      >0</span
+                    >
+                    <span class="text-purple" style="font-size: 1.2rem"
+                      >ms</span
+                    >
+                  </h2>
+                  <span class="text-purple text-xs fw-bold"
+                    >Across all sites</span
+                  >
+                </div>
+              </div>
+            </div>
+
+            <div class="dash-panel mb-4">
+              <h5 class="panel-title">Response Time Heatmap</h5>
+              <p class="panel-subtitle mb-4">
+                Response time by site and hour of day.
+              </p>
+
+              <div class="heatmap-wrapper">
+                <div class="heatmap-inner">
+                  <div class="heatmap-labels-top">
+                    <span>00:00</span><span>02:00</span><span>04:00</span
+                    ><span>06:00</span><span>08:00</span><span>10:00</span
+                    ><span>12:00</span><span>14:00</span><span>16:00</span
+                    ><span>18:00</span><span>20:00</span><span>22:00</span>
+                  </div>
+                  <div class="heatmap-row">
+                    <div class="heatmap-label">example.com</div>
+                    <div class="heatmap-blocks">
+                      <div class="block bg-good"></div>
+                      <div class="block bg-good"></div>
+                      <div class="block bg-good"></div>
+                      <div class="block bg-good"></div>
+                      <div class="block bg-good"></div>
+                      <div class="block bg-good"></div>
+                      <div class="block bg-good"></div>
+                      <div class="block bg-good"></div>
+                      <div class="block bg-good"></div>
+                      <div class="block bg-good"></div>
+                      <div class="block bg-good"></div>
+                      <div class="block bg-good"></div>
+                    </div>
+                  </div>
+                  <div class="heatmap-row">
+                    <div class="heatmap-label">myshop.io</div>
+                    <div class="heatmap-blocks">
+                      <div class="block bg-good"></div>
+                      <div class="block bg-good"></div>
+                      <div class="block bg-good"></div>
+                      <div class="block bg-good"></div>
+                      <div class="block bg-good"></div>
+                      <div class="block bg-good"></div>
+                      <div class="block bg-critical"></div>
+                      <div class="block bg-critical"></div>
+                      <div class="block bg-good"></div>
+                      <div class="block bg-good"></div>
+                      <div class="block bg-good"></div>
+                      <div class="block bg-good"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="heatmap-legend mt-3">
+                <span class="text-xs text-slate-300 me-2">Fast</span>
+                <div
+                  class="block bg-good"
+                  style="width: 20px; height: 6px"
+                ></div>
+                <div class="block bg-ok" style="width: 20px; height: 6px"></div>
+                <div
+                  class="block bg-warn"
+                  style="width: 20px; height: 6px"
+                ></div>
+                <div
+                  class="block bg-critical"
+                  style="width: 20px; height: 6px"
+                ></div>
+                <span class="text-xs text-slate-300 ms-2">Slow</span>
+              </div>
+            </div>
+
+            <div class="dash-panel mb-4">
+              <h5 class="panel-title">Response Time Percentiles</h5>
+              <p class="panel-subtitle mb-4">
+                p50, p95, and p99 response times over the last 24 hours
+              </p>
+              <div class="chart-container">
+                <canvas id="percentileChart"></canvas>
+              </div>
+            </div>
+
+            <div class="row g-4 mb-4">
+              <div class="col-lg-6">
+                <div class="dash-panel h-100">
+                  <h5 class="panel-title">Error Frequency</h5>
+                  <div class="chart-container-sm mt-4">
+                    <canvas id="errorChart"></canvas>
+                  </div>
+                </div>
+              </div>
+              <div class="col-lg-6">
+                <div class="dash-panel h-100">
+                  <h5 class="panel-title">Uptime Trend</h5>
+                  <div class="chart-container-sm mt-4">
+                    <canvas id="uptimeChart"></canvas>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="dash-panel mb-5">
+              <h5 class="panel-title">Error Distribution</h5>
+              <p class="panel-subtitle mb-4">
+                Breakdown of error types this week
+              </p>
+
+              <div class="dist-row">
+                <span class="dist-label">404 Not Found</span>
+                <div class="dist-bar-bg">
+                  <div class="dist-bar bg-warning" style="width: 35%"></div>
+                </div>
+                <span class="dist-value">42 (35%)</span>
+              </div>
+              <div class="dist-row">
+                <span class="dist-label">500 Server Error</span>
+                <div class="dist-bar-bg">
+                  <div class="dist-bar bg-danger" style="width: 23%"></div>
+                </div>
+                <span class="dist-value">28 (23%)</span>
+              </div>
+              <div class="dist-row">
+                <span class="dist-label">Timeout</span>
+                <div class="dist-bar-bg">
+                  <div
+                    class="dist-bar bg-danger"
+                    style="width: 15%; opacity: 0.7"
+                  ></div>
+                </div>
+                <span class="dist-value">18 (15%)</span>
+              </div>
+              <div class="dist-row">
+                <span class="dist-label">SSL Error</span>
+                <div class="dist-bar-bg">
+                  <div class="dist-bar bg-info" style="width: 10%"></div>
+                </div>
+                <span class="dist-value">12 (10%)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{% static 'js/script.js' %}"></script>
+
+    <script>
+      lucide.createIcons();
+
+      const reportCounters = document.querySelectorAll(
+        ".report-stat-card .counter",
+      );
+      const speed = 40;
+      reportCounters.forEach((counter) => {
+        const updateCount = () => {
+          const target = +counter.getAttribute("data-target");
+          const count = +counter.innerText.replace("%", "");
+          const suffix = counter.getAttribute("data-suffix");
+          const inc = target % 1 !== 0 ? target / (speed * 2) : target / speed;
+
+          if (count < target) {
+            counter.innerText =
+              target % 1 !== 0
+                ? (count + inc).toFixed(1) + suffix
+                : Math.ceil(count + inc) + suffix;
+            setTimeout(updateCount, 15);
+          } else {
+            counter.innerText = target + suffix;
+          }
+        };
+        updateCount();
+      });
+
+      const exportBtnText = document.getElementById("exportBtnText");
+      const reportCanvasArea = document.getElementById("report-canvas-area");
+
+      function simulateDownload(text, action) {
+        const originalHtml = exportBtnText.innerHTML;
+        exportBtnText.innerHTML =
+          '<span class="spinner-border spinner-border-sm me-2" style="width:14px; height:14px;"></span> ' +
+          text;
+
+        setTimeout(() => {
+          action();
+          exportBtnText.innerHTML =
+            '<i data-lucide="check" class="me-1 size-sm"></i> Done';
+          lucide.createIcons();
+          setTimeout(() => {
+            exportBtnText.innerHTML = originalHtml;
+          }, 2000);
+        }, 1000);
+      }
+
+      document.getElementById("exportPng").addEventListener("click", (e) => {
+        e.preventDefault();
+        simulateDownload("Generating...", () => {
+          html2canvas(reportCanvasArea, {
+            backgroundColor: "#0b0713",
+            scale: 2,
+          }).then((canvas) => {
+            const link = document.createElement("a");
+            link.download = "SiteGuard_Report.png";
+            link.href = canvas.toDataURL();
+            link.click();
+          });
+        });
+      });
+
+      document.getElementById("exportPdf").addEventListener("click", (e) => {
+        e.preventDefault();
+        simulateDownload("Building...", () => {
+          html2canvas(reportCanvasArea, {
+            backgroundColor: "#0b0713",
+            scale: 2,
+          }).then((canvas) => {
+            const imgData = canvas.toDataURL("image/png");
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF("p", "mm", "a4");
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+            pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+            pdf.save("SiteGuard_Report.pdf");
+          });
+        });
+      });
+
+      document.getElementById("exportCsv").addEventListener("click", (e) => {
+        e.preventDefault();
+        simulateDownload("Compiling...", () => {
+          let csvContent =
+            "data:text/csv;charset=utf-8,Date,Website,Status,ResponseTime_ms,Uptime_Percent\n2026-03-24,example.com,UP,120,99.98\n2026-03-24,myshop.io,DOWN,Timeout,95.20\n";
+          const link = document.createElement("a");
+          link.setAttribute("href", encodeURI(csvContent));
+          link.setAttribute("download", "SiteGuard_Data.csv");
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        });
+      });
+
+      Chart.defaults.color = "#94a3b8";
+      Chart.defaults.font.family = "'Inter', sans-serif";
+      Chart.defaults.plugins.tooltip.backgroundColor = "#2B2239";
+      Chart.defaults.plugins.tooltip.titleColor = "#fff";
+      Chart.defaults.plugins.tooltip.padding = 10;
+      Chart.defaults.plugins.tooltip.cornerRadius = 8;
+      Chart.defaults.plugins.tooltip.displayColors = false;
+
+      new Chart(document.getElementById("percentileChart"), {
+        type: "line",
+        data: {
+          labels: ["00", "04", "08", "12", "16", "20", "Now"],
+          datasets: [
+            {
+              label: "p99",
+              data: [400, 380, 500, 750, 680, 450, 420],
+              borderColor: "#ef4444",
+              backgroundColor: "rgba(239, 68, 68, 0.1)",
+              fill: true,
+              tension: 0.4,
+              pointRadius: 0,
+            },
+            {
+              label: "p95",
+              data: [200, 190, 280, 350, 310, 220, 200],
+              borderColor: "#f59e0b",
+              backgroundColor: "rgba(245, 158, 11, 0.1)",
+              fill: true,
+              tension: 0.4,
+              pointRadius: 0,
+            },
+            {
+              label: "p50",
+              data: [100, 95, 110, 140, 130, 105, 100],
+              borderColor: "#10b981",
+              backgroundColor: "rgba(16, 185, 129, 0.2)",
+              fill: true,
+              tension: 0.4,
+              pointRadius: 0,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          plugins: { legend: { display: false } },
+          scales: { y: { min: 0, max: 800 } },
+        },
+      });
+
+      new Chart(document.getElementById("errorChart"), {
+        type: "bar",
+        data: {
+          labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+          datasets: [
+            {
+              label: "Errors",
+              data: [12, 8, 23, 15, 5, 3, 9],
+              backgroundColor: "#ef4444",
+              borderRadius: 4,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { x: { grid: { display: false } } },
+        },
+      });
+
+      new Chart(document.getElementById("uptimeChart"), {
+        type: "line",
+        data: {
+          labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+          datasets: [
+            {
+              label: "Uptime %",
+              data: [99.2, 99.9, 97.5, 99.1, 99.9, 100, 99.6],
+              borderColor: "#10b981",
+              tension: 0.4,
+              pointBackgroundColor: "#10b981",
+              pointRadius: 4,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { x: { grid: { display: false } }, y: { min: 96, max: 100 } },
+        },
+      });
+    </script>
+  </body>
+</html>

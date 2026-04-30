@@ -1,0 +1,342 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Error Log Analyzer | SiteGuard</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{% static 'css/style.css' %}" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <div class="overlay" id="mobileOverlay"></div>
+
+      <aside class="sidebar" id="sidebar">
+        <a href="{% url 'index' %}" style="text-decoration: none">
+          <div class="sidebar-brand">
+            <div class="logo-icon"><i data-lucide="activity"></i></div>
+            <span>Site Guard</span>
+          </div>
+        </a>
+        <nav class="sidebar-nav">
+          <a href="{% url 'dashboard' %}" class="nav-item"
+            ><i data-lucide="layout-dashboard"></i> Dashboard</a
+          >
+          <a href="{% url 'status' %}" class="nav-item"
+            ><i data-lucide="globe"></i> Status Check</a
+          >
+          <a href="{% url 'reports' %}" class="nav-item"
+            ><i data-lucide="bar-chart-2"></i> Reports</a
+          >
+          <a href="{% url 'logs' %}" class="nav-item active"
+            ><i data-lucide="file-text"></i> Logs</a
+          >
+          <a href="{% url 'utilities' %}" class="nav-item"
+            ><i data-lucide="wrench"></i> Utilities</a
+          >
+          <a href="{% url 'alerts' %}" class="nav-item"
+            ><i data-lucide="bell"></i> Alerts</a
+          >
+          <div style="flex-grow: 1"></div>
+          <a href="{% url 'login' %}" class="nav-item"
+            ><i data-lucide="log-out"></i> Sign Out</a
+          >
+        </nav>
+        <div class="pro-tip-card mt-4">
+          <h6>Pro Tip</h6>
+          <p>
+            Enable alerts to get notified instantly when your sites go down.
+          </p>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="top-header">
+          <div class="d-flex align-items-center">
+            <button class="mobile-toggle" id="mobileToggle">
+              <i data-lucide="menu"></i>
+            </button>
+            <div class="search-bar d-none d-sm-flex">
+              <i data-lucide="search" class="search-icon"></i>
+              <input
+                type="text"
+                id="globalSearch"
+                placeholder="Search websites..."
+              />
+            </div>
+          </div>
+          <div class="header-actions">
+            <div class="dropdown">
+              <button
+                class="icon-btn"
+                type="button"
+                id="notificationMenu"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+              >
+                <i data-lucide="bell"></i>
+                <span class="notification-dot"></span>
+              </button>
+              <div
+                class="dropdown-menu dropdown-menu-end notification-dropdown"
+                aria-labelledby="notificationMenu"
+              >
+                <div
+                  class="p-3 border-bottom border-secondary"
+                  style="border-color: rgba(255, 255, 255, 0.05) !important"
+                >
+                  <div
+                    class="d-flex justify-content-between align-items-center"
+                  >
+                    <h6 class="m-0 text-white fw-bold">Notifications</h6>
+                    <span
+                      class="badge bg-purple-light text-white"
+                      style="background: #a855f7"
+                      >2 New</span
+                    >
+                  </div>
+                </div>
+                <div class="notification-list">
+                  <a href="#" class="notification-item unread">
+                    <div class="notif-icon bg-critical-light text-critical">
+                      <i data-lucide="zap"></i>
+                    </div>
+                    <div>
+                      <p class="m-0 text-white text-sm fw-medium">
+                        Complete Outage Detected
+                      </p>
+                      <span class="text-xs text-muted"
+                        >myshop.io went down 2 mins ago</span
+                      >
+                    </div>
+                  </a>
+                  <a href="#" class="notification-item">
+                    <div class="notif-icon bg-good-light text-good">
+                      <i data-lucide="file-text"></i>
+                    </div>
+                    <div>
+                      <p class="m-0 text-slate-300 text-sm">
+                        Weekly Report Ready
+                      </p>
+                      <span class="text-xs text-muted"
+                        >Your analytics report is available.</span
+                      >
+                    </div>
+                  </a>
+                </div>
+                <div
+                  class="p-2 text-center border-top border-secondary"
+                  style="border-color: rgba(255, 255, 255, 0.05) !important"
+                >
+                  <a
+                    href="#"
+                    class="text-xs text-purple text-decoration-none fw-bold"
+                    >Mark all as read</a
+                  >
+                </div>
+              </div>
+            </div>
+            <a href="{% url 'profile' %}" class="text-decoration-none">
+              <div class="user-avatar" title="Go to Profile">U</div>
+            </a>
+          </div>
+        </header>
+
+        <div class="content-wrapper">
+          <div class="mb-4">
+            <h2 class="page-title text-white">Error Log Analyzer</h2>
+            <p class="page-subtitle text-slate-300">
+              Upload error logs and analyze patterns across your sites.
+            </p>
+          </div>
+
+          <div class="dash-panel mb-4 p-4 p-md-5">
+            <div class="upload-zone" id="dropZone">
+              <input
+                type="file"
+                id="fileInput"
+                hidden
+                accept=".log,.txt,.csv"
+              />
+              <div class="upload-icon-wrapper mb-3">
+                <div class="upload-icon-circle">
+                  <i data-lucide="upload-cloud"></i>
+                </div>
+              </div>
+              <h5 class="text-white fw-bold mb-2">Upload Error Log File</h5>
+              <p class="text-muted text-xs mb-4">
+                Drag & drop a .log or .txt file, or click to browse
+              </p>
+              <button
+                class="btn btn-outline-dark-custom"
+                onclick="document.getElementById('fileInput').click()"
+              >
+                <i data-lucide="upload" class="me-2 size-sm"></i> Choose File
+              </button>
+              <div
+                id="uploadFeedback"
+                class="mt-3 text-success text-sm fw-bold"
+                style="display: none"
+              ></div>
+            </div>
+          </div>
+
+          <div class="row g-4 mb-4">
+            <div class="col-md-4">
+              <div class="log-stat-card">
+                <div class="stat-icon-box bg-warning-light text-warning">
+                  <i data-lucide="file-warning"></i>
+                </div>
+                <div>
+                  <h2
+                    class="stat-value-lg counter m-0"
+                    data-target="142"
+                    data-suffix=""
+                  >
+                    0
+                  </h2>
+                  <span class="text-slate-300 text-sm fw-bold"
+                    >404 Not Found</span
+                  >
+                </div>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="log-stat-card">
+                <div class="stat-icon-box bg-critical-light text-critical">
+                  <i data-lucide="server-crash"></i>
+                </div>
+                <div>
+                  <h2
+                    class="stat-value-lg counter m-0"
+                    data-target="37"
+                    data-suffix=""
+                  >
+                    0
+                  </h2>
+                  <span class="text-slate-300 text-sm fw-bold"
+                    >500 Server Error</span
+                  >
+                </div>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="log-stat-card">
+                <div class="stat-icon-box bg-panel-light text-muted">
+                  <i data-lucide="clock"></i>
+                </div>
+                <div>
+                  <h2
+                    class="stat-value-lg counter m-0"
+                    data-target="21"
+                    data-suffix=""
+                  >
+                    0
+                  </h2>
+                  <span class="text-slate-300 text-sm fw-bold">Timeout</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="info-banner mb-4">
+            <i
+              data-lucide="info"
+              class="text-muted"
+              style="width: 24px; height: 24px"
+            ></i>
+            <div>
+              <h6
+                class="text-white m-0 mb-1 fw-bold"
+                style="font-size: 0.95rem"
+              >
+                Sample Data
+              </h6>
+              <p class="text-slate-300 m-0 text-sm">
+                The error logs below are sample data for demonstration purposes.
+                Upload your own log files to see real analysis.
+              </p>
+            </div>
+          </div>
+
+          <div class="dash-panel p-0 overflow-hidden">
+            <div
+              class="p-4 border-bottom"
+              style="border-color: rgba(255, 255, 255, 0.05) !important"
+            >
+              <h5 class="panel-title m-0">Error Log Entries</h5>
+              <p class="panel-subtitle mt-1 m-0">
+                Parsed error entries from uploaded logs
+              </p>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table custom-table mb-0" id="logsTable">
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Type</th>
+                    <th>Message</th>
+                    <th class="text-end pe-4">Source</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr class="activity-row">
+                    <td class="font-mono text-slate-300 text-sm fw-bold">
+                      2026-02-09 14:32:01
+                    </td>
+                    <td><span class="log-badge badge-404">404</span></td>
+                    <td class="text-white text-sm">
+                      GET /api/users/999 - Not Found
+                    </td>
+                    <td class="text-end font-mono text-slate-300 text-sm pe-4">
+                      api.example.com
+                    </td>
+                  </tr>
+                  <tr class="activity-row">
+                    <td class="font-mono text-slate-300 text-sm fw-bold">
+                      2026-02-09 14:32:01
+                    </td>
+                    <td>
+                      <span class="log-badge badge-timeout">TIMEOUT</span>
+                    </td>
+                    <td class="text-white text-sm">
+                      Internal Server Error in /checkout
+                    </td>
+                    <td class="text-end font-mono text-slate-300 text-sm pe-4">
+                      myshop.io
+                    </td>
+                  </tr>
+                  <tr class="activity-row">
+                    <td class="font-mono text-slate-300 text-sm fw-bold">
+                      2026-02-09 14:32:01
+                    </td>
+                    <td><span class="log-badge badge-500">500</span></td>
+                    <td class="text-white text-sm">
+                      Connection timeout after 30s
+                    </td>
+                    <td class="text-end font-mono text-slate-300 text-sm pe-4">
+                      slow-server.demo
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{% static 'js/script.js' %}"></script>
+  </body>
+</html>
