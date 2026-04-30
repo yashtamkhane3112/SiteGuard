@@ -3,7 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django import forms
 
-from .models import Website
+from .models import Website, MonitorLog
 
 
 def index(request):
@@ -20,9 +20,12 @@ def signup(request):
 
 @login_required
 def dashboard(request):
-    """Dashboard view showing user's websites."""
+    """Dashboard view showing user's websites and recent activity."""
     websites = Website.objects.filter(user=request.user).order_by('-created_at')
-    return render(request, 'monitor/dashboard.html', {'websites': websites})
+    # Fetch latest MonitorLog entries for user's websites (last 10)
+    website_ids = websites.values_list('id', flat=True)
+    logs = MonitorLog.objects.filter(website_id__in=website_ids).select_related('website').order_by('-checked_at')[:10]
+    return render(request, 'monitor/dashboard.html', {'websites': websites, 'logs': logs})
 
 
 def status(request):

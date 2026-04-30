@@ -297,7 +297,7 @@
             {% endif %}
           </div>
 
-          <div class="dash-panel p-0 overflow-hidden">
+<div class="dash-panel p-0 overflow-hidden">
             <div
               class="p-4 border-bottom"
               style="border-color: rgba(255, 255, 255, 0.05) !important"
@@ -320,88 +320,46 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr
-                    class="activity-row"
-                    onclick="window.location.href='{% url 'reports' %}'"
-                  >
-                    <td class="font-mono text-light fw-medium">example.com</td>
-                    <td>
-                      <span class="status-badge badge-down"
-                        ><span class="dot"></span> DOWN</span
-                      >
-                    </td>
-                    <td class="text-muted">Timeout</td>
-                    <td class="text-danger fw-medium">Critical</td>
-                    <td class="text-end text-muted font-mono text-sm">
-                      2026-02-09 14:30
-                    </td>
-                  </tr>
-                  <tr
-                    class="activity-row"
-                    onclick="window.location.href='{% url 'reports' %}'"
-                  >
-                    <td class="font-mono text-light fw-medium">
-                      api.example.com
-                    </td>
-                    <td>
-                      <span class="status-badge badge-up"
-                        ><span class="dot"></span> UP</span
-                      >
-                    </td>
-                    <td class="text-muted">118ms</td>
-                    <td class="text-success">-12ms</td>
-                    <td class="text-end text-muted font-mono text-sm">
-                      2026-02-09 14:29
-                    </td>
-                  </tr>
-                  <tr
-                    class="activity-row"
-                    onclick="window.location.href='{% url 'reports' %}'"
-                  >
-                    <td class="font-mono text-light fw-medium">
-                      cdn.example.com
-                    </td>
-                    <td>
-                      <span class="status-badge badge-warn"
-                        ><span class="dot"></span> SLOW</span
-                      >
-                    </td>
-                    <td class="text-muted">850ms</td>
-                    <td class="text-warning">+732ms</td>
-                    <td class="text-end text-muted font-mono text-sm">
-                      2026-02-09 14:28
-                    </td>
-                  </tr>
-                  <tr
-                    class="activity-row"
-                    onclick="window.location.href='{% url 'reports' %}'"
-                  >
-                    <td class="font-mono text-light fw-medium">
-                      app.example.com
-                    </td>
-                    <td>
-                      <span class="status-badge badge-up"
-                        ><span class="dot"></span> UP</span
-                      >
-                    </td>
-                    <td class="text-muted">115ms</td>
-                    <td class="text-success">-5ms</td>
-                    <td class="text-end text-muted font-mono text-sm">
-                      2026-02-09 14:27
-                    </td>
-                  </tr>
-
-                  <tr id="noResultsRow" style="display: none">
+                  {% if logs %}
+                    {% for log in logs %}
+                    <tr
+                      class="activity-row"
+                      onclick="window.location.href='{% url 'reports' %}'"
+                    >
+                      <td class="font-mono text-light fw-medium">{{ log.website.url }}</td>
+                      <td>
+                        {% if log.status %}
+                        <span class="status-badge badge-up"
+                          ><span class="dot"></span> UP</span
+                        >
+                        {% else %}
+                        <span class="status-badge badge-down"
+                          ><span class="dot"></span> DOWN</span
+                        >
+                        {% endif %}
+                      </td>
+                      <td class="text-muted">{{ log.response_time }}ms</td>
+                      <td class="{% if log.status %}text-success{% else %}text-danger fw-medium{% endif %}">
+                        {% if log.status %}OK{% else %}Failed{% endif %}
+                      </td>
+                      <td class="text-end text-muted font-mono text-sm">
+                        {{ log.checked_at|date:"Y-m-d H:i" }}
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  {% else %}
+                  <tr id="noResultsRow">
                     <td colspan="5">
                       <div class="empty-state">
-                        <i data-lucide="search-x"></i>
-                        <h6>No websites found</h6>
+                        <i data-lucide="activity"></i>
+                        <h6>No activity yet</h6>
                         <p class="text-sm mb-0">
-                          Try adjusting your search criteria.
+                          Run python manage.py monitor_sites to check your websites.
                         </p>
                       </div>
                     </td>
                   </tr>
+                  {% endif %}
                 </tbody>
               </table>
             </div>
