@@ -1094,6 +1094,20 @@ body {
 .custom-table td { border-bottom: 1px solid rgba(255,255,255,0.02); padding: 16px; vertical-align: middle; transition: 0.2s; }
 .custom-table tr.activity-row { cursor: pointer; transition: 0.2s;}
 .custom-table tr.activity-row:hover td { background: rgba(255,255,255,0.04); }
+.website-card {
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.website-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.4);
+}
+
+.stat-subtext.text-success {
+    font-weight: 600;
+}
 
 /* ========================================================= */
 /* ===== 4. MOBILE OVERRIDES =============================== */

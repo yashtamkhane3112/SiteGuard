@@ -229,7 +229,7 @@
                 <div class="status-badge {% if status == 'DOWN' %}badge-down{% else %}badge-up{% endif %}">
                   <span class="dot"></span> {{ status }}
                 </div>
-                <span class="stat-subtext {% if status == 'DOWN' %}text-danger{% else %}text-success{% endif %}"
+                <span class="stat-subtext fw-semibold {% if status == 'DOWN' %}text-danger{% else %}text-success{% endif %}"
                   >{% if status == 'DOWN' %}Issues detected{% else %}All systems operational{% endif %}</span
                 >
               </div>
@@ -277,7 +277,7 @@
                 <h6 class="mb-0 font-mono text-light">{{ site.url }}</h6>
                 <span
                   id="status-{{ site.id }}"
-                  class="badge {% if site.status == 'UP' %}bg-success{% else %}bg-danger{% endif %}"
+                  class="badge {% if site.status == 'UP' %}bg-success{% else %}bg-danger{% endif %} px-3 py-1"
                 >
                   {{ site.status }}
                 </span>
@@ -359,14 +359,14 @@
                     <td class="font-mono text-light fw-medium">{{ log.website.url }}</td>
                     <td>
                       {% if log.status %}
-                      <span class="text-success">UP</span>
+                      <span class="badge bg-success px-3 py-1">UP</span>
                       {% else %}
-                      <span class="text-danger">DOWN</span>
+                      <span class="badge bg-danger px-3 py-1">DOWN</span>
                       {% endif %}
                     </td>
-                    <td>{{ log.response_time }} ms</td>
-                    <td>OK</td>
-                    <td>{{ log.checked_at|date:"Y-m-d H:i" }}</td>
+                    <td class="text-light opacity-75">{{ log.response_time }} ms</td>
+                    <td class="text-light opacity-75">OK</td>
+                    <td class="text-light opacity-75">{{ log.checked_at|date:"Y-m-d H:i" }}</td>
                   </tr>
                   {% endfor %}
                   {% else %}
@@ -410,7 +410,7 @@
             const timeElement = document.getElementById(`time-${site.id}`);
 
             if (statusElement) {
-              statusElement.className = `badge ${site.status === "DOWN" ? "bg-danger" : "bg-success"}`;
+              statusElement.className = `badge ${site.status === "DOWN" ? "bg-danger" : "bg-success"} px-3 py-1`;
               statusElement.innerText = site.status;
             }
 
