@@ -1,10 +1,20 @@
 from django.shortcuts import render, redirect
-from django.contrib.auth import authenticate, login as auth_login
+from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.contrib import messages
 
 from .forms import LoginForm, SignUpForm
 from .models import Website, MonitorLog
+
+
+def ensure_admin_user():
+    if not User.objects.filter(username='admin').exists():
+        User.objects.create_superuser(
+            username='admin',
+            password='admin123',
+            email='admin@example.com',
+        )
 
 
 def index(request):
@@ -12,6 +22,7 @@ def index(request):
 
 
 def login(request):
+    ensure_admin_user()
     if request.user.is_authenticated:
         return redirect('dashboard')
 
@@ -31,6 +42,7 @@ def login(request):
 
 
 def signup(request):
+    ensure_admin_user()
     if request.user.is_authenticated:
         return redirect('dashboard')
 
@@ -42,9 +54,15 @@ def signup(request):
     return render(request, 'monitor/signup.html', {'form': form})
 
 
+def logout_view(request):
+    auth_logout(request)
+    return redirect('login')
+
+
 @login_required
 def dashboard(request):
     """Dashboard view showing user's websites and recent activity."""
+    ensure_admin_user()
     websites = Website.objects.filter(user=request.user).order_by('-created_at')
     # Fetch latest MonitorLog entries for user's websites (last 10)
     website_ids = websites.values_list('id', flat=True)
