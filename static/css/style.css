@@ -1072,6 +1072,9 @@ body {
 .badge-down .dot { background: var(--color-danger); box-shadow: 0 0 8px var(--color-danger);}
 .badge-warn { background: rgba(245, 158, 11, 0.1); color: var(--color-warning); border: 1px solid rgba(245, 158, 11, 0.2); }
 .badge-warn .dot { background: var(--color-warning); box-shadow: 0 0 8px var(--color-warning);}
+.badge.status-badge { backdrop-filter: blur(6px); border-radius: 6px; padding: 4px 10px; }
+.bg-danger.status-badge { background: rgba(220, 53, 69, 0.2) !important; box-shadow: 0 0 12px rgba(220, 53, 69, 0.4); }
+.bg-warning.status-badge { background: rgba(255, 193, 7, 0.2) !important; }
 
 /* Timeline Block Graph */
 .timeline-container { display: flex; gap: 4px; height: 36px; width: 100%; position: relative; }

@@ -68,13 +68,16 @@ class Command(BaseCommand):
                 error_count = 0
 
                 for website in websites:
+                    previous_log = MonitorLog.objects.filter(website=website).order_by('-checked_at').first()
                     try:
-                        start_time = time.time()
-                        response = requests.get(website.url, timeout=timeout)
-                        response_time_ms = (time.time() - start_time) * 1000
-                        previous_log = MonitorLog.objects.filter(website=website).order_by('-checked_at').first()
+                        url = website.url
+                        if not url.startswith("http"):
+                            url = "https://" + url
 
-                        if response.status_code == 200:
+                        response = requests.get(url, timeout=timeout)
+                        response_time_ms = response.elapsed.total_seconds() * 1000
+
+                        if response.status_code >= 200 and response.status_code < 400:
                             status = (
                                 MonitorLog.STATUS_SLOW
                                 if response_time_ms > 2000
@@ -106,25 +109,7 @@ class Command(BaseCommand):
                         checked_count += 1
                         self.stdout.write(f'Checked: {website.url} | {status_text} | {round(response_time_ms, 2)}ms')
 
-                    except requests.exceptions.Timeout:
-                        previous_log = MonitorLog.objects.filter(website=website).order_by('-checked_at').first()
-                        MonitorLog.objects.create(
-                            website=website,
-                            status=MonitorLog.STATUS_DOWN,
-                            response_time=0,
-                        )
-
-                        try:
-                            if self.send_down_alert(website, previous_log, 0, 'DOWN (Timeout)', 'The request timed out.'):
-                                self.stdout.write(self.style.WARNING(f'Timeout alert sent to {website.user.email}'))
-                        except Exception as e:
-                            self.stdout.write(self.style.ERROR(f'Email timeout {website.url}: {str(e)}'))
-
-                        error_count += 1
-                        self.stdout.write(self.style.ERROR(f'Checked: {website.url} | TIMEOUT | 0ms'))
-
                     except Exception as e:
-                        previous_log = MonitorLog.objects.filter(website=website).order_by('-checked_at').first()
                         MonitorLog.objects.create(
                             website=website,
                             status=MonitorLog.STATUS_DOWN,
@@ -132,27 +117,10 @@ class Command(BaseCommand):
                         )
 
                         try:
-                            if self.send_down_alert(website, previous_log, 0, 'DOWN (Connection Error)', str(e)):
+                            if self.send_down_alert(website, previous_log, 0, 'DOWN', str(e)):
                                 self.stdout.write(self.style.WARNING(f'Request error alert sent to {website.user.email}'))
                         except Exception as email_e:
                             self.stdout.write(self.style.ERROR(f'Email request error {website.url}: {str(email_e)}'))
-
-                        error_count += 1
-                        self.stdout.write(self.style.ERROR(f'Checked: {website.url} | ERROR | 0ms'))
-
-                    except Exception as e:
-                        previous_log = MonitorLog.objects.filter(website=website).order_by('-checked_at').first()
-                        MonitorLog.objects.create(
-                            website=website,
-                            status=MonitorLog.STATUS_DOWN,
-                            response_time=0,
-                        )
-
-                        try:
-                            if self.send_down_alert(website, previous_log, 0, 'DOWN (Unexpected Error)', str(e)):
-                                self.stdout.write(self.style.WARNING(f'Unexpected error alert sent to {website.user.email}'))
-                        except Exception as email_e:
-                            self.stdout.write(self.style.ERROR(f'Email unexpected {website.url}: {str(email_e)}'))
 
                         error_count += 1
                         self.stdout.write(self.style.ERROR(f'Checked: {website.url} | ERROR | 0ms'))

@@ -277,7 +277,7 @@
                 <h6 class="mb-0 font-mono text-light">{{ site.url }}</h6>
                 <span
                   id="status-{{ site.id }}"
-                  class="badge {% if site.status == 'UP' %}bg-success{% elif site.status == 'SLOW' %}bg-warning{% else %}bg-danger{% endif %} px-3 py-1"
+                  class="badge status-badge {% if site.status == 'UP' %}bg-success{% elif site.status == 'SLOW' %}bg-warning{% else %}bg-danger{% endif %} px-3 py-1"
                 >
                   {{ site.status }}
                 </span>
@@ -356,9 +356,9 @@
                   {% if logs %}
                   {% for log in logs %}
                   <tr class="activity-row">
-                    <td class="font-mono text-light fw-medium">{{ log.website.url }}</td>
+                   <td class="font-mono text-light fw-medium">{{ log.url }}</td> 
                     <td>
-                      <span class="badge {% if log.status == 'UP' %}bg-success{% elif log.status == 'SLOW' %}bg-warning{% else %}bg-danger{% endif %} px-3 py-1">{{ log.status }}</span>
+                      <span class="badge status-badge {% if log.status == 'UP' %}bg-success{% elif log.status == 'SLOW' %}bg-warning{% else %}bg-danger{% endif %} px-3 py-1">{{ log.status }}</span>
                     </td>
                     <td class="text-light opacity-75">{{ log.response_time }} ms</td>
                     <td class="text-light opacity-75">OK</td>
@@ -406,7 +406,7 @@
             const timeElement = document.getElementById(`time-${site.id}`);
 
             if (statusElement) {
-              statusElement.className = `badge ${site.status === "DOWN" ? "bg-danger" : site.status === "SLOW" ? "bg-warning" : "bg-success"} px-3 py-1`;
+              statusElement.className = `badge status-badge ${site.status === "DOWN" ? "bg-danger" : site.status === "SLOW" ? "bg-warning" : "bg-success"} px-3 py-1`;
               statusElement.innerText = site.status;
             }
 

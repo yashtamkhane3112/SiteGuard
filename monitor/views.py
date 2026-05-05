@@ -10,8 +10,18 @@ from .forms import LoginForm, SignUpForm
 from .models import Website, MonitorLog
 
 
+# ✅ STATUS HELPER
 def get_site_status(log):
-    return log.status if log else MonitorLog.STATUS_DOWN
+    if not log:
+        return "DOWN"
+
+    if log.status == MonitorLog.STATUS_UP:
+        return "UP"
+
+    if log.status == MonitorLog.STATUS_SLOW:
+        return "SLOW"
+
+    return "DOWN"
 
 
 def ensure_admin_user():
@@ -65,20 +75,39 @@ def logout_view(request):
     return redirect('login')
 
 
+# ✅ DASHBOARD (FULL FIXED)
 @login_required
 def dashboard(request):
-    """Dashboard view showing user's websites and recent activity."""
     ensure_admin_user()
     Website.cleanup_existing(user=request.user)
+
     websites = Website.objects.filter(user=request.user).order_by('-created_at')
     website_ids = websites.values_list('id', flat=True)
-    all_logs = MonitorLog.objects.filter(website_id__in=website_ids).select_related('website').order_by('-checked_at')
-    latest_log = all_logs.first()
-    logs = all_logs[:20]
-    sites = []
 
+    all_logs = MonitorLog.objects.filter(
+        website_id__in=website_ids
+    ).select_related('website').order_by('-checked_at')
+
+    latest_logs = {}
+    for log in all_logs:
+        if log.website_id not in latest_logs:
+            latest_logs[log.website_id] = log
+
+    # ✅ FIXED LOGS (NO TRUE ISSUE)
+    logs = []
+    for log in all_logs[:20]:
+        logs.append({
+            'url': log.website.url,
+            'status': get_site_status(log),
+            'response_time': round(log.response_time, 2),
+            'checked_at': log.checked_at,
+        })
+
+    # ✅ FIXED SITES
+    sites = []
     for website in websites:
-        site_log = MonitorLog.objects.filter(website=website).order_by('-checked_at').first()
+        site_log = latest_logs.get(website.id)
+
         sites.append({
             'id': website.id,
             'url': website.url,
@@ -88,17 +117,33 @@ def dashboard(request):
             'last_checked': site_log.checked_at if site_log else None,
         })
 
-    status = MonitorLog.STATUS_UP
+    # ✅ FIXED TOP STATUS (NO TRUE)
+    status = "UP"
     response_time = 0
-    if latest_log is not None:
-        status = latest_log.status
-        response_time = round(latest_log.response_time, 2)
+
+    if latest_logs:
+        statuses = [get_site_status(log) for log in latest_logs.values()]
+
+        if "DOWN" in statuses:
+            status = "DOWN"
+        elif "SLOW" in statuses:
+            status = "SLOW"
+        else:
+            status = "UP"
+
+        response_time = round(
+            sum(log.response_time for log in latest_logs.values()) / len(latest_logs),
+            2
+        )
 
     total_logs = all_logs.count()
     up_logs = all_logs.filter(status=MonitorLog.STATUS_UP).count()
+
     uptime = (up_logs / total_logs) * 100 if total_logs > 0 else 0
     incidents = all_logs.filter(status=MonitorLog.STATUS_DOWN).count()
-    has_slow = any(site['status'] == MonitorLog.STATUS_SLOW for site in sites)
+
+    # ⚠️ IMPORTANT FIX HERE
+    has_slow = any(site['status'] == "SLOW" for site in sites)
 
     context = {
         'sites': sites,
@@ -109,6 +154,7 @@ def dashboard(request):
         'incidents': incidents,
         'has_slow': has_slow,
     }
+
     return render(request, 'monitor/dashboard.html', context)
 
 
@@ -118,7 +164,10 @@ def dashboard_data(request):
     data = []
 
     for site in sites:
-        latest = MonitorLog.objects.filter(website=site).order_by('-checked_at').first()
+        latest = MonitorLog.objects.filter(
+            website=site
+        ).order_by('-checked_at').first()
+
         data.append({
             'id': site.id,
             'url': site.url,
@@ -164,7 +213,6 @@ def utilities(request):
 
 @login_required
 def add_website(request):
-    """Handle adding a new website from frontend UI."""
     if request.method == 'POST':
         Website.cleanup_existing(user=request.user)
         raw_url = request.POST.get('url', '')
@@ -185,10 +233,7 @@ def add_website(request):
             return redirect('dashboard')
 
         try:
-            Website.objects.create(
-                user=request.user,
-                url=clean_url
-            )
+            Website.objects.create(user=request.user, url=clean_url)
             messages.success(request, 'Website added successfully!')
         except Exception:
             messages.error(request, 'Invalid URL')
@@ -203,6 +248,7 @@ def add_website(request):
 @require_POST
 def delete_website(request, id):
     website = Website.objects.filter(id=id, user=request.user).first()
+
     if website is None:
         messages.error(request, 'Website not found.')
         return redirect('dashboard')
@@ -210,4 +256,3 @@ def delete_website(request, id):
     website.delete()
     messages.success(request, 'Website deleted successfully!')
     return redirect('dashboard')
-
