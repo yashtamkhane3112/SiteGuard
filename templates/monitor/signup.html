@@ -75,6 +75,11 @@
               <div class="auth-input-wrapper">
                 <i data-lucide="lock" class="auth-input-icon"></i>
                 {{ form.password1 }}
+                <i
+                  data-lucide="eye"
+                  id="togglePassword1"
+                  class="auth-input-icon-right"
+                ></i>
               </div>
               {% for error in form.password1.errors %}
               <div class="text-danger small mt-2">{{ error }}</div>
@@ -86,6 +91,11 @@
               <div class="auth-input-wrapper">
                 <i data-lucide="lock" class="auth-input-icon"></i>
                 {{ form.password2 }}
+                <i
+                  data-lucide="eye"
+                  id="togglePassword2"
+                  class="auth-input-icon-right"
+                ></i>
               </div>
               {% for error in form.password2.errors %}
               <div class="text-danger small mt-2">{{ error }}</div>

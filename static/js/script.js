@@ -1,3 +1,4 @@
+document.addEventListener('DOMContentLoaded', function () {
 // Initialize Icons globally
 if (typeof lucide !== 'undefined') {
     lucide.createIcons();
@@ -73,19 +74,38 @@ document.querySelectorAll('.count-section').forEach(section => {
 });
 
 // 4. Password Visibility Toggle (Auth Pages)
-const togglePassword = document.querySelector('#togglePassword');
-const passwordInput = document.querySelector('#passwordInput');
+function bindToggle(toggleId, inputId) {
+    const toggle = document.getElementById(toggleId);
+    const input = document.getElementById(inputId);
 
-if (togglePassword && passwordInput) {
-    togglePassword.addEventListener('click', function () {
-        const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
-        passwordInput.setAttribute('type', type);
-        this.style.color = type === 'text' ? '#a855f7' : '#64748b';
+    if (!toggle || !input) return;
+
+    toggle.addEventListener('click', function () {
+        const type = input.type === 'password' ? 'text' : 'password';
+        input.type = type;
+
+        console.log('toggle clicked:', toggleId);
+
+        this.setAttribute(
+            'data-lucide',
+            type === 'password' ? 'eye' : 'eye-off'
+        );
+
+        if (window.lucide) {
+            const replacement = lucide.icons[type === 'password' ? 'eye' : 'eye-off'].toSvg({
+                id: toggleId,
+                class: this.getAttribute('class') || 'auth-input-icon-right',
+                'data-lucide': type === 'password' ? 'eye' : 'eye-off',
+            });
+            this.outerHTML = replacement;
+            lucide.createIcons();
+            bindToggle(toggleId, inputId);
+        }
     });
 }
 
 // 5. Password Strength Meter Logic (Sign Up Page)
-const signupPassword = document.querySelector('#signupPasswordInput');
+const signupPassword = document.querySelector('#id_password1');
 const segments = document.querySelectorAll('.strength-segment');
 const strengthText = document.querySelector('.strength-text');
 
@@ -398,30 +418,27 @@ if (exportBtn) {
 // ==========================================
 // GLOBAL: MOBILE SIDEBAR TOGGLE
 // ==========================================
-document.addEventListener('DOMContentLoaded', () => {
-    // Initialize standard icons first
-    if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
-    }
+bindToggle('togglePassword', 'id_password');
+bindToggle('togglePassword1', 'id_password1');
+bindToggle('togglePassword2', 'id_password2');
 
-    const mobileToggle = document.getElementById('mobileToggle');
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.getElementById('mobileOverlay');
+const mobileToggle = document.getElementById('mobileToggle');
+const sidebar = document.getElementById('sidebar');
+const overlay = document.getElementById('mobileOverlay');
 
-    if (mobileToggle && sidebar && overlay) {
-        // Open sidebar
-        mobileToggle.addEventListener('click', () => {
-            sidebar.classList.add('open');
-            overlay.classList.add('open');
-        });
+if (mobileToggle && sidebar && overlay) {
+    // Open sidebar
+    mobileToggle.addEventListener('click', () => {
+        sidebar.classList.add('open');
+        overlay.classList.add('open');
+    });
 
-        // Close sidebar when clicking the dark overlay
-        overlay.addEventListener('click', () => {
-            sidebar.classList.remove('open');
-            overlay.classList.remove('open');
-        });
-    }
-});
+    // Close sidebar when clicking the dark overlay
+    overlay.addEventListener('click', () => {
+        sidebar.classList.remove('open');
+        overlay.classList.remove('open');
+    });
+}
 // 1. Interactive Filters
 const filterPills = document.querySelectorAll('.filter-pill');
 const incidentCards = document.querySelectorAll('.incident-card');
@@ -499,118 +516,102 @@ if (incidentCounters.length > 0) {
         updateCount();
     });
 }
-document.addEventListener('DOMContentLoaded', () => {
+// 3. Number Counter Animations (Stats)
+const animateCounters = () => {
+    document.querySelectorAll('.counter').forEach(counter => {
+        const targetAttr = counter.getAttribute('data-target');
+        if(!targetAttr) return;
+        
+        const target = parseFloat(targetAttr);
+        const count = parseFloat(counter.innerText.replace(/[^0-9.]/g, '')) || 0;
+        const suffix = counter.getAttribute('data-suffix') || '';
+        const inc = target / 30; // Animation speed
 
-    // 1. Initialize Icons Globally
-    if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
-    }
-
-    // 2. Mobile Sidebar Toggle
-    const mobileToggle = document.getElementById('mobileToggle');
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.getElementById('mobileOverlay');
-    if (mobileToggle && sidebar && overlay) {
-        mobileToggle.addEventListener('click', () => { sidebar.classList.add('open'); overlay.classList.add('open'); });
-        overlay.addEventListener('click', () => { sidebar.classList.remove('open'); overlay.classList.remove('open'); });
-    }
-
-    // 3. Number Counter Animations (Stats)
-    const animateCounters = () => {
-        document.querySelectorAll('.counter').forEach(counter => {
-            const targetAttr = counter.getAttribute('data-target');
-            if(!targetAttr) return;
-            
-            const target = parseFloat(targetAttr);
-            const count = parseFloat(counter.innerText.replace(/[^0-9.]/g, '')) || 0;
-            const suffix = counter.getAttribute('data-suffix') || '';
-            const inc = target / 30; // Animation speed
-
-            const updateCount = () => {
-                const currentCount = parseFloat(counter.innerText.replace(/[^0-9.]/g, '')) || 0;
-                if (currentCount < target) {
-                    counter.innerText = (target % 1 !== 0) ? (currentCount + inc).toFixed(1) + suffix : Math.ceil(currentCount + inc) + suffix;
-                    setTimeout(updateCount, 20);
-                } else {
-                    counter.innerText = target + suffix;
-                }
-            };
-            updateCount();
-        });
-    };
-    // Run counters immediately on dashboard load
-    animateCounters();
-
-    // 4. "Check Status" Button Simulation
-    const checkStatusBtn = document.getElementById('checkStatusBtn');
-    if (checkStatusBtn) {
-        checkStatusBtn.addEventListener('click', function() {
-            const originalHtml = this.innerHTML;
-            this.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span> Checking...`;
-            this.disabled = true;
-            setTimeout(() => {
-                this.innerHTML = `<i data-lucide="check-circle" class="me-2 size-sm"></i> Checked`;
-                this.style.background = 'var(--color-success)'; 
-                if (typeof lucide !== 'undefined') lucide.createIcons();
-                setTimeout(() => {
-                    this.innerHTML = originalHtml;
-                    this.disabled = false;
-                    this.style.background = ''; 
-                    if (typeof lucide !== 'undefined') lucide.createIcons();
-                }, 2000);
-            }, 1500);
-        });
-    }
-
-    // 5. Table Live Search
-    const searchInput = document.getElementById('globalSearch');
-    if (searchInput) {
-        searchInput.addEventListener('keyup', function(e) {
-            const term = e.target.value.toLowerCase();
-            let hasVisibleRows = false;
-            document.querySelectorAll('#activityTable tbody tr.activity-row').forEach(row => {
-                if (row.textContent.toLowerCase().includes(term)) { 
-                    row.style.display = ''; 
-                    hasVisibleRows = true; 
-                } else { 
-                    row.style.display = 'none'; 
-                }
-            });
-            const noRes = document.getElementById('noResultsRow');
-            if (noRes) noRes.style.display = hasVisibleRows ? 'none' : '';
-        });
-    }
-
-    // 6. Draw Uptime Timeline Blocks
-    const container = document.getElementById('timelineContainer');
-    if(container) {
-        const totalSegments = 48;
-        const errorIndices = [12, 28]; 
-        const warnIndices = [11, 24];  
-
-        for (let i = 0; i < totalSegments; i++) {
-            const segment = document.createElement('div');
-            let statusClass = 'segment-up';
-            let statusText = 'UP (112ms)';
-            
-            if (errorIndices.includes(i)) {
-                statusClass = 'segment-down'; statusText = 'DOWN (Timeout)';
-            } else if (warnIndices.includes(i)) {
-                statusClass = 'segment-warn'; statusText = 'SLOW (850ms)';
+        const updateCount = () => {
+            const currentCount = parseFloat(counter.innerText.replace(/[^0-9.]/g, '')) || 0;
+            if (currentCount < target) {
+                counter.innerText = (target % 1 !== 0) ? (currentCount + inc).toFixed(1) + suffix : Math.ceil(currentCount + inc) + suffix;
+                setTimeout(updateCount, 20);
+            } else {
+                counter.innerText = target + suffix;
             }
+        };
+        updateCount();
+    });
+};
+// Run counters immediately on dashboard load
+animateCounters();
 
-            segment.className = `segment ${statusClass}`;
-            segment.addEventListener('click', function() { window.location.href = 'logs.html'; });
-            
-            const date = new Date();
-            date.setMinutes(date.getMinutes() - ((totalSegments - 1 - i) * 30));
-            const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+// 4. "Check Status" Button Simulation
+const checkStatusBtn = document.getElementById('checkStatusBtn');
+if (checkStatusBtn) {
+    checkStatusBtn.addEventListener('click', function() {
+        const originalHtml = this.innerHTML;
+        this.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span> Checking...`;
+        this.disabled = true;
+        setTimeout(() => {
+            this.innerHTML = `<i data-lucide="check-circle" class="me-2 size-sm"></i> Checked`;
+            this.style.background = 'var(--color-success)'; 
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+            setTimeout(() => {
+                this.innerHTML = originalHtml;
+                this.disabled = false;
+                this.style.background = ''; 
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }, 2000);
+        }, 1500);
+    });
+}
 
-            const tooltip = document.createElement('div');
-            tooltip.className = 'custom-tooltip';
-            tooltip.innerText = `${timeString} - ${statusText}`;
-            segment.appendChild(tooltip);
-            container.appendChild(segment);
+// 5. Table Live Search
+const searchInput = document.getElementById('globalSearch');
+if (searchInput) {
+    searchInput.addEventListener('keyup', function(e) {
+        const term = e.target.value.toLowerCase();
+        let hasVisibleRows = false;
+        document.querySelectorAll('#activityTable tbody tr.activity-row').forEach(row => {
+            if (row.textContent.toLowerCase().includes(term)) { 
+                row.style.display = ''; 
+                hasVisibleRows = true; 
+            } else { 
+                row.style.display = 'none'; 
+            }
+        });
+        const noRes = document.getElementById('noResultsRow');
+        if (noRes) noRes.style.display = hasVisibleRows ? 'none' : '';
+    });
+}
+
+// 6. Draw Uptime Timeline Blocks
+const container = document.getElementById('timelineContainer');
+if(container) {
+    const totalSegments = 48;
+    const errorIndices = [12, 28]; 
+    const warnIndices = [11, 24];  
+
+    for (let i = 0; i < totalSegments; i++) {
+        const segment = document.createElement('div');
+        let statusClass = 'segment-up';
+        let statusText = 'UP (112ms)';
+        
+        if (errorIndices.includes(i)) {
+            statusClass = 'segment-down'; statusText = 'DOWN (Timeout)';
+        } else if (warnIndices.includes(i)) {
+            statusClass = 'segment-warn'; statusText = 'SLOW (850ms)';
         }
+
+        segment.className = `segment ${statusClass}`;
+        segment.addEventListener('click', function() { window.location.href = 'logs.html'; });
+        
+        const date = new Date();
+        date.setMinutes(date.getMinutes() - ((totalSegments - 1 - i) * 30));
+        const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        const tooltip = document.createElement('div');
+        tooltip.className = 'custom-tooltip';
+        tooltip.innerText = `${timeString} - ${statusText}`;
+        segment.appendChild(tooltip);
+        container.appendChild(segment);
     }
+}
 });

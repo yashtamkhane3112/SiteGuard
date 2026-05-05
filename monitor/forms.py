@@ -22,7 +22,7 @@ class LoginForm(forms.Form):
                 "class": "auth-input",
                 "placeholder": "Enter your password",
                 "autocomplete": "current-password",
-                "id": "passwordInput",
+                "id": "id_password",
             }
         )
 
@@ -51,7 +51,7 @@ class SignUpForm(UserCreationForm):
                 "class": "auth-input",
                 "placeholder": "Create a strong password",
                 "autocomplete": "new-password",
-                "id": "signupPasswordInput",
+                "id": "id_password1",
             }
         )
         self.fields["password2"].widget.attrs.update(
@@ -59,5 +59,6 @@ class SignUpForm(UserCreationForm):
                 "class": "auth-input",
                 "placeholder": "Confirm your password",
                 "autocomplete": "new-password",
+                "id": "id_password2",
             }
         )
