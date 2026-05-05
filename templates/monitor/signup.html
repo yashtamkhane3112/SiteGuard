@@ -49,45 +49,47 @@
 
           <div class="auth-divider mb-4"><span>or</span></div>
 
-          <form>
+          {% if form.non_field_errors %}
+          <div class="alert alert-danger" role="alert">
+            {% for error in form.non_field_errors %}
+            <div>{{ error }}</div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          <form method="POST">
+            {% csrf_token %}
             <div class="mb-3">
-              <label class="form-label auth-label">Full Name</label>
+              <label class="form-label auth-label" for="{{ form.username.id_for_label }}">Username</label>
               <div class="auth-input-wrapper">
                 <i data-lucide="user" class="auth-input-icon"></i>
-                <input
-                  type="text"
-                  class="auth-input"
-                  placeholder="John Doe"
-                  required
-                />
+                {{ form.username }}
               </div>
+              {% for error in form.username.errors %}
+              <div class="text-danger small mt-2">{{ error }}</div>
+              {% endfor %}
             </div>
 
             <div class="mb-3">
-              <label class="form-label auth-label">Email Address</label>
+              <label class="form-label auth-label" for="{{ form.password1.id_for_label }}">Password</label>
               <div class="auth-input-wrapper">
-                <i data-lucide="mail" class="auth-input-icon"></i>
-                <input
-                  type="email"
-                  class="auth-input"
-                  placeholder="you@example.com"
-                  required
-                />
+                <i data-lucide="lock" class="auth-input-icon"></i>
+                {{ form.password1 }}
               </div>
+              {% for error in form.password1.errors %}
+              <div class="text-danger small mt-2">{{ error }}</div>
+              {% endfor %}
             </div>
 
             <div class="mb-4">
-              <label class="form-label auth-label">Password</label>
+              <label class="form-label auth-label" for="{{ form.password2.id_for_label }}">Confirm Password</label>
               <div class="auth-input-wrapper">
                 <i data-lucide="lock" class="auth-input-icon"></i>
-                <input
-                  type="password"
-                  id="signupPasswordInput"
-                  class="auth-input"
-                  placeholder="Create a strong password"
-                  required
-                />
+                {{ form.password2 }}
               </div>
+              {% for error in form.password2.errors %}
+              <div class="text-danger small mt-2">{{ error }}</div>
+              {% endfor %}
 
               <div class="password-strength-container">
                 <div class="strength-bar-wrapper">
@@ -100,8 +102,7 @@
             </div>
 
             <button
-              type="button"
-              onclick="window.location.href='{% url 'login' %}'"
+              type="submit"
               class="btn-auth-primary w-100 mb-4"
             >
               Create Account

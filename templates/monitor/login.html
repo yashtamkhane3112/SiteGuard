@@ -49,25 +49,32 @@
 
           <div class="auth-divider mb-4"><span>or</span></div>
 
-          <form>
+          {% if form.non_field_errors %}
+          <div class="alert alert-danger" role="alert">
+            {% for error in form.non_field_errors %}
+            <div>{{ error }}</div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          <form method="POST">
+            {% csrf_token %}
             <div class="mb-3">
-              <label class="form-label auth-label">Email Address</label>
+              <label class="form-label auth-label" for="{{ form.username.id_for_label }}">Username</label>
               <div class="auth-input-wrapper">
                 <i data-lucide="mail" class="auth-input-icon"></i>
-                <input
-                  type="email"
-                  class="auth-input"
-                  placeholder="you@example.com"
-                  required
-                />
+                {{ form.username }}
               </div>
+              {% for error in form.username.errors %}
+              <div class="text-danger small mt-2">{{ error }}</div>
+              {% endfor %}
             </div>
 
             <div class="mb-4">
               <div
                 class="d-flex justify-content-between align-items-center mb-2"
               >
-                <label class="form-label auth-label mb-0">Password</label>
+                <label class="form-label auth-label mb-0" for="{{ form.password.id_for_label }}">Password</label>
                 <a
                   href="#"
                   style="
@@ -80,24 +87,20 @@
               </div>
               <div class="auth-input-wrapper">
                 <i data-lucide="lock" class="auth-input-icon"></i>
-                <input
-                  type="password"
-                  id="passwordInput"
-                  class="auth-input"
-                  placeholder="Enter your password"
-                  required
-                />
+                {{ form.password }}
                 <i
                   data-lucide="eye"
                   id="togglePassword"
                   class="auth-input-icon-right"
                 ></i>
               </div>
+              {% for error in form.password.errors %}
+              <div class="text-danger small mt-2">{{ error }}</div>
+              {% endfor %}
             </div>
 
             <button
-              type="button"
-              onclick="window.location.href='{% url 'dashboard' %}'"
+              type="submit"
               class="btn-auth-primary w-100 mb-4"
             >
               Sign In
