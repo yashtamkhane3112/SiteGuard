@@ -108,14 +108,22 @@ class Website(models.Model):
 
 class MonitorLog(models.Model):
     """Model representing a monitoring check result for a website."""
+    STATUS_UP = 'UP'
+    STATUS_DOWN = 'DOWN'
+    STATUS_SLOW = 'SLOW'
+    STATUS_CHOICES = [
+        (STATUS_UP, 'UP'),
+        (STATUS_DOWN, 'DOWN'),
+        (STATUS_SLOW, 'SLOW'),
+    ]
+
     website = models.ForeignKey(Website, on_delete=models.CASCADE, related_name='monitor_logs')
-    status = models.BooleanField(default=True)  # True=UP, False=DOWN
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_UP)
     response_time = models.FloatField()  # in milliseconds
     checked_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        status_text = "UP" if self.status else "DOWN"
-        return f"{self.website.url} - {status_text} ({self.response_time}ms)"
+        return f"{self.website.url} - {self.status} ({self.response_time}ms)"
 
     class Meta:
         ordering = ['-checked_at']

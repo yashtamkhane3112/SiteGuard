@@ -10,6 +10,10 @@ from .forms import LoginForm, SignUpForm
 from .models import Website, MonitorLog
 
 
+def get_site_status(log):
+    return log.status if log else MonitorLog.STATUS_DOWN
+
+
 def ensure_admin_user():
     if not User.objects.filter(username='admin').exists():
         User.objects.create_superuser(
@@ -79,21 +83,22 @@ def dashboard(request):
             'id': website.id,
             'url': website.url,
             'created_at': website.created_at,
-            'status': 'UP' if site_log and site_log.status else 'DOWN',
+            'status': get_site_status(site_log),
             'response_time': round(site_log.response_time, 2) if site_log else 0,
             'last_checked': site_log.checked_at if site_log else None,
         })
 
-    status = 'UP'
+    status = MonitorLog.STATUS_UP
     response_time = 0
     if latest_log is not None:
-        status = 'UP' if latest_log.status else 'DOWN'
+        status = latest_log.status
         response_time = round(latest_log.response_time, 2)
 
     total_logs = all_logs.count()
-    up_logs = all_logs.filter(status=True).count()
+    up_logs = all_logs.filter(status=MonitorLog.STATUS_UP).count()
     uptime = (up_logs / total_logs) * 100 if total_logs > 0 else 0
-    incidents = all_logs.filter(status=False).count()
+    incidents = all_logs.filter(status=MonitorLog.STATUS_DOWN).count()
+    has_slow = any(site['status'] == MonitorLog.STATUS_SLOW for site in sites)
 
     context = {
         'sites': sites,
@@ -102,6 +107,7 @@ def dashboard(request):
         'response_time': response_time,
         'uptime': round(uptime, 2),
         'incidents': incidents,
+        'has_slow': has_slow,
     }
     return render(request, 'monitor/dashboard.html', context)
 
@@ -116,7 +122,7 @@ def dashboard_data(request):
         data.append({
             'id': site.id,
             'url': site.url,
-            'status': 'UP' if latest and latest.status else 'DOWN',
+            'status': get_site_status(latest),
             'response_time': round(latest.response_time, 2) if latest else 0,
             'last_checked': latest.checked_at.strftime('%Y-%m-%d %H:%M') if latest else '',
         })

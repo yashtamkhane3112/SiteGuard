@@ -26,7 +26,7 @@ class Command(BaseCommand):
         )
 
     def send_down_alert(self, website, previous_log, response_time_ms, status_label, details=''):
-        if not previous_log or not previous_log.status or not website.user.email:
+        if not previous_log or previous_log.status == MonitorLog.STATUS_DOWN or not website.user.email:
             return False
 
         message = (
@@ -74,8 +74,15 @@ class Command(BaseCommand):
                         response_time_ms = (time.time() - start_time) * 1000
                         previous_log = MonitorLog.objects.filter(website=website).order_by('-checked_at').first()
 
-                        status = response.status_code == 200
-                        status_text = 'UP' if status else 'DOWN'
+                        if response.status_code == 200:
+                            status = (
+                                MonitorLog.STATUS_SLOW
+                                if response_time_ms > 2000
+                                else MonitorLog.STATUS_UP
+                            )
+                        else:
+                            status = MonitorLog.STATUS_DOWN
+                        status_text = status
 
                         MonitorLog.objects.create(
                             website=website,
@@ -83,7 +90,7 @@ class Command(BaseCommand):
                             response_time=round(response_time_ms, 2),
                         )
 
-                        if not status:
+                        if status == MonitorLog.STATUS_DOWN:
                             try:
                                 if self.send_down_alert(
                                     website,
@@ -103,7 +110,7 @@ class Command(BaseCommand):
                         previous_log = MonitorLog.objects.filter(website=website).order_by('-checked_at').first()
                         MonitorLog.objects.create(
                             website=website,
-                            status=False,
+                            status=MonitorLog.STATUS_DOWN,
                             response_time=0,
                         )
 
@@ -120,7 +127,7 @@ class Command(BaseCommand):
                         previous_log = MonitorLog.objects.filter(website=website).order_by('-checked_at').first()
                         MonitorLog.objects.create(
                             website=website,
-                            status=False,
+                            status=MonitorLog.STATUS_DOWN,
                             response_time=0,
                         )
 
@@ -137,7 +144,7 @@ class Command(BaseCommand):
                         previous_log = MonitorLog.objects.filter(website=website).order_by('-checked_at').first()
                         MonitorLog.objects.create(
                             website=website,
-                            status=False,
+                            status=MonitorLog.STATUS_DOWN,
                             response_time=0,
                         )
 

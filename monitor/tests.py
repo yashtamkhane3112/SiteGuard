@@ -91,7 +91,7 @@ class MonitorEmailAlertTests(TestCase):
     @patch("monitor.management.commands.monitor_sites.send_mail")
     @patch("monitor.management.commands.monitor_sites.requests.get")
     def test_sends_email_only_when_site_transitions_from_up_to_down(self, mock_get, mock_send_mail):
-        MonitorLog.objects.create(website=self.website, status=True, response_time=123)
+        MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=123)
         mock_get.return_value = Mock(status_code=500)
 
         call_command("monitor_sites", stdout=StringIO())
@@ -104,7 +104,7 @@ class MonitorEmailAlertTests(TestCase):
     @patch("monitor.management.commands.monitor_sites.send_mail")
     @patch("monitor.management.commands.monitor_sites.requests.get")
     def test_does_not_send_duplicate_email_when_site_is_already_down(self, mock_get, mock_send_mail):
-        MonitorLog.objects.create(website=self.website, status=False, response_time=0)
+        MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_DOWN, response_time=0)
         mock_get.return_value = Mock(status_code=500)
 
         call_command("monitor_sites", stdout=StringIO())
