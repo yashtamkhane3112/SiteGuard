@@ -1,8 +1,10 @@
 from django.shortcuts import render, redirect
+from django.http import JsonResponse
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib import messages
+from django.views.decorators.http import require_POST
 
 from .forms import LoginForm, SignUpForm
 from .models import Website, MonitorLog
@@ -63,11 +65,63 @@ def logout_view(request):
 def dashboard(request):
     """Dashboard view showing user's websites and recent activity."""
     ensure_admin_user()
+    Website.cleanup_existing(user=request.user)
     websites = Website.objects.filter(user=request.user).order_by('-created_at')
-    # Fetch latest MonitorLog entries for user's websites (last 10)
     website_ids = websites.values_list('id', flat=True)
-    logs = MonitorLog.objects.filter(website_id__in=website_ids).select_related('website').order_by('-checked_at')[:10]
-    return render(request, 'monitor/dashboard.html', {'websites': websites, 'logs': logs})
+    all_logs = MonitorLog.objects.filter(website_id__in=website_ids).select_related('website').order_by('-checked_at')
+    latest_log = all_logs.first()
+    logs = all_logs[:20]
+    sites = []
+
+    for website in websites:
+        site_log = MonitorLog.objects.filter(website=website).order_by('-checked_at').first()
+        sites.append({
+            'id': website.id,
+            'url': website.url,
+            'created_at': website.created_at,
+            'status': 'UP' if site_log and site_log.status else 'DOWN',
+            'response_time': round(site_log.response_time, 2) if site_log else 0,
+            'last_checked': site_log.checked_at if site_log else None,
+        })
+
+    status = 'UP'
+    response_time = 0
+    if latest_log is not None:
+        status = 'UP' if latest_log.status else 'DOWN'
+        response_time = round(latest_log.response_time, 2)
+
+    total_logs = all_logs.count()
+    up_logs = all_logs.filter(status=True).count()
+    uptime = (up_logs / total_logs) * 100 if total_logs > 0 else 0
+    incidents = all_logs.filter(status=False).count()
+
+    context = {
+        'sites': sites,
+        'logs': logs,
+        'status': status,
+        'response_time': response_time,
+        'uptime': round(uptime, 2),
+        'incidents': incidents,
+    }
+    return render(request, 'monitor/dashboard.html', context)
+
+
+@login_required
+def dashboard_data(request):
+    sites = Website.objects.filter(user=request.user).order_by('-created_at')
+    data = []
+
+    for site in sites:
+        latest = MonitorLog.objects.filter(website=site).order_by('-checked_at').first()
+        data.append({
+            'id': site.id,
+            'url': site.url,
+            'status': 'UP' if latest and latest.status else 'DOWN',
+            'response_time': round(latest.response_time, 2) if latest else 0,
+            'last_checked': latest.checked_at.strftime('%Y-%m-%d %H:%M') if latest else '',
+        })
+
+    return JsonResponse({'sites': data})
 
 
 def status(request):
@@ -106,35 +160,48 @@ def utilities(request):
 def add_website(request):
     """Handle adding a new website from frontend UI."""
     if request.method == 'POST':
-        url = request.POST.get('url', '').strip()
-        
-        # Validate URL is not empty
-        if not url:
+        Website.cleanup_existing(user=request.user)
+        raw_url = request.POST.get('url', '')
+
+        if not raw_url.strip():
             messages.error(request, 'URL is required.')
             return redirect('dashboard')
-        
-        # Normalize URL - add https:// if missing
-        if not url.startswith(('http://', 'https://')):
-            url = 'https://' + url
-        
-        # Check for duplicate URL for the same user
-        if Website.objects.filter(user=request.user, url=url).exists():
+
+        try:
+            clean_url = Website.normalize_url(raw_url)
+            Website.validate_normalized_url(clean_url)
+        except Exception:
+            messages.error(request, 'Invalid URL')
+            return redirect('dashboard')
+
+        if Website.objects.filter(user=request.user, url=clean_url).exists():
             messages.error(request, 'This website is already in your list.')
             return redirect('dashboard')
-        
+
         try:
-            # Create new Website object
             Website.objects.create(
                 user=request.user,
-                url=url
+                url=clean_url
             )
             messages.success(request, 'Website added successfully!')
-        except Exception as e:
-            messages.error(request, f'Invalid URL format.')
+        except Exception:
+            messages.error(request, 'Invalid URL')
             return redirect('dashboard')
-        
+
         return redirect('dashboard')
-    
-    # GET request - redirect to dashboard
+
+    return redirect('dashboard')
+
+
+@login_required
+@require_POST
+def delete_website(request, id):
+    website = Website.objects.filter(id=id, user=request.user).first()
+    if website is None:
+        messages.error(request, 'Website not found.')
+        return redirect('dashboard')
+
+    website.delete()
+    messages.success(request, 'Website deleted successfully!')
     return redirect('dashboard')
 

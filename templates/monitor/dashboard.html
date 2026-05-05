@@ -226,42 +226,42 @@
               <!-- Card 1: Website Status -->
               <div class="stat-card">
                 <span class="panel-label">Website Status</span>
-                <div class="status-badge badge-up">
-                  <span class="dot"></span> UP
+                <div class="status-badge {% if status == 'DOWN' %}badge-down{% else %}badge-up{% endif %}">
+                  <span class="dot"></span> {{ status }}
                 </div>
-                <span class="stat-subtext text-success"
-                  >All systems operational</span
+                <span class="stat-subtext {% if status == 'DOWN' %}text-danger{% else %}text-success{% endif %}"
+                  >{% if status == 'DOWN' %}Issues detected{% else %}All systems operational{% endif %}</span
                 >
               </div>
 
               <!-- Card 2: Response Time -->
               <div class="stat-card">
                 <span class="panel-label">Response Time</span>
-                <span class="stat-value" data-target="120" data-suffix="ms"
-                  >120ms</span
+                <span class="stat-value" data-target="{{ response_time }}" data-suffix="ms"
+                  >{{ response_time }}ms</span
                 >
                 <span class="stat-subtext text-success"
-                  >-15ms from last check</span
+                  >Latest recorded response time</span
                 >
               </div>
 
               <!-- Card 3: Uptime (30d) -->
               <div class="stat-card">
                 <span class="panel-label">Uptime (30d)</span>
-                <span class="stat-value" data-target="99.8" data-suffix="%"
-                  >99.8%</span
+                <span class="stat-value" data-target="{{ uptime }}" data-suffix="%"
+                  >{{ uptime }}%</span
                 >
                 <span class="stat-subtext text-success"
-                  >+0.2% vs last month</span
+                  >Based on recorded checks</span
                 >
               </div>
 
               <!-- Card 4: Active Incidents -->
               <div class="stat-card">
                 <span class="panel-label">Active Incidents</span>
-                <span class="stat-value incidents-value">2</span>
+                <span class="stat-value incidents-value">{{ incidents }}</span>
                 <span class="stat-subtext" style="color: #f59e0b"
-                  >1 critical, 1 warning</span
+                  >Current failed checks recorded</span
                 >
               </div>
             </div>
@@ -271,25 +271,53 @@
             <h5 class="panel-title">Your Websites</h5>
             <p class="panel-subtitle mb-4">Websites being monitored...</p>
 
-            {% if websites %} {% for site in websites %}
-            <div class="d-flex justify-content-between mb-2 align-items-center">
-              <span class="font-mono text-light text-sm">{{ site.url }}</span>
-              <a
-                href="{% url 'reports' %}"
-                class="text-sm fw-bold uptime-link"
-                title="View full uptime report"
-              >
-                Added {{ site.created_at|date:"M d, Y" }}
-                <i
-                  data-lucide="external-link"
-                  style="
-                    width: 14px;
-                    height: 14px;
-                    margin-bottom: 2px;
-                    margin-left: 2px;
-                  "
-                ></i>
-              </a>
+            {% if sites %} {% for site in sites %}
+            <div id="site-{{ site.id }}" class="website-card p-3 mb-3 rounded-3 shadow-sm">
+              <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h6 class="mb-0 font-mono text-light">{{ site.url }}</h6>
+                <span
+                  id="status-{{ site.id }}"
+                  class="badge {% if site.status == 'UP' %}bg-success{% else %}bg-danger{% endif %}"
+                >
+                  {{ site.status }}
+                </span>
+              </div>
+
+              <div class="d-flex justify-content-between mt-2 flex-wrap gap-2">
+                <small
+                  id="response-{{ site.id }}"
+                  class="{% if site.response_time > 2000 %}text-warning{% else %}text-light{% endif %} fw-semibold"
+                >
+                  {{ site.response_time }} ms
+                </small>
+
+                <small id="time-{{ site.id }}" class="text-secondary">
+                  {% if site.last_checked %}{{ site.last_checked|date:"Y-m-d H:i" }}{% endif %}
+                </small>
+              </div>
+
+              <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
+                <a
+                  href="{% url 'reports' %}"
+                  class="text-sm fw-bold uptime-link"
+                  title="View full uptime report"
+                >
+                  Added {{ site.created_at|date:"M d, Y" }}
+                  <i
+                    data-lucide="external-link"
+                    style="
+                      width: 14px;
+                      height: 14px;
+                      margin-bottom: 2px;
+                      margin-left: 2px;
+                    "
+                  ></i>
+                </a>
+                <form method="POST" action="{% url 'delete_website' site.id %}">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                </form>
+              </div>
             </div>
             {% endfor %} {% else %}
             <div class="empty-state">
@@ -326,32 +354,21 @@
                 </thead>
                 <tbody>
                   {% if logs %}
-                    {% for log in logs %}
-                    <tr
-                      class="activity-row"
-                      onclick="window.location.href='{% url 'reports' %}'"
-                    >
-                      <td class="font-mono text-light fw-medium">{{ log.website.url }}</td>
-                      <td>
-                        {% if log.status %}
-                        <span class="status-badge badge-up"
-                          ><span class="dot"></span> UP</span
-                        >
-                        {% else %}
-                        <span class="status-badge badge-down"
-                          ><span class="dot"></span> DOWN</span
-                        >
-                        {% endif %}
-                      </td>
-                      <td class="text-muted">{{ log.response_time }}ms</td>
-                      <td class="{% if log.status %}text-success{% else %}text-danger fw-medium{% endif %}">
-                        {% if log.status %}OK{% else %}Failed{% endif %}
-                      </td>
-                      <td class="text-end text-muted font-mono text-sm">
-                        {{ log.checked_at|date:"Y-m-d H:i" }}
-                      </td>
-                    </tr>
-                    {% endfor %}
+                  {% for log in logs %}
+                  <tr class="activity-row">
+                    <td class="font-mono text-light fw-medium">{{ log.website.url }}</td>
+                    <td>
+                      {% if log.status %}
+                      <span class="text-success">UP</span>
+                      {% else %}
+                      <span class="text-danger">DOWN</span>
+                      {% endif %}
+                    </td>
+                    <td>{{ log.response_time }} ms</td>
+                    <td>OK</td>
+                    <td>{{ log.checked_at|date:"Y-m-d H:i" }}</td>
+                  </tr>
+                  {% endfor %}
                   {% else %}
                   <tr id="noResultsRow">
                     <td colspan="5">
@@ -375,5 +392,45 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{% static 'js/script.js' %}"></script>
+    <script>
+      async function refreshDashboard() {
+        try {
+          const response = await fetch("{% url 'dashboard_data' %}", {
+            headers: { "X-Requested-With": "XMLHttpRequest" }
+          });
+          if (!response.ok) {
+            return;
+          }
+
+          const data = await response.json();
+
+          data.sites.forEach((site) => {
+            const statusElement = document.getElementById(`status-${site.id}`);
+            const responseElement = document.getElementById(`response-${site.id}`);
+            const timeElement = document.getElementById(`time-${site.id}`);
+
+            if (statusElement) {
+              statusElement.className = `badge ${site.status === "DOWN" ? "bg-danger" : "bg-success"}`;
+              statusElement.innerText = site.status;
+            }
+
+            if (responseElement) {
+              responseElement.className = `${site.response_time > 2000 ? "text-warning" : "text-light"} fw-semibold`;
+              responseElement.innerText = `${site.response_time} ms`;
+            }
+
+            if (timeElement) {
+              timeElement.className = "text-secondary";
+              timeElement.innerText = site.last_checked;
+            }
+          });
+        } catch (error) {
+          console.error("Dashboard refresh failed.", error);
+        }
+      }
+
+      refreshDashboard();
+      setInterval(refreshDashboard, 10000);
+    </script>
   </body>
 </html>
