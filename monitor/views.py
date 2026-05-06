@@ -8,22 +8,10 @@ from django.views.decorators.http import require_POST
 
 from .forms import LoginForm, SignUpForm
 from .models import Website, MonitorLog
+from .utils import get_site_status
 
 
 # ✅ STATUS HELPER
-def get_site_status(log):
-    if not log:
-        return "DOWN"
-
-    if log.status == MonitorLog.STATUS_UP:
-        return "UP"
-
-    if log.status == MonitorLog.STATUS_SLOW:
-        return "SLOW"
-
-    return "DOWN"
-
-
 def ensure_admin_user():
     if not User.objects.filter(username='admin').exists():
         User.objects.create_superuser(
@@ -104,18 +92,11 @@ def dashboard(request):
         })
 
     # ✅ FIXED SITES
-    sites = []
     for website in websites:
         site_log = latest_logs.get(website.id)
-
-        sites.append({
-            'id': website.id,
-            'url': website.url,
-            'created_at': website.created_at,
-            'status': get_site_status(site_log),
-            'response_time': round(site_log.response_time, 2) if site_log else 0,
-            'last_checked': site_log.checked_at if site_log else None,
-        })
+        website.status = get_site_status(site_log)
+        website.response_time = round(site_log.response_time, 2) if site_log else 0
+        website.last_checked = site_log.checked_at if site_log else None
 
     # ✅ FIXED TOP STATUS (NO TRUE)
     status = "UP"
@@ -143,10 +124,10 @@ def dashboard(request):
     incidents = all_logs.filter(status=MonitorLog.STATUS_DOWN).count()
 
     # ⚠️ IMPORTANT FIX HERE
-    has_slow = any(site['status'] == "SLOW" for site in sites)
+    has_slow = any(site.status == "SLOW" for site in websites)
 
     context = {
-        'sites': sites,
+        'sites': websites,
         'logs': logs,
         'status': status,
         'response_time': response_time,
@@ -179,8 +160,19 @@ def dashboard_data(request):
     return JsonResponse({'sites': data})
 
 
+@login_required
 def status(request):
-    return render(request, 'monitor/status.html')
+    websites = Website.objects.filter(user=request.user).order_by('-created_at')
+
+    for site in websites:
+        latest_log = MonitorLog.objects.filter(
+            website=site
+        ).order_by('-checked_at').first()
+
+        site.status = get_site_status(latest_log)
+        site.response_time = round(latest_log.response_time, 2) if latest_log else 0
+
+    return render(request, 'monitor/status.html', {'sites': websites})
 
 
 def reports(request):

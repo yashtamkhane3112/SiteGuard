@@ -226,9 +226,7 @@
               <!-- Card 1: Website Status -->
               <div class="stat-card">
                 <span class="panel-label">Website Status</span>
-                <div class="status-badge {% if status == 'DOWN' %}badge-down{% elif status == 'SLOW' %}badge-warn{% else %}badge-up{% endif %}">
-                  <span class="dot"></span> {{ status }}
-                </div>
+                <span class="status-badge {% if status == 'UP' %}badge-up{% elif status == 'SLOW' %}badge-slow{% else %}badge-down{% endif %}">● {{ status }}</span>
                 <span class="stat-subtext fw-semibold {% if status == 'DOWN' %}text-danger{% elif has_slow %}text-warning{% else %}text-success{% endif %}"
                   >{% if status == 'DOWN' %}Issues detected{% elif has_slow %}Performance degraded{% else %}All systems operational{% endif %}</span
                 >
@@ -277,9 +275,9 @@
                 <h6 class="mb-0 font-mono text-light">{{ site.url }}</h6>
                 <span
                   id="status-{{ site.id }}"
-                  class="badge status-badge {% if site.status == 'UP' %}bg-success{% elif site.status == 'SLOW' %}bg-warning{% else %}bg-danger{% endif %} px-3 py-1"
+                  class="status-badge {% if site.status == 'UP' %}badge-up{% elif site.status == 'SLOW' %}badge-slow{% else %}badge-down{% endif %}"
                 >
-                  {{ site.status }}
+                  ● {{ site.status }}
                 </span>
               </div>
 
@@ -358,7 +356,7 @@
                   <tr class="activity-row">
                    <td class="font-mono text-light fw-medium">{{ log.url }}</td> 
                     <td>
-                      <span class="badge status-badge {% if log.status == 'UP' %}bg-success{% elif log.status == 'SLOW' %}bg-warning{% else %}bg-danger{% endif %} px-3 py-1">{{ log.status }}</span>
+                      <span class="status-badge {% if log.status == 'UP' %}badge-up{% elif log.status == 'SLOW' %}badge-slow{% else %}badge-down{% endif %}">● {{ log.status }}</span>
                     </td>
                     <td class="text-light opacity-75">{{ log.response_time }} ms</td>
                     <td class="text-light opacity-75">OK</td>
@@ -406,8 +404,8 @@
             const timeElement = document.getElementById(`time-${site.id}`);
 
             if (statusElement) {
-              statusElement.className = `badge status-badge ${site.status === "DOWN" ? "bg-danger" : site.status === "SLOW" ? "bg-warning" : "bg-success"} px-3 py-1`;
-              statusElement.innerText = site.status;
+              statusElement.className = `status-badge ${site.status === "DOWN" ? "badge-down" : site.status === "SLOW" ? "badge-slow" : "badge-up"}`;
+              statusElement.innerText = `● ${site.status}`;
             }
 
             if (responseElement) {

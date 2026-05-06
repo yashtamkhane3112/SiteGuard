@@ -194,73 +194,31 @@
           </div>
 
           <div class="results-grid" id="resultsGrid">
-            <div
-              class="result-card"
-              onclick="alert('Viewing detailed metrics for google.com')"
-            >
+            {% if sites %}
+            {% for site in sites %}
+            <div class="result-card">
               <div class="result-icon"><i data-lucide="globe"></i></div>
               <div class="result-details">
-                <div class="result-url">google.com</div>
+                <div class="result-url">{{ site.url }}</div>
                 <div class="result-meta">
-                  <span class="status-badge badge-up"
-                    ><span class="dot"></span> UP</span
-                  >
-                  <span>45ms</span>
-                  <span>SSL: Valid</span>
+                  <span class="status-badge {% if site.status == 'UP' %}badge-up{% elif site.status == 'SLOW' %}badge-slow{% else %}badge-down{% endif %}">● {{ site.status }}</span>
+                  <span>{% if site.response_time %}{{ site.response_time }}ms{% else %}&mdash;{% endif %}</span>
                 </div>
               </div>
             </div>
-
-            <div
-              class="result-card"
-              onclick="alert('Viewing detailed metrics for github.com')"
-            >
+            {% endfor %}
+            {% else %}
+            <div class="result-card">
               <div class="result-icon"><i data-lucide="globe"></i></div>
               <div class="result-details">
-                <div class="result-url">github.com</div>
+                <div class="result-url">No monitored websites</div>
                 <div class="result-meta">
-                  <span class="status-badge badge-up"
-                    ><span class="dot"></span> UP</span
-                  >
-                  <span>110ms</span>
-                  <span>SSL: Valid</span>
+                  <span class="status-badge badge-down">● DOWN</span>
+                  <span>&mdash;</span>
                 </div>
               </div>
             </div>
-
-            <div
-              class="result-card"
-              onclick="alert('Viewing detailed metrics for offline-site.test')"
-            >
-              <div class="result-icon"><i data-lucide="globe"></i></div>
-              <div class="result-details">
-                <div class="result-url">offline-site.test</div>
-                <div class="result-meta">
-                  <span class="status-badge badge-down"
-                    ><span class="dot"></span> DOWN</span
-                  >
-                  <span>—</span>
-                  <span>SSL: —</span>
-                </div>
-              </div>
-            </div>
-
-            <div
-              class="result-card"
-              onclick="alert('Viewing detailed metrics for slow-server.demo')"
-            >
-              <div class="result-icon"><i data-lucide="globe"></i></div>
-              <div class="result-details">
-                <div class="result-url">slow-server.demo</div>
-                <div class="result-meta">
-                  <span class="status-badge badge-warn"
-                    ><span class="dot"></span> SLOW</span
-                  >
-                  <span>4500ms</span>
-                  <span>SSL: Valid</span>
-                </div>
-              </div>
-            </div>
+            {% endif %}
           </div>
         </div>
       </main>
