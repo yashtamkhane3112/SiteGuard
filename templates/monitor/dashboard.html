@@ -273,7 +273,9 @@
             <div id="site-{{ site.id }}" class="website-card p-3 mb-3 rounded-3 shadow-sm">
               <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <div class="d-flex align-items-center gap-2 min-width-0">
-                  <img src="{{ site.favicon }}" class="website-favicon" alt="favicon" />
+                  <span class="website-favicon-container">
+                    <img src="{{ site.favicon }}" class="website-favicon" alt="favicon" />
+                  </span>
                   <h6 class="mb-0 font-mono text-light">{{ site.url }}</h6>
                 </div>
                 <span
