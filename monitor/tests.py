@@ -3,9 +3,10 @@ from unittest.mock import Mock, patch
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from monitor.models import Alert, Incident, IncidentEvent, MonitorLog, Website
-from monitor.utils import get_favicon_url, get_site_status, run_single_check
+from monitor.utils import cleanup_monitoring_state, get_favicon_url, get_site_status, run_single_check
 
 
 class AuthFlowTests(TestCase):
@@ -452,3 +453,143 @@ class AlertSyncTests(TestCase):
         self.assertContains(response, "https://example.com")
         self.assertContains(response, alert.message)
         self.assertEqual(response.context["recent_alerts_count"], 1)
+
+
+class MonitoringIntegrityTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="integrity-user",
+            password="StrongPass123!",
+            email="integrity@example.com",
+        )
+        self.client.login(username="integrity-user", password="StrongPass123!")
+        self.website = Website.objects.create(user=self.user, url="https://example.com")
+        self.other_website = Website.objects.create(user=self.user, url="https://google.com")
+
+    def test_cleanup_fixes_alert_website_mismatch_from_incident(self):
+        incident = Incident.objects.create(
+            website=self.website,
+            title="Complete Outage",
+            incident_type=Incident.TYPE_OUTAGE,
+            status=Incident.STATUS_DOWN,
+            started_at=timezone.now(),
+            latest_response_time=0,
+        )
+        alert = Alert.objects.create(
+            website=self.other_website,
+            incident=incident,
+            alert_type=Alert.TYPE_DOWN,
+            status=Alert.STATUS_SENT,
+            message="down",
+        )
+
+        cleanup_monitoring_state(user=self.user)
+
+        alert.refresh_from_db()
+        self.assertEqual(alert.website, self.website)
+
+    def test_cleanup_resolves_duplicate_active_incidents_per_website_and_type(self):
+        first = Incident.objects.create(
+            website=self.website,
+            title="Complete Outage",
+            incident_type=Incident.TYPE_OUTAGE,
+            status=Incident.STATUS_DOWN,
+            started_at=timezone.now(),
+            latest_response_time=0,
+        )
+        second = Incident.objects.create(
+            website=self.website,
+            title="Complete Outage",
+            incident_type=Incident.TYPE_OUTAGE,
+            status=Incident.STATUS_DOWN,
+            started_at=timezone.now() + timezone.timedelta(minutes=1),
+            latest_response_time=0,
+        )
+
+        cleanup_monitoring_state(user=self.user)
+
+        unresolved = Incident.objects.filter(
+            website=self.website,
+            incident_type=Incident.TYPE_OUTAGE,
+            is_resolved=False,
+        )
+        self.assertEqual(unresolved.count(), 1)
+        resolved_duplicate = Incident.objects.get(pk=first.pk)
+        self.assertTrue(resolved_duplicate.is_resolved or second.is_resolved)
+
+    def test_dashboard_counts_only_unresolved_incidents(self):
+        Incident.objects.create(
+            website=self.website,
+            title="Complete Outage",
+            incident_type=Incident.TYPE_OUTAGE,
+            status=Incident.STATUS_RESOLVED,
+            started_at=timezone.now() - timezone.timedelta(hours=1),
+            resolved_at=timezone.now(),
+            is_resolved=True,
+            latest_response_time=0,
+        )
+
+        response = self.client.get(reverse("dashboard"))
+
+        self.assertEqual(response.context["incidents"], 0)
+
+    def test_duplicate_active_alerts_are_marked_read_during_cleanup(self):
+        incident = Incident.objects.create(
+            website=self.website,
+            title="Complete Outage",
+            incident_type=Incident.TYPE_OUTAGE,
+            status=Incident.STATUS_DOWN,
+            started_at=timezone.now(),
+            latest_response_time=0,
+        )
+        Alert.objects.create(
+            website=self.website,
+            incident=incident,
+            alert_type=Alert.TYPE_DOWN,
+            status=Alert.STATUS_SENT,
+            message="same",
+            sent_to=self.user.email,
+        )
+        duplicate = Alert.objects.create(
+            website=self.website,
+            incident=incident,
+            alert_type=Alert.TYPE_DOWN,
+            status=Alert.STATUS_SENT,
+            message="same",
+            sent_to=self.user.email,
+        )
+
+        cleanup_monitoring_state(user=self.user)
+
+        duplicate.refresh_from_db()
+        unread_count = Alert.objects.filter(
+            website=self.website,
+            incident=incident,
+            alert_type=Alert.TYPE_DOWN,
+            is_read=False,
+        ).count()
+        self.assertEqual(unread_count, 1)
+        self.assertTrue(
+            Alert.objects.filter(
+                website=self.website,
+                incident=incident,
+                alert_type=Alert.TYPE_DOWN,
+                is_read=True,
+            ).exists()
+        )
+
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    @patch("monitor.utils.requests.get")
+    def test_timeline_event_message_stays_on_correct_website(self, mock_get, _mock_ssl):
+        MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=100)
+        mock_get.return_value = Mock(
+            status_code=503,
+            elapsed=Mock(total_seconds=Mock(return_value=0.2)),
+        )
+
+        run_single_check(self.website)
+
+        incident = Incident.objects.get(website=self.website, is_resolved=False)
+        event = incident.events.get(event_type=IncidentEvent.TYPE_DETECTED)
+        self.assertIn(self.website.url, event.message)
+        self.assertNotIn(self.other_website.url, event.message)

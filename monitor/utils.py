@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 import requests
 from django.conf import settings
 from django.core.mail import send_mail
+from django.db import transaction
 from django.utils import timezone
 
 from .models import Alert, Incident, IncidentEvent, MonitorLog
@@ -79,7 +80,74 @@ def _format_response_time(response_time):
     return f"{round(response_time, 2)}ms"
 
 
+def get_numeric_response_time(response_time, default=0):
+    if response_time is None:
+        return default
+    try:
+        return round(float(response_time), 2)
+    except (TypeError, ValueError):
+        return default
+
+
+def get_valid_response_times(logs):
+    return [
+        float(log.response_time)
+        for log in logs
+        if getattr(log, "response_time", None) is not None
+    ]
+
+
+def get_incident_title_for_type(incident_type):
+    title_map = {
+        Incident.TYPE_OUTAGE: "Complete Outage",
+        Incident.TYPE_PERFORMANCE: "High Response Times",
+        Incident.TYPE_SSL: "SSL Certificate Warning",
+    }
+    return title_map.get(incident_type, "Monitoring Incident")
+
+
+def normalize_incident(incident, website=None):
+    expected_website = website or incident.website
+    update_fields = []
+
+    if incident.website_id != expected_website.id:
+        incident.website = expected_website
+        update_fields.append('website')
+
+    if incident.is_resolved:
+        if incident.status != Incident.STATUS_RESOLVED:
+            incident.status = Incident.STATUS_RESOLVED
+            update_fields.append('status')
+        if incident.resolved_at is None:
+            incident.resolved_at = incident.updated_at
+            update_fields.append('resolved_at')
+    else:
+        expected_title = get_incident_title_for_type(incident.incident_type)
+        if incident.title != expected_title:
+            incident.title = expected_title
+            update_fields.append('title')
+        if incident.status == Incident.STATUS_RESOLVED:
+            incident.status = (
+                Incident.STATUS_SLOW if incident.incident_type == Incident.TYPE_SSL
+                else Incident.STATUS_DOWN if incident.incident_type == Incident.TYPE_OUTAGE
+                else Incident.STATUS_SLOW
+            )
+            update_fields.append('status')
+
+    if incident.latest_response_time is not None:
+        normalized_response_time = get_numeric_response_time(incident.latest_response_time, default=None)
+        if normalized_response_time != incident.latest_response_time:
+            incident.latest_response_time = normalized_response_time
+            update_fields.append('latest_response_time')
+
+    if update_fields:
+        incident.save(update_fields=update_fields)
+
+    return incident
+
+
 def create_incident_event(incident, event_type, message):
+    normalize_incident(incident)
     last_event = incident.events.order_by('-created_at', '-id').first()
     if last_event and last_event.event_type == event_type and last_event.message == message:
         return last_event
@@ -128,6 +196,10 @@ def send_alert_email(alert, recovery_time=None):
 
 
 def create_or_update_alert(website, alert_type, message, incident=None, response_time=None, recovery_time=None):
+    if incident is not None:
+        normalize_incident(incident)
+        website = incident.website
+
     if not website.alerts_enabled:
         return None
 
@@ -153,7 +225,7 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
             status=Alert.STATUS_PENDING,
             message=message,
             sent_to=sent_to,
-            response_time=response_time,
+            response_time=get_numeric_response_time(response_time, default=None),
         )
 
     if not sent_to:
@@ -172,6 +244,81 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
         alert.save(update_fields=['status', 'message'])
 
     return alert
+
+
+def cleanup_monitoring_state(user=None):
+    incident_filter = {}
+    if user is not None:
+        incident_filter['website__user'] = user
+
+    with transaction.atomic():
+        incidents = list(
+            Incident.objects.select_related('website').filter(**incident_filter).order_by(
+                'website_id', 'incident_type', '-started_at', '-created_at'
+            )
+        )
+
+        active_seen = set()
+        for incident in incidents:
+            normalize_incident(incident)
+            incident_key = (incident.website_id, incident.incident_type)
+            if not incident.is_resolved:
+                if incident_key in active_seen:
+                    incident.is_resolved = True
+                    incident.status = Incident.STATUS_RESOLVED
+                    incident.resolved_at = incident.resolved_at or incident.updated_at
+                    incident.save(update_fields=['is_resolved', 'status', 'resolved_at'])
+                    create_incident_event(
+                        incident,
+                        IncidentEvent.TYPE_RESOLVED,
+                        "Duplicate active incident automatically closed during integrity cleanup.",
+                    )
+                else:
+                    active_seen.add(incident_key)
+
+        alert_filter = {}
+        if user is not None:
+            alert_filter['website__user'] = user
+
+        alerts = list(
+            Alert.objects.select_related('website', 'incident').filter(**alert_filter).order_by(
+                'website_id', 'alert_type', '-created_at', '-id'
+            )
+        )
+        alert_seen = set()
+
+        for alert in alerts:
+            update_fields = []
+            if alert.incident_id is not None and alert.website_id != alert.incident.website_id:
+                alert.website = alert.incident.website
+                update_fields.append('website')
+
+            if alert.response_time is not None:
+                normalized_response_time = get_numeric_response_time(alert.response_time, default=None)
+                if normalized_response_time != alert.response_time:
+                    alert.response_time = normalized_response_time
+                    update_fields.append('response_time')
+
+            alert_key = (
+                alert.website_id,
+                alert.incident_id,
+                alert.alert_type,
+                alert.status,
+                alert.is_read,
+            )
+            if (
+                alert.status in {Alert.STATUS_SENT, Alert.STATUS_PENDING}
+                and not alert.is_read
+                and alert_key in alert_seen
+            ):
+                alert.is_read = True
+                alert.read_at = alert.read_at or alert.created_at
+                update_fields.extend(['is_read', 'read_at'])
+            else:
+                alert_seen.add(alert_key)
+
+            if update_fields:
+                alert.save(update_fields=update_fields)
 
 
 def resolve_incident(incident, current_log, create_recovery_alert=False, message=None):

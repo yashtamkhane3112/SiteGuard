@@ -14,9 +14,11 @@ from .forms import LoginForm, SignUpForm
 from .models import Alert, Incident, MonitorLog, Website
 from .utils import (
     check_ssl_status,
+    cleanup_monitoring_state,
     send_alert_email,
     get_favicon_url,
     get_latest_logs_by_website,
+    get_valid_response_times,
     get_site_snapshot,
     get_site_status,
     run_single_check,
@@ -89,6 +91,7 @@ def logout_view(request):
 def dashboard(request):
     ensure_admin_user()
     Website.cleanup_existing(user=request.user)
+    cleanup_monitoring_state(user=request.user)
 
     websites = Website.objects.filter(user=request.user).order_by('-created_at')
     website_ids = websites.values_list('id', flat=True)
@@ -124,6 +127,7 @@ def dashboard(request):
 
     if latest_logs:
         statuses = [get_site_status(log) for log in latest_logs.values()]
+        valid_response_times = get_valid_response_times(latest_logs.values())
 
         if "DOWN" in statuses:
             status = "DOWN"
@@ -132,16 +136,20 @@ def dashboard(request):
         else:
             status = "UP"
 
-        response_time = round(
-            sum(log.response_time for log in latest_logs.values()) / len(latest_logs),
-            2
-        )
+        if valid_response_times:
+            response_time = round(
+                sum(valid_response_times) / len(valid_response_times),
+                2
+            )
 
     total_logs = all_logs.count()
     up_logs = all_logs.filter(status=MonitorLog.STATUS_UP).count()
 
     uptime = (up_logs / total_logs) * 100 if total_logs > 0 else 0
-    incidents = all_logs.filter(status=MonitorLog.STATUS_DOWN).count()
+    incidents = Incident.objects.filter(
+        website__user=request.user,
+        is_resolved=False,
+    ).count()
 
     # ⚠️ IMPORTANT FIX HERE
     has_slow = any(site.status == "SLOW" for site in websites)
@@ -162,6 +170,7 @@ def dashboard(request):
 @login_required
 def dashboard_data(request):
     Website.cleanup_existing(user=request.user)
+    cleanup_monitoring_state(user=request.user)
     sites = Website.objects.filter(user=request.user).order_by('-created_at')
     website_ids = sites.values_list('id', flat=True)
     all_logs = MonitorLog.objects.filter(
@@ -187,6 +196,7 @@ def dashboard_data(request):
 @login_required
 def status(request):
     Website.cleanup_existing(user=request.user)
+    cleanup_monitoring_state(user=request.user)
     websites = Website.objects.filter(user=request.user).order_by('-created_at')
     website_ids = websites.values_list('id', flat=True)
     latest_logs = get_latest_logs_by_website(MonitorLog.objects.filter(
@@ -223,6 +233,7 @@ def reports(request):
 
 @login_required
 def incidents(request):
+    cleanup_monitoring_state(user=request.user)
     incidents_qs = Incident.objects.filter(
         website__user=request.user
     ).select_related('website').prefetch_related('events').order_by('-started_at', '-created_at')
@@ -269,6 +280,7 @@ def settings(request):
 
 @login_required
 def alerts(request):
+    cleanup_monitoring_state(user=request.user)
     alerts_qs = Alert.objects.filter(
         website__user=request.user
     ).select_related('website', 'incident').prefetch_related('incident__events').order_by('-created_at', '-id')

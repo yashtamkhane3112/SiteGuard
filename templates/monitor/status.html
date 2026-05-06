@@ -220,7 +220,7 @@
             {% for site in sites %}
             <div class="result-card" data-site-card data-site-url="{{ site.url|lower }}">
               <div class="result-icon website-favicon-container">
-                <img src="{{ site.favicon }}" class="website-favicon" alt="favicon" />
+                <img src="{{ site.favicon }}" class="website-favicon" alt="" loading="lazy" />
               </div>
               <div class="result-details">
                 <div class="result-url">{{ site.url }}</div>
