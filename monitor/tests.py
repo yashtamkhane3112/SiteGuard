@@ -6,8 +6,8 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from monitor.models import MonitorLog, Website
-from monitor.utils import get_favicon_url, get_site_status
+from monitor.models import Incident, IncidentEvent, MonitorLog, Website
+from monitor.utils import get_favicon_url, get_site_status, run_single_check
 
 
 class AuthFlowTests(TestCase):
@@ -209,3 +209,126 @@ class MonitorStatusSyncTests(TestCase):
         self.assertEqual(status_site.favicon, "https://favicon.test/icon.png")
         self.assertEqual(dashboard_site.ssl_status, "Valid")
         self.assertEqual(status_site.ssl_status, "Valid")
+
+
+class IncidentSyncTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="incident-user",
+            password="StrongPass123!",
+        )
+        self.website = Website.objects.create(
+            user=self.user,
+            url="https://example.com",
+        )
+        self.client.login(username="incident-user", password="StrongPass123!")
+
+    @patch("monitor.utils.requests.get")
+    def test_creates_outage_incident_when_site_transitions_to_down(self, mock_get):
+        MonitorLog.objects.create(
+            website=self.website,
+            status=MonitorLog.STATUS_UP,
+            response_time=120,
+        )
+        mock_get.return_value = Mock(
+            status_code=503,
+            elapsed=Mock(total_seconds=Mock(return_value=0.250)),
+        )
+
+        run_single_check(self.website)
+
+        incident = Incident.objects.get(website=self.website, is_resolved=False)
+        self.assertEqual(incident.status, Incident.STATUS_DOWN)
+        self.assertEqual(incident.incident_type, Incident.TYPE_OUTAGE)
+        self.assertEqual(incident.title, "Complete Outage")
+        self.assertEqual(incident.events.count(), 1)
+        self.assertEqual(incident.events.first().event_type, IncidentEvent.TYPE_DETECTED)
+
+    @patch("monitor.utils.requests.get")
+    def test_creates_performance_incident_for_slow_checks(self, mock_get):
+        MonitorLog.objects.create(
+            website=self.website,
+            status=MonitorLog.STATUS_UP,
+            response_time=120,
+        )
+        mock_get.return_value = Mock(
+            status_code=200,
+            elapsed=Mock(total_seconds=Mock(return_value=2.5)),
+        )
+
+        run_single_check(self.website)
+
+        incident = Incident.objects.get(website=self.website, is_resolved=False)
+        self.assertEqual(incident.status, Incident.STATUS_SLOW)
+        self.assertEqual(incident.incident_type, Incident.TYPE_PERFORMANCE)
+        self.assertEqual(incident.title, "High Response Times")
+
+    @patch("monitor.utils.requests.get")
+    def test_reuses_active_incident_without_duplicates(self, mock_get):
+        MonitorLog.objects.create(
+            website=self.website,
+            status=MonitorLog.STATUS_UP,
+            response_time=120,
+        )
+        mock_get.return_value = Mock(
+            status_code=503,
+            elapsed=Mock(total_seconds=Mock(return_value=0.250)),
+        )
+
+        run_single_check(self.website)
+        run_single_check(self.website)
+
+        self.assertEqual(Incident.objects.filter(website=self.website, is_resolved=False).count(), 1)
+        incident = Incident.objects.get(website=self.website, is_resolved=False)
+        self.assertEqual(incident.events.count(), 1)
+
+    @patch("monitor.utils.requests.get")
+    def test_resolves_active_incident_when_site_recovers(self, mock_get):
+        MonitorLog.objects.create(
+            website=self.website,
+            status=MonitorLog.STATUS_UP,
+            response_time=120,
+        )
+        mock_get.return_value = Mock(
+            status_code=503,
+            elapsed=Mock(total_seconds=Mock(return_value=0.250)),
+        )
+        run_single_check(self.website)
+
+        mock_get.return_value = Mock(
+            status_code=200,
+            elapsed=Mock(total_seconds=Mock(return_value=0.150)),
+        )
+        run_single_check(self.website)
+
+        incident = Incident.objects.get(website=self.website)
+        self.assertTrue(incident.is_resolved)
+        self.assertEqual(incident.status, Incident.STATUS_RESOLVED)
+        self.assertIsNotNone(incident.resolved_at)
+        self.assertEqual(incident.events.first().event_type, IncidentEvent.TYPE_RESOLVED)
+
+    def test_incidents_page_renders_real_incident_data(self):
+        incident = Incident.objects.create(
+            website=self.website,
+            title="Complete Outage",
+            incident_type=Incident.TYPE_OUTAGE,
+            status=Incident.STATUS_DOWN,
+            started_at=MonitorLog.objects.create(
+                website=self.website,
+                status=MonitorLog.STATUS_DOWN,
+                response_time=0,
+            ).checked_at,
+            latest_response_time=0,
+        )
+        IncidentEvent.objects.create(
+            incident=incident,
+            event_type=IncidentEvent.TYPE_DETECTED,
+            message="Automated monitoring detected https://example.com as DOWN at 0ms.",
+        )
+
+        response = self.client.get(reverse("incidents"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Complete Outage")
+        self.assertContains(response, "https://example.com")
+        self.assertEqual(response.context["active_incidents"], 1)

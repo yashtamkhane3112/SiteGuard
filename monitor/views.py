@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.shortcuts import get_object_or_404, redirect, render
 from django.http import JsonResponse
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
@@ -5,9 +7,10 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib import messages
 from django.views.decorators.http import require_POST
+from django.utils import timezone
 
 from .forms import LoginForm, SignUpForm
-from .models import Website, MonitorLog
+from .models import Incident, MonitorLog, Website
 from .utils import (
     check_ssl_status,
     get_favicon_url,
@@ -16,6 +19,15 @@ from .utils import (
     get_site_status,
     run_single_check,
 )
+
+
+def format_duration_value(total_seconds):
+    if total_seconds <= 0:
+        return "0m"
+
+    hours, remainder = divmod(int(total_seconds), 3600)
+    minutes, _ = divmod(remainder, 60)
+    return f"{hours}h {minutes}m" if hours else f"{minutes}m"
 
 
 # ✅ STATUS HELPER
@@ -207,8 +219,38 @@ def reports(request):
     return render(request, 'monitor/reports.html')
 
 
+@login_required
 def incidents(request):
-    return render(request, 'monitor/incidents.html')
+    incidents_qs = Incident.objects.filter(
+        website__user=request.user
+    ).select_related('website').prefetch_related('events').order_by('-started_at', '-created_at')
+
+    week_ago = timezone.now() - timedelta(days=7)
+    active_incidents = incidents_qs.filter(is_resolved=False).count()
+    resolved_this_week = incidents_qs.filter(
+        is_resolved=True,
+        resolved_at__gte=week_ago,
+    ).count()
+
+    resolved_incidents = [
+        incident for incident in incidents_qs
+        if incident.is_resolved and incident.resolved_at is not None
+    ]
+    average_resolution_time = "0m"
+    if resolved_incidents:
+        average_seconds = sum(
+            max(int((incident.resolved_at - incident.started_at).total_seconds()), 0)
+            for incident in resolved_incidents
+        ) / len(resolved_incidents)
+        average_resolution_time = format_duration_value(average_seconds)
+
+    context = {
+        'incidents': incidents_qs,
+        'active_incidents': active_incidents,
+        'resolved_this_week': resolved_this_week,
+        'average_resolution_time': average_resolution_time,
+    }
+    return render(request, 'monitor/incidents.html', context)
 
 
 def logs(request):

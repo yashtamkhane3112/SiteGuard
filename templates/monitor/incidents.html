@@ -107,7 +107,7 @@
                 <div>
                   <h2
                     class="stat-value-lg counter m-0"
-                    data-target="2"
+                    data-target="{{ active_incidents }}"
                     data-suffix=""
                   >
                     0
@@ -128,7 +128,7 @@
                 <div>
                   <h2
                     class="stat-value-lg counter m-0"
-                    data-target="2"
+                    data-target="{{ resolved_this_week }}"
                     data-suffix=""
                   >
                     0
@@ -147,7 +147,7 @@
                   <i data-lucide="clock"></i>
                 </div>
                 <div>
-                  <h2 class="stat-value-lg m-0 text-white">1h 53m</h2>
+                  <h2 class="stat-value-lg m-0 text-white">{{ average_resolution_time }}</h2>
                   <span
                     class="text-white text-sm fw-bold"
                     style="letter-spacing: 0.5px"
@@ -171,247 +171,83 @@
           </div>
 
           <div class="incidents-container">
-            <div class="incident-card" data-status="critical">
-              <div
-                class="incident-header expanded"
-                onclick="toggleIncident(this)"
-              >
-                <div class="d-flex gap-3 align-items-center flex-grow-1">
-                  <div class="incident-icon bg-critical-light text-critical">
-                    <i data-lucide="zap"></i>
-                  </div>
-                  <div>
-                    <div class="d-flex align-items-center gap-2 mb-1">
-                      <span class="text-white font-mono text-xs fw-bold"
-                        >INC-001</span
+            {% for incident in incidents %}
+              <div class="incident-card" data-status="{{ incident.filter_key }}">
+                <div
+                  class="incident-header{% if not incident.is_resolved %} expanded{% endif %}"
+                  onclick="toggleIncident(this)"
+                >
+                  <div class="d-flex gap-3 align-items-center flex-grow-1">
+                    <div class="incident-icon {{ incident.icon_bg_class }} {{ incident.icon_text_class }}">
+                      <i data-lucide="{{ incident.icon_name }}"></i>
+                    </div>
+                    <div>
+                      <div class="d-flex align-items-center gap-2 mb-1">
+                        <span class="text-white font-mono text-xs fw-bold">{{ incident.incident_code }}</span>
+                        <span class="status-badge {{ incident.badge_class }}">&bull; {{ incident.status_label }}</span>
+                      </div>
+                      <h5
+                        class="m-0 text-white fw-bold"
+                        style="font-size: 1.15rem"
                       >
-                      <span class="status-badge badge-down">● DOWN</span>
-                    </div>
-                    <h5
-                      class="m-0 text-white fw-bold"
-                      style="font-size: 1.15rem"
-                    >
-                      Complete Outage
-                    </h5>
-                    <div class="incident-meta mt-2 text-slate-300 fw-medium">
-                      <span class="font-mono text-white">myshop.io</span>
-                      <span>Started: 2026-02-09 13:42</span>
-                      <span>Duration: Ongoing</span>
+                        {{ incident.title }}
+                      </h5>
+                      <div class="incident-meta mt-2 text-slate-300 fw-medium">
+                        <span class="font-mono text-white">{{ incident.website.url }}</span>
+                        <span>Started: {{ incident.started_at|date:"Y-m-d H:i" }}</span>
+                        <span>Duration: {{ incident.duration_display }}</span>
+                      </div>
                     </div>
                   </div>
+                  <i
+                    data-lucide="{% if not incident.is_resolved %}chevron-down{% else %}chevron-right{% endif %}"
+                    class="chevron-icon text-white"
+                  ></i>
                 </div>
-                <i
-                  data-lucide="chevron-down"
-                  class="chevron-icon text-white"
-                ></i>
-              </div>
 
-              <div class="incident-body expanded">
-                <div class="timeline">
-                  <div class="timeline-item">
-                    <div class="timeline-icon text-warning">
-                      <i data-lucide="clock"></i>
-                    </div>
-                    <div class="timeline-content">
-                      <div class="timeline-time">
-                        14:30
-                        <span class="text-warning ms-2 fw-bold"
-                          >Investigating</span
-                        >
+                <div class="incident-body{% if not incident.is_resolved %} expanded{% endif %}">
+                  <div class="timeline">
+                    {% for event in incident.events.all %}
+                      <div class="timeline-item">
+                        <div class="timeline-icon {{ event.text_class }}">
+                          <i data-lucide="{{ event.icon_name }}"></i>
+                        </div>
+                        <div class="timeline-content">
+                          <div class="timeline-time">
+                            {{ event.created_at|date:"H:i" }}
+                            <span class="{{ event.text_class }} ms-2 fw-bold">{{ event.label }}</span>
+                          </div>
+                          <div class="timeline-desc text-slate-100 fw-medium">
+                            {{ event.message }}
+                          </div>
+                        </div>
                       </div>
-                      <div class="timeline-desc text-slate-100 fw-medium">
-                        Team continues to investigate root cause. Database
-                        failover initiated.
+                    {% empty %}
+                      <div class="timeline-item">
+                        <div class="timeline-icon text-white">
+                          <i data-lucide="clock"></i>
+                        </div>
+                        <div class="timeline-content">
+                          <div class="timeline-time">
+                            {{ incident.started_at|date:"H:i" }}
+                            <span class="text-white ms-2 fw-bold">Detected</span>
+                          </div>
+                          <div class="timeline-desc text-slate-100 fw-medium">
+                            Automated monitoring opened this incident.
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                  <div class="timeline-item">
-                    <div class="timeline-icon text-white">
-                      <i data-lucide="alert-triangle"></i>
-                    </div>
-                    <div class="timeline-content">
-                      <div class="timeline-time">
-                        14:05
-                        <span class="text-white ms-2 fw-bold">Identified</span>
-                      </div>
-                      <div class="timeline-desc text-slate-100 fw-medium">
-                        Issue identified as database connection pool exhaustion
-                        under high traffic.
-                      </div>
-                    </div>
-                  </div>
-                  <div class="timeline-item">
-                    <div class="timeline-icon text-critical">
-                      <i data-lucide="wifi-off"></i>
-                    </div>
-                    <div class="timeline-content">
-                      <div class="timeline-time">
-                        13:42
-                        <span class="text-critical ms-2 fw-bold">Detected</span>
-                      </div>
-                      <div class="timeline-desc text-slate-100 fw-medium">
-                        Automated monitoring detected 100% failure rate on
-                        myshop.io. All endpoints returning 503.
-                      </div>
-                    </div>
+                    {% endfor %}
                   </div>
                 </div>
               </div>
-            </div>
+            {% endfor %}
 
-            <div class="incident-card" data-status="warning">
-              <div
-                class="incident-header expanded"
-                onclick="toggleIncident(this)"
-              >
-                <div class="d-flex gap-3 align-items-center flex-grow-1">
-                  <div class="incident-icon bg-warning-light text-warning">
-                    <i data-lucide="alert-triangle"></i>
-                  </div>
-                  <div>
-                    <div class="d-flex align-items-center gap-2 mb-1">
-                      <span class="text-white font-mono text-xs fw-bold"
-                        >INC-002</span
-                      >
-                      <span class="status-badge badge-slow">● SLOW</span>
-                    </div>
-                    <h5
-                      class="m-0 text-white fw-bold"
-                      style="font-size: 1.15rem"
-                    >
-                      High Response Times
-                    </h5>
-                    <div class="incident-meta mt-2 text-slate-300 fw-medium">
-                      <span class="font-mono text-white">api.service.dev</span>
-                      <span>Started: 2026-02-09 11:20</span>
-                      <span>Duration: 3h 10m</span>
-                    </div>
-                  </div>
-                </div>
-                <i
-                  data-lucide="chevron-down"
-                  class="chevron-icon text-white"
-                ></i>
-              </div>
-
-              <div class="incident-body expanded">
-                <div class="timeline">
-                  <div class="timeline-item">
-                    <div class="timeline-icon text-info">
-                      <i data-lucide="wifi"></i>
-                    </div>
-                    <div class="timeline-content">
-                      <div class="timeline-time">
-                        12:15
-                        <span class="text-info ms-2 fw-bold">Monitoring</span>
-                      </div>
-                      <div class="timeline-desc text-slate-100 fw-medium">
-                        Response times reduced to ~1800ms. Still above threshold
-                        but improving.
-                      </div>
-                    </div>
-                  </div>
-                  <div class="timeline-item">
-                    <div class="timeline-icon text-white">
-                      <i data-lucide="alert-triangle"></i>
-                    </div>
-                    <div class="timeline-content">
-                      <div class="timeline-time">
-                        11:45
-                        <span class="text-white ms-2 fw-bold">Identified</span>
-                      </div>
-                      <div class="timeline-desc text-slate-100 fw-medium">
-                        CDN cache invalidated. Requests falling through to
-                        origin server.
-                      </div>
-                    </div>
-                  </div>
-                  <div class="timeline-item">
-                    <div class="timeline-icon text-critical">
-                      <i data-lucide="zap-off"></i>
-                    </div>
-                    <div class="timeline-content">
-                      <div class="timeline-time">
-                        11:20
-                        <span class="text-critical ms-2 fw-bold">Detected</span>
-                      </div>
-                      <div class="timeline-desc text-slate-100 fw-medium">
-                        Average response time exceeded 3000ms threshold on
-                        api.service.dev.
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="incident-card" data-status="resolved">
-              <div class="incident-header" onclick="toggleIncident(this)">
-                <div class="d-flex gap-3 align-items-center flex-grow-1">
-                  <div class="incident-icon bg-good-light text-good">
-                    <i data-lucide="check-circle"></i>
-                  </div>
-                  <div>
-                    <div class="d-flex align-items-center gap-2 mb-1">
-                      <span class="text-white font-mono text-xs fw-bold"
-                        >INC-003</span
-                      >
-                      <span class="status-badge badge-up">● UP</span>
-                    </div>
-                    <h5
-                      class="m-0 text-white fw-bold"
-                      style="font-size: 1.15rem"
-                    >
-                      SSL Certificate Expiry Warning
-                    </h5>
-                    <div class="incident-meta mt-2 text-slate-300 fw-medium">
-                      <span class="font-mono text-white">blog.company.com</span>
-                      <span>Started: 2026-02-08 09:00</span>
-                      <span>Duration: 1h 15m</span>
-                    </div>
-                  </div>
-                </div>
-                <i
-                  data-lucide="chevron-right"
-                  class="chevron-icon text-white"
-                ></i>
-              </div>
-
-              <div class="incident-body">
-                <div class="timeline">
-                  <div class="timeline-item">
-                    <div class="timeline-icon text-good">
-                      <i data-lucide="check-circle"></i>
-                    </div>
-                    <div class="timeline-content">
-                      <div class="timeline-time">
-                        10:15
-                        <span class="text-good ms-2 fw-bold">Resolved</span>
-                      </div>
-                      <div class="timeline-desc text-slate-100 fw-medium">
-                        New SSL certificate deployed and verified.
-                      </div>
-                    </div>
-                  </div>
-                  <div class="timeline-item">
-                    <div class="timeline-icon text-warning">
-                      <i data-lucide="clock"></i>
-                    </div>
-                    <div class="timeline-content">
-                      <div class="timeline-time">
-                        09:00
-                        <span class="text-warning ms-2 fw-bold">Detected</span>
-                      </div>
-                      <div class="timeline-desc text-slate-100 fw-medium">
-                        SSL certificate expiring in 3 days.
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div id="noIncidentsMsg" class="empty-state" style="display: none">
+            <div
+              id="noIncidentsMsg"
+              class="empty-state"
+              {% if incidents %}style="display: none"{% endif %}
+            >
               <i
                 data-lucide="check-circle"
                 style="
