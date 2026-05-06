@@ -272,7 +272,10 @@
             {% if sites %} {% for site in sites %}
             <div id="site-{{ site.id }}" class="website-card p-3 mb-3 rounded-3 shadow-sm">
               <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <h6 class="mb-0 font-mono text-light">{{ site.url }}</h6>
+                <div class="d-flex align-items-center gap-2 min-width-0">
+                  <img src="{{ site.favicon }}" class="website-favicon" alt="favicon" />
+                  <h6 class="mb-0 font-mono text-light">{{ site.url }}</h6>
+                </div>
                 <span
                   id="status-{{ site.id }}"
                   class="status-badge {% if site.status == 'UP' %}badge-up{% elif site.status == 'SLOW' %}badge-slow{% else %}badge-down{% endif %}"
@@ -292,6 +295,14 @@
                 <small id="time-{{ site.id }}" class="text-secondary">
                   {% if site.last_checked %}{{ site.last_checked|date:"Y-m-d H:i" }}{% endif %}
                 </small>
+              </div>
+
+              <div class="mt-2">
+                {% if site.ssl_status == "Valid" %}
+                <span class="ssl-valid">SSL: Valid</span>
+                {% else %}
+                <span class="ssl-invalid">SSL: Invalid</span>
+                {% endif %}
               </div>
 
               <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">

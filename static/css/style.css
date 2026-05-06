@@ -347,6 +347,39 @@ body { font-family: 'Inter', sans-serif; background-color: var(--bg-dark); color
 .result-details { display: flex; flex-direction: column; gap: 10px; width: 100%; min-width: 0; }
 .result-url { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #fff; font-size: 1rem; line-height: 1.4; overflow-wrap: anywhere; word-break: break-word; }
 .result-meta { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 14px; font-size: 0.85rem; color: var(--text-muted); }
+.website-favicon {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    object-fit: cover;
+    background: rgba(255,255,255,0.05);
+}
+.ssl-valid {
+    color: #10B981;
+    font-size: 12px;
+}
+.ssl-invalid {
+    color: #EF4444;
+    font-size: 12px;
+}
+.check-now-btn {
+    padding: 7px 14px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #fff;
+    text-decoration: none;
+    font-size: 13px;
+    transition: 0.2s ease;
+}
+.check-now-btn:hover {
+    background: rgba(255,255,255,0.12);
+    transform: translateY(-1px);
+    color: #fff;
+}
+.min-width-0 {
+    min-width: 0;
+}
 
 /* Dashboard Tables */
 .table-responsive { overflow-x: auto; }

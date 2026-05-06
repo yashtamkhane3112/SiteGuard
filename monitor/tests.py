@@ -7,7 +7,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from monitor.models import MonitorLog, Website
-from monitor.utils import get_site_status
+from monitor.utils import get_favicon_url, get_site_status
 
 
 class AuthFlowTests(TestCase):
@@ -90,10 +90,13 @@ class MonitorEmailAlertTests(TestCase):
         )
 
     @patch("monitor.management.commands.monitor_sites.send_mail")
-    @patch("monitor.management.commands.monitor_sites.requests.get")
+    @patch("monitor.utils.requests.get")
     def test_sends_email_only_when_site_transitions_from_up_to_down(self, mock_get, mock_send_mail):
         MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=123)
-        mock_get.return_value = Mock(status_code=500)
+        mock_get.return_value = Mock(
+            status_code=500,
+            elapsed=Mock(total_seconds=Mock(return_value=0.123)),
+        )
 
         call_command("monitor_sites", stdout=StringIO())
 
@@ -103,10 +106,13 @@ class MonitorEmailAlertTests(TestCase):
         self.assertEqual(args[3], [self.user.email])
 
     @patch("monitor.management.commands.monitor_sites.send_mail")
-    @patch("monitor.management.commands.monitor_sites.requests.get")
+    @patch("monitor.utils.requests.get")
     def test_does_not_send_duplicate_email_when_site_is_already_down(self, mock_get, mock_send_mail):
         MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_DOWN, response_time=0)
-        mock_get.return_value = Mock(status_code=500)
+        mock_get.return_value = Mock(
+            status_code=500,
+            elapsed=Mock(total_seconds=Mock(return_value=0.123)),
+        )
 
         call_command("monitor_sites", stdout=StringIO())
 
@@ -166,3 +172,40 @@ class MonitorStatusSyncTests(TestCase):
         self.assertEqual(status_sites, expected)
         self.assertEqual(json_sites, expected)
         self.assertEqual(dashboard_response.context["status"], "DOWN")
+
+    def test_favicon_helper_builds_google_favicon_url(self):
+        favicon_url = get_favicon_url("https://gmail.com")
+
+        self.assertEqual(
+            favicon_url,
+            "https://www.google.com/s2/favicons?domain=gmail.com&sz=64",
+        )
+
+    @patch("monitor.views.run_single_check")
+    def test_check_now_runs_shared_monitoring_logic_and_redirects(self, mock_run_single_check):
+        response = self.client.get(reverse("check_now", args=[self.gmail.id]))
+
+        mock_run_single_check.assert_called_once_with(self.gmail)
+        self.assertRedirects(response, reverse("status"))
+
+    @patch("monitor.views.check_ssl_status", return_value="Valid")
+    @patch("monitor.views.get_favicon_url", return_value="https://favicon.test/icon.png")
+    def test_dashboard_and_status_include_favicon_and_ssl_metadata(self, mock_favicon, mock_ssl):
+        MonitorLog.objects.create(website=self.gmail, status=MonitorLog.STATUS_UP, response_time=100)
+
+        dashboard_response = self.client.get(reverse("dashboard"))
+        status_response = self.client.get(reverse("status"))
+
+        dashboard_site = next(
+            site for site in dashboard_response.context["sites"]
+            if site.url == "https://gmail.com"
+        )
+        status_site = next(
+            site for site in status_response.context["sites"]
+            if site.url == "https://gmail.com"
+        )
+
+        self.assertEqual(dashboard_site.favicon, "https://favicon.test/icon.png")
+        self.assertEqual(status_site.favicon, "https://favicon.test/icon.png")
+        self.assertEqual(dashboard_site.ssl_status, "Valid")
+        self.assertEqual(status_site.ssl_status, "Valid")

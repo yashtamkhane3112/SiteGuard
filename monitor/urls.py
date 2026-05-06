@@ -9,6 +9,7 @@ urlpatterns = [
     path('dashboard/', views.dashboard, name='dashboard'),
     path('dashboard-data/', views.dashboard_data, name='dashboard_data'),
     path('add-website/', views.add_website, name='add_website'),
+    path('check-now/<int:website_id>/', views.check_now, name='check_now'),
     path('delete-website/<int:id>/', views.delete_website, name='delete_website'),
     path('status/', views.status, name='status'),
     path('reports/', views.reports, name='reports'),

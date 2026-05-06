@@ -1,4 +1,4 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.http import JsonResponse
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
 from django.contrib.auth.decorators import login_required
@@ -8,7 +8,14 @@ from django.views.decorators.http import require_POST
 
 from .forms import LoginForm, SignUpForm
 from .models import Website, MonitorLog
-from .utils import get_latest_logs_by_website, get_site_snapshot, get_site_status
+from .utils import (
+    check_ssl_status,
+    get_favicon_url,
+    get_latest_logs_by_website,
+    get_site_snapshot,
+    get_site_status,
+    run_single_check,
+)
 
 
 # ✅ STATUS HELPER
@@ -94,6 +101,8 @@ def dashboard(request):
         website.status = snapshot['status']
         website.response_time = snapshot['response_time']
         website.last_checked = snapshot['last_checked']
+        website.favicon = get_favicon_url(website.url)
+        website.ssl_status = check_ssl_status(website.url)
 
     # ✅ FIXED TOP STATUS (NO TRUE)
     status = "UP"
@@ -175,8 +184,23 @@ def status(request):
         site.status = snapshot['status']
         site.response_time = snapshot['response_time']
         site.last_checked = snapshot['last_checked']
+        site.favicon = get_favicon_url(site.url)
+        site.ssl_status = check_ssl_status(site.url)
 
     return render(request, 'monitor/status.html', {'sites': websites})
+
+
+@login_required
+def check_now(request, website_id):
+    website = get_object_or_404(
+        Website,
+        id=website_id,
+        user=request.user,
+    )
+
+    run_single_check(website)
+    messages.success(request, f"Checked {website.url}")
+    return redirect('status')
 
 
 def reports(request):

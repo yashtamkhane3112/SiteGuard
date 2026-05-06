@@ -12,6 +12,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from monitor.models import MonitorLog, Website
+from monitor.utils import run_single_check
 
 
 class Command(BaseCommand):
@@ -70,28 +71,10 @@ class Command(BaseCommand):
                 for website in websites:
                     previous_log = MonitorLog.objects.filter(website=website).order_by('-checked_at').first()
                     try:
-                        url = website.url
-                        if not url.startswith("http"):
-                            url = "https://" + url
-
-                        response = requests.get(url, timeout=timeout)
-                        response_time_ms = response.elapsed.total_seconds() * 1000
-
-                        if response.status_code >= 200 and response.status_code < 400:
-                            status = (
-                                MonitorLog.STATUS_SLOW
-                                if response_time_ms > 2000
-                                else MonitorLog.STATUS_UP
-                            )
-                        else:
-                            status = MonitorLog.STATUS_DOWN
+                        log, response = run_single_check(website, timeout=timeout)
+                        status = log.status
+                        response_time_ms = log.response_time
                         status_text = status
-
-                        MonitorLog.objects.create(
-                            website=website,
-                            status=status,
-                            response_time=round(response_time_ms, 2),
-                        )
 
                         if status == MonitorLog.STATUS_DOWN:
                             try:
@@ -100,7 +83,7 @@ class Command(BaseCommand):
                                     previous_log,
                                     response_time_ms,
                                     'DOWN',
-                                    f'HTTP {response.status_code}',
+                                    f'HTTP {response.status_code}' if response is not None else 'Request failed',
                                 ):
                                     self.stdout.write(self.style.WARNING(f'DOWN alert sent to {website.user.email}'))
                             except Exception as e:
@@ -110,12 +93,6 @@ class Command(BaseCommand):
                         self.stdout.write(f'Checked: {website.url} | {status_text} | {round(response_time_ms, 2)}ms')
 
                     except Exception as e:
-                        MonitorLog.objects.create(
-                            website=website,
-                            status=MonitorLog.STATUS_DOWN,
-                            response_time=0,
-                        )
-
                         try:
                             if self.send_down_alert(website, previous_log, 0, 'DOWN', str(e)):
                                 self.stdout.write(self.style.WARNING(f'Request error alert sent to {website.user.email}'))
