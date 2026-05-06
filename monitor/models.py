@@ -29,6 +29,9 @@ class Website(models.Model):
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='websites')
     url = models.URLField(max_length=500)
+    alerts_enabled = models.BooleanField(default=True)
+    email_notifications = models.BooleanField(default=True)
+    slow_alert_threshold = models.PositiveIntegerField(default=2000)
     created_at = models.DateTimeField(auto_now_add=True)
 
     @classmethod
@@ -288,3 +291,108 @@ class IncidentEvent(models.Model):
             self.TYPE_RESOLVED: 'text-good',
         }
         return text_map.get(self.event_type, 'text-white')
+
+
+class Alert(models.Model):
+    TYPE_DOWN = 'DOWN'
+    TYPE_SLOW = 'SLOW'
+    TYPE_RECOVERY = 'RECOVERY'
+    TYPE_SSL = 'SSL'
+    TYPE_CHOICES = [
+        (TYPE_DOWN, 'DOWN'),
+        (TYPE_SLOW, 'SLOW'),
+        (TYPE_RECOVERY, 'RECOVERY'),
+        (TYPE_SSL, 'SSL'),
+    ]
+
+    STATUS_SENT = 'SENT'
+    STATUS_FAILED = 'FAILED'
+    STATUS_PENDING = 'PENDING'
+    STATUS_CHOICES = [
+        (STATUS_SENT, 'SENT'),
+        (STATUS_FAILED, 'FAILED'),
+        (STATUS_PENDING, 'PENDING'),
+    ]
+
+    website = models.ForeignKey(Website, on_delete=models.CASCADE, related_name='alerts')
+    incident = models.ForeignKey(
+        Incident,
+        on_delete=models.SET_NULL,
+        related_name='alerts',
+        null=True,
+        blank=True,
+    )
+    alert_type = models.CharField(max_length=20, choices=TYPE_CHOICES)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    message = models.TextField()
+    sent_to = models.EmailField(blank=True)
+    response_time = models.FloatField(null=True, blank=True)
+    is_read = models.BooleanField(default=False)
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+
+    def __str__(self):
+        return f"{self.website.url} - {self.alert_type} ({self.status})"
+
+    @property
+    def filter_key(self):
+        if self.status == self.STATUS_FAILED:
+            return 'failed'
+        if self.alert_type == self.TYPE_DOWN:
+            return 'critical'
+        if self.alert_type in {self.TYPE_SLOW, self.TYPE_SSL}:
+            return 'warning'
+        if self.alert_type == self.TYPE_RECOVERY:
+            return 'recovery'
+        return 'all'
+
+    @property
+    def badge_class(self):
+        if self.status == self.STATUS_FAILED:
+            return 'badge-down'
+        if self.alert_type == self.TYPE_DOWN:
+            return 'badge-down'
+        if self.alert_type in {self.TYPE_SLOW, self.TYPE_SSL}:
+            return 'badge-slow'
+        return 'badge-up'
+
+    @property
+    def status_label(self):
+        if self.status == self.STATUS_FAILED:
+            return 'FAILED'
+        return self.alert_type
+
+    @property
+    def icon_name(self):
+        if self.status == self.STATUS_FAILED:
+            return 'alert-octagon'
+        icon_map = {
+            self.TYPE_DOWN: 'wifi-off',
+            self.TYPE_SLOW: 'clock-3',
+            self.TYPE_RECOVERY: 'check-circle',
+            self.TYPE_SSL: 'shield-alert',
+        }
+        return icon_map.get(self.alert_type, 'bell')
+
+    @property
+    def icon_bg_class(self):
+        if self.status == self.STATUS_FAILED:
+            return 'bg-critical-light'
+        if self.alert_type == self.TYPE_DOWN:
+            return 'bg-critical-light'
+        if self.alert_type in {self.TYPE_SLOW, self.TYPE_SSL}:
+            return 'bg-warning-light'
+        return 'bg-good-light'
+
+    @property
+    def icon_text_class(self):
+        if self.status == self.STATUS_FAILED:
+            return 'text-critical'
+        if self.alert_type == self.TYPE_DOWN:
+            return 'text-critical'
+        if self.alert_type in {self.TYPE_SLOW, self.TYPE_SSL}:
+            return 'text-warning'
+        return 'text-good'

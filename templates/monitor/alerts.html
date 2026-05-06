@@ -70,7 +70,7 @@
             </button>
             <div class="search-bar d-none d-sm-flex">
               <i data-lucide="search" class="search-icon"></i>
-              <input type="text" placeholder="Search websites..." />
+              <input type="text" placeholder="Search alert history..." />
             </div>
           </div>
           <div class="header-actions">
@@ -80,182 +80,258 @@
           </div>
         </header>
 
-        <div class="content-wrapper" style="max-width: 900px">
+        <div class="content-wrapper">
           <div class="mb-4">
             <h2 class="page-title text-white">Alerts & Settings</h2>
             <p class="page-subtitle text-slate-300">
-              Configure notifications and manage monitored websites.
+              Review alert delivery, recovery notifications, and per-site alert preferences.
             </p>
           </div>
 
-          <div class="dash-panel mb-4 p-0 overflow-hidden">
-            <div
-              class="p-4 border-bottom border-secondary"
-              style="border-color: rgba(255, 255, 255, 0.05) !important"
-            >
-              <div class="d-flex align-items-center gap-3">
-                <div class="incident-icon bg-panel-light text-purple">
-                  <i data-lucide="bell"></i>
+          <div class="row g-4 mb-4">
+            <div class="col-md-3">
+              <div class="incident-stat-card">
+                <div class="stat-icon-box bg-critical-light text-critical">
+                  <i data-lucide="bell-ring"></i>
                 </div>
                 <div>
-                  <h5 class="m-0 text-white fw-bold">
-                    Notification Preferences
-                  </h5>
-                  <p class="m-0 text-slate-300 text-sm">
-                    Choose how you want to be notified
-                  </p>
+                  <h2 class="stat-value-lg counter m-0" data-target="{{ active_alerts }}" data-suffix="">0</h2>
+                  <span class="text-white text-sm fw-bold" style="letter-spacing: 0.5px">Active Alerts</span>
                 </div>
               </div>
             </div>
-
-            <div class="settings-list">
-              <div class="settings-item">
-                <div class="d-flex align-items-start gap-3">
-                  <i data-lucide="mail" class="text-purple mt-1"></i>
-                  <div>
-                    <h6 class="text-white m-0 fw-bold text-sm">Email Alerts</h6>
-                    <p class="text-slate-300 m-0 text-xs mt-1">
-                      Receive alerts via email
-                    </p>
-                  </div>
+            <div class="col-md-3">
+              <div class="incident-stat-card">
+                <div class="stat-icon-box bg-good-light text-good">
+                  <i data-lucide="check-check"></i>
                 </div>
-                <label class="custom-toggle">
-                  <input type="checkbox" checked />
-                  <span class="toggle-slider"></span>
-                </label>
+                <div>
+                  <h2 class="stat-value-lg counter m-0" data-target="{{ recovery_alerts }}" data-suffix="">0</h2>
+                  <span class="text-white text-sm fw-bold" style="letter-spacing: 0.5px">Recovery Alerts</span>
+                </div>
               </div>
-              <div class="settings-item">
-                <div class="d-flex align-items-start gap-3">
-                  <i data-lucide="monitor-x" class="text-purple mt-1"></i>
-                  <div>
-                    <h6 class="text-white m-0 fw-bold text-sm">
-                      Downtime Alerts
-                    </h6>
-                    <p class="text-slate-300 m-0 text-xs mt-1">
-                      Alert when a site goes down
-                    </p>
-                  </div>
+            </div>
+            <div class="col-md-3">
+              <div class="incident-stat-card">
+                <div class="stat-icon-box bg-critical-light text-critical">
+                  <i data-lucide="alert-octagon"></i>
                 </div>
-                <label class="custom-toggle">
-                  <input type="checkbox" checked />
-                  <span class="toggle-slider"></span>
-                </label>
+                <div>
+                  <h2 class="stat-value-lg counter m-0" data-target="{{ failed_alerts }}" data-suffix="">0</h2>
+                  <span class="text-white text-sm fw-bold" style="letter-spacing: 0.5px">Failed Alerts</span>
+                </div>
               </div>
-              <div class="settings-item">
-                <div class="d-flex align-items-start gap-3">
-                  <i data-lucide="clock" class="text-purple mt-1"></i>
-                  <div>
-                    <h6 class="text-white m-0 fw-bold text-sm">
-                      Slow Response Alerts
-                    </h6>
-                    <p class="text-slate-300 m-0 text-xs mt-1">
-                      Alert when response time exceeds 3s
-                    </p>
-                  </div>
+            </div>
+            <div class="col-md-3">
+              <div class="incident-stat-card">
+                <div class="stat-icon-box bg-panel-light text-white">
+                  <i data-lucide="gauge"></i>
                 </div>
-                <label class="custom-toggle">
-                  <input type="checkbox" />
-                  <span class="toggle-slider"></span>
-                </label>
-              </div>
-              <div class="settings-item border-0">
-                <div class="d-flex align-items-start gap-3">
-                  <i data-lucide="file-text" class="text-purple mt-1"></i>
-                  <div>
-                    <h6 class="text-white m-0 fw-bold text-sm">Daily Report</h6>
-                    <p class="text-slate-300 m-0 text-xs mt-1">
-                      Receive a daily summary email
-                    </p>
-                  </div>
+                <div>
+                  <h2 class="stat-value-lg m-0 text-white">{{ average_response_impact }}ms</h2>
+                  <span class="text-white text-sm fw-bold" style="letter-spacing: 0.5px">Avg Response Impact</span>
                 </div>
-                <label class="custom-toggle">
-                  <input type="checkbox" checked />
-                  <span class="toggle-slider"></span>
-                </label>
               </div>
             </div>
           </div>
 
-          <div class="dash-panel p-0 overflow-hidden">
-            <div
-              class="p-4 border-bottom border-secondary"
-              style="border-color: rgba(255, 255, 255, 0.05) !important"
-            >
-              <div class="d-flex align-items-center gap-3">
-                <div class="incident-icon bg-panel-light text-purple">
-                  <i data-lucide="globe"></i>
+          <div class="filter-bar mb-4">
+            <i data-lucide="filter" class="text-white me-2" style="width: 20px; height: 20px"></i>
+            <button class="filter-pill active" data-filter="all">All</button>
+            <button class="filter-pill" data-filter="critical">Critical</button>
+            <button class="filter-pill" data-filter="warning">Warning</button>
+            <button class="filter-pill" data-filter="recovery">Recovery</button>
+            <button class="filter-pill" data-filter="failed">Failed</button>
+          </div>
+
+          <div class="row g-4">
+            <div class="col-xl-7">
+              <div class="dash-panel p-0 overflow-hidden">
+                <div class="p-4 border-bottom border-secondary" style="border-color: rgba(255, 255, 255, 0.05) !important">
+                  <div class="d-flex align-items-center gap-3">
+                    <div class="incident-icon bg-panel-light text-purple">
+                      <i data-lucide="bell-ring"></i>
+                    </div>
+                    <div>
+                      <h5 class="m-0 text-white fw-bold">Recent Alerts</h5>
+                      <p class="m-0 text-slate-300 text-sm">
+                        {{ recent_alerts_count }} alert{{ recent_alerts_count|pluralize }} generated from real monitoring events
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <h5 class="m-0 text-white fw-bold">Monitored Websites</h5>
-                  <p class="m-0 text-slate-300 text-sm">
-                    Add or remove websites from monitoring
-                  </p>
+
+                <div class="p-4">
+                  <div class="incidents-container">
+                    {% for alert in alerts %}
+                      <div class="incident-card" data-status="{{ alert.filter_key }}">
+                        <div class="incident-header{% if not alert.is_read %} expanded{% endif %}" onclick="toggleIncident(this)">
+                          <div class="d-flex gap-3 align-items-center flex-grow-1">
+                            <div class="incident-icon {{ alert.icon_bg_class }} {{ alert.icon_text_class }}">
+                              <i data-lucide="{{ alert.icon_name }}"></i>
+                            </div>
+                            <div>
+                              <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
+                                <span class="status-badge {{ alert.badge_class }}">&bull; {{ alert.status_label }}</span>
+                                {% if alert.status == 'FAILED' %}
+                                  <span class="alert-state-pill alert-state-failed">Delivery Failed</span>
+                                {% elif alert.is_read %}
+                                  <span class="alert-state-pill">Read</span>
+                                {% else %}
+                                  <span class="alert-state-pill alert-state-live">Unread</span>
+                                {% endif %}
+                              </div>
+                              <h5 class="m-0 text-white fw-bold" style="font-size: 1.05rem">
+                                {{ alert.website.url }}
+                              </h5>
+                              <div class="incident-meta mt-2 text-slate-300 fw-medium">
+                                <span>Created: {{ alert.created_at|date:"Y-m-d H:i" }}</span>
+                                <span>Sent To: {{ alert.sent_to|default:"In-app only" }}</span>
+                                <span>Impact: {% if alert.response_time %}{{ alert.response_time|floatformat:2 }}ms{% else %}No response{% endif %}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div class="d-flex align-items-center gap-2 ms-3">
+                            {% if not alert.is_read %}
+                              <form method="post" action="{% url 'mark_alert_read' alert.id %}" class="m-0" onclick="event.stopPropagation()">
+                                {% csrf_token %}
+                                <button type="submit" class="alert-action-btn">Mark Read</button>
+                              </form>
+                            {% endif %}
+                            {% if alert.status == 'FAILED' %}
+                              <form method="post" action="{% url 'retry_alert' alert.id %}" class="m-0" onclick="event.stopPropagation()">
+                                {% csrf_token %}
+                                <button type="submit" class="alert-action-btn alert-action-btn-danger">Retry Failed Alert</button>
+                              </form>
+                            {% endif %}
+                            <i data-lucide="{% if not alert.is_read %}chevron-down{% else %}chevron-right{% endif %}" class="chevron-icon text-white"></i>
+                          </div>
+                        </div>
+
+                        <div class="incident-body{% if not alert.is_read %} expanded{% endif %}">
+                          <div class="timeline">
+                            <div class="timeline-item">
+                              <div class="timeline-icon {{ alert.icon_text_class }}">
+                                <i data-lucide="bell-ring"></i>
+                              </div>
+                              <div class="timeline-content">
+                                <div class="timeline-time">
+                                  {{ alert.created_at|date:"H:i" }}
+                                  <span class="{{ alert.icon_text_class }} ms-2 fw-bold">Alert Triggered</span>
+                                </div>
+                                <div class="timeline-desc text-slate-100 fw-medium">
+                                  {{ alert.message|linebreaksbr }}
+                                </div>
+                              </div>
+                            </div>
+                            {% if alert.incident %}
+                              {% for event in alert.incident.events.all %}
+                                <div class="timeline-item">
+                                  <div class="timeline-icon {{ event.text_class }}">
+                                    <i data-lucide="{{ event.icon_name }}"></i>
+                                  </div>
+                                  <div class="timeline-content">
+                                    <div class="timeline-time">
+                                      {{ event.created_at|date:"H:i" }}
+                                      <span class="{{ event.text_class }} ms-2 fw-bold">{{ event.label }}</span>
+                                    </div>
+                                    <div class="timeline-desc text-slate-100 fw-medium">
+                                      {{ event.message }}
+                                    </div>
+                                  </div>
+                                </div>
+                              {% endfor %}
+                            {% endif %}
+                          </div>
+                        </div>
+                      </div>
+                    {% empty %}
+                      <div id="noIncidentsMsg" class="empty-state">
+                        <i data-lucide="bell-off"></i>
+                        <h5 class="text-white fw-bold">No Alerts Yet</h5>
+                        <p class="text-slate-300 fw-medium">
+                          Alerts will appear here as incidents and recoveries are detected.
+                        </p>
+                      </div>
+                    {% endfor %}
+                    {% if alerts %}
+                      <div id="noIncidentsMsg" class="empty-state" style="display: none">
+                        <i data-lucide="bell-off"></i>
+                        <h5 class="text-white fw-bold">No Alerts Match</h5>
+                        <p class="text-slate-300 fw-medium">
+                          No alerts match your current filter.
+                        </p>
+                      </div>
+                    {% endif %}
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div class="p-4">
-              <div class="d-flex gap-2 mb-4">
-                <input
-                  type="text"
-                  class="form-control custom-input flex-grow-1"
-                  id="newSiteInput"
-                  placeholder="Add website URL..."
-                />
-                <button
-                  class="btn btn-outline-dark-custom bg-panel-light"
-                  id="addSiteBtn"
-                  style="padding: 10px 15px"
-                >
-                  <i data-lucide="plus" class="m-0 size-sm"></i>
-                </button>
-              </div>
+            <div class="col-xl-5">
+              <div class="dash-panel p-0 overflow-hidden">
+                <div class="p-4 border-bottom border-secondary" style="border-color: rgba(255, 255, 255, 0.05) !important">
+                  <div class="d-flex align-items-center gap-3">
+                    <div class="incident-icon bg-panel-light text-purple">
+                      <i data-lucide="sliders-horizontal"></i>
+                    </div>
+                    <div>
+                      <h5 class="m-0 text-white fw-bold">Website Alert Preferences</h5>
+                      <p class="m-0 text-slate-300 text-sm">
+                        Tune alert generation without changing the monitoring layout.
+                      </p>
+                    </div>
+                  </div>
+                </div>
 
-              <div class="site-list" id="siteList">
-                <div class="site-item">
-                  <div class="d-flex align-items-center gap-3">
-                    <label class="custom-toggle"
-                      ><input type="checkbox" checked /><span
-                        class="toggle-slider"
-                      ></span
-                    ></label>
-                    <span class="text-white font-mono text-sm fw-medium"
-                      >example.com</span
-                    >
-                  </div>
-                  <button class="btn-delete-site">
-                    <i data-lucide="trash-2"></i>
-                  </button>
-                </div>
-                <div class="site-item">
-                  <div class="d-flex align-items-center gap-3">
-                    <label class="custom-toggle"
-                      ><input type="checkbox" checked /><span
-                        class="toggle-slider"
-                      ></span
-                    ></label>
-                    <span class="text-white font-mono text-sm fw-medium"
-                      >myshop.io</span
-                    >
-                  </div>
-                  <button class="btn-delete-site">
-                    <i data-lucide="trash-2"></i>
-                  </button>
-                </div>
-                <div class="site-item">
-                  <div class="d-flex align-items-center gap-3">
-                    <label class="custom-toggle"
-                      ><input type="checkbox" /><span
-                        class="toggle-slider"
-                      ></span
-                    ></label>
-                    <span class="text-white font-mono text-sm fw-medium"
-                      >api.service.dev</span
-                    >
-                  </div>
-                  <button class="btn-delete-site">
-                    <i data-lucide="trash-2"></i>
-                  </button>
+                <div class="settings-list">
+                  {% for website in websites %}
+                    <form method="post" action="{% url 'update_website_alert_settings' website.id %}" class="settings-item d-block">
+                      {% csrf_token %}
+                      <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                        <div class="d-flex align-items-start gap-3">
+                          <i data-lucide="globe" class="text-purple mt-1"></i>
+                          <div>
+                            <h6 class="text-white m-0 fw-bold text-sm">{{ website.url }}</h6>
+                            <p class="text-slate-300 m-0 text-xs mt-1">
+                              Control alert generation, email delivery, and custom slow alert threshold.
+                            </p>
+                          </div>
+                        </div>
+                        <button type="submit" class="alert-action-btn">Save</button>
+                      </div>
+
+                      <div class="alert-settings-grid mt-3">
+                        <label class="alert-setting-inline">
+                          <span class="text-slate-300 text-xs">Alerts Enabled</span>
+                          <input type="checkbox" name="alerts_enabled" {% if website.alerts_enabled %}checked{% endif %} />
+                        </label>
+                        <label class="alert-setting-inline">
+                          <span class="text-slate-300 text-xs">Email Notifications</span>
+                          <input type="checkbox" name="email_notifications" {% if website.email_notifications %}checked{% endif %} />
+                        </label>
+                        <label class="alert-setting-inline alert-setting-threshold">
+                          <span class="text-slate-300 text-xs">Slow Alert Threshold</span>
+                          <input
+                            type="number"
+                            name="slow_alert_threshold"
+                            value="{{ website.slow_alert_threshold }}"
+                            min="2000"
+                            step="100"
+                            class="form-control custom-input"
+                          />
+                        </label>
+                      </div>
+                    </form>
+                  {% empty %}
+                    <div class="empty-state">
+                      <i data-lucide="globe"></i>
+                      <h5 class="text-white fw-bold">No Monitored Websites</h5>
+                      <p class="text-slate-300 fw-medium">
+                        Add a site on the dashboard to enable alert preferences.
+                      </p>
+                    </div>
+                  {% endfor %}
                 </div>
               </div>
             </div>

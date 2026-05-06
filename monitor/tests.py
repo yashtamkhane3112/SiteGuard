@@ -1,12 +1,10 @@
-from io import StringIO
 from unittest.mock import Mock, patch
 
-from django.core.management import call_command
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from monitor.models import Incident, IncidentEvent, MonitorLog, Website
+from monitor.models import Alert, Incident, IncidentEvent, MonitorLog, Website
 from monitor.utils import get_favicon_url, get_site_status, run_single_check
 
 
@@ -89,32 +87,52 @@ class MonitorEmailAlertTests(TestCase):
             url="https://example.com",
         )
 
-    @patch("monitor.management.commands.monitor_sites.send_mail")
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    @patch("monitor.utils.send_mail")
     @patch("monitor.utils.requests.get")
-    def test_sends_email_only_when_site_transitions_from_up_to_down(self, mock_get, mock_send_mail):
+    def test_sends_email_only_when_site_transitions_from_up_to_down(self, mock_get, mock_send_mail, _mock_ssl):
         MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=123)
         mock_get.return_value = Mock(
             status_code=500,
             elapsed=Mock(total_seconds=Mock(return_value=0.123)),
         )
 
-        call_command("monitor_sites", stdout=StringIO())
+        run_single_check(self.website)
 
         self.assertEqual(mock_send_mail.call_count, 1)
         args = mock_send_mail.call_args.args
         self.assertIn("is DOWN", args[0])
         self.assertEqual(args[3], [self.user.email])
+        self.assertEqual(Alert.objects.filter(website=self.website, alert_type=Alert.TYPE_DOWN).count(), 1)
 
-    @patch("monitor.management.commands.monitor_sites.send_mail")
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    @patch("monitor.utils.send_mail")
     @patch("monitor.utils.requests.get")
-    def test_does_not_send_duplicate_email_when_site_is_already_down(self, mock_get, mock_send_mail):
+    def test_does_not_send_duplicate_email_when_active_down_alert_exists(self, mock_get, mock_send_mail, _mock_ssl):
         MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_DOWN, response_time=0)
+        incident = Incident.objects.create(
+            website=self.website,
+            title="Complete Outage",
+            incident_type=Incident.TYPE_OUTAGE,
+            status=Incident.STATUS_DOWN,
+            started_at=MonitorLog.objects.filter(website=self.website).first().checked_at,
+            latest_response_time=0,
+        )
+        Alert.objects.create(
+            website=self.website,
+            incident=incident,
+            alert_type=Alert.TYPE_DOWN,
+            status=Alert.STATUS_SENT,
+            message="Automated monitoring detected https://example.com as DOWN at 0ms.",
+            sent_to=self.user.email,
+            response_time=0,
+        )
         mock_get.return_value = Mock(
             status_code=500,
             elapsed=Mock(total_seconds=Mock(return_value=0.123)),
         )
 
-        call_command("monitor_sites", stdout=StringIO())
+        run_single_check(self.website)
 
         mock_send_mail.assert_not_called()
 
@@ -224,7 +242,8 @@ class IncidentSyncTests(TestCase):
         self.client.login(username="incident-user", password="StrongPass123!")
 
     @patch("monitor.utils.requests.get")
-    def test_creates_outage_incident_when_site_transitions_to_down(self, mock_get):
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    def test_creates_outage_incident_when_site_transitions_to_down(self, _mock_ssl, mock_get):
         MonitorLog.objects.create(
             website=self.website,
             status=MonitorLog.STATUS_UP,
@@ -245,7 +264,8 @@ class IncidentSyncTests(TestCase):
         self.assertEqual(incident.events.first().event_type, IncidentEvent.TYPE_DETECTED)
 
     @patch("monitor.utils.requests.get")
-    def test_creates_performance_incident_for_slow_checks(self, mock_get):
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    def test_creates_performance_incident_for_slow_checks(self, _mock_ssl, mock_get):
         MonitorLog.objects.create(
             website=self.website,
             status=MonitorLog.STATUS_UP,
@@ -264,7 +284,8 @@ class IncidentSyncTests(TestCase):
         self.assertEqual(incident.title, "High Response Times")
 
     @patch("monitor.utils.requests.get")
-    def test_reuses_active_incident_without_duplicates(self, mock_get):
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    def test_reuses_active_incident_without_duplicates(self, _mock_ssl, mock_get):
         MonitorLog.objects.create(
             website=self.website,
             status=MonitorLog.STATUS_UP,
@@ -283,7 +304,8 @@ class IncidentSyncTests(TestCase):
         self.assertEqual(incident.events.count(), 1)
 
     @patch("monitor.utils.requests.get")
-    def test_resolves_active_incident_when_site_recovers(self, mock_get):
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    def test_resolves_active_incident_when_site_recovers(self, _mock_ssl, mock_get):
         MonitorLog.objects.create(
             website=self.website,
             status=MonitorLog.STATUS_UP,
@@ -332,3 +354,101 @@ class IncidentSyncTests(TestCase):
         self.assertContains(response, "Complete Outage")
         self.assertContains(response, "https://example.com")
         self.assertEqual(response.context["active_incidents"], 1)
+
+
+class AlertSyncTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="alert-user",
+            password="StrongPass123!",
+            email="alert-user@example.com",
+        )
+        self.website = Website.objects.create(
+            user=self.user,
+            url="https://example.com",
+        )
+        self.client.login(username="alert-user", password="StrongPass123!")
+
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    @patch("monitor.utils.send_mail")
+    @patch("monitor.utils.requests.get")
+    def test_recovery_alert_is_created_when_incident_resolves(self, mock_get, mock_send_mail, _mock_ssl):
+        MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=100)
+        mock_get.return_value = Mock(
+            status_code=503,
+            elapsed=Mock(total_seconds=Mock(return_value=0.2)),
+        )
+        run_single_check(self.website)
+
+        mock_get.return_value = Mock(
+            status_code=200,
+            elapsed=Mock(total_seconds=Mock(return_value=0.1)),
+        )
+        run_single_check(self.website)
+
+        self.assertTrue(Alert.objects.filter(website=self.website, alert_type=Alert.TYPE_RECOVERY).exists())
+        self.assertGreaterEqual(mock_send_mail.call_count, 2)
+
+    @patch("monitor.utils.send_mail", side_effect=Exception("SMTP failed"))
+    def test_retry_failed_alert_action_updates_status(self, _mock_send_mail):
+        alert = Alert.objects.create(
+            website=self.website,
+            alert_type=Alert.TYPE_DOWN,
+            status=Alert.STATUS_FAILED,
+            message="https://example.com is DOWN.",
+            sent_to=self.user.email,
+            response_time=0,
+        )
+
+        response = self.client.post(reverse("retry_alert", args=[alert.id]))
+
+        self.assertRedirects(response, reverse("alerts"))
+        alert.refresh_from_db()
+        self.assertEqual(alert.status, Alert.STATUS_FAILED)
+
+    def test_mark_alert_read_action_sets_read_state(self):
+        alert = Alert.objects.create(
+            website=self.website,
+            alert_type=Alert.TYPE_DOWN,
+            status=Alert.STATUS_SENT,
+            message="https://example.com is DOWN.",
+        )
+
+        response = self.client.post(reverse("mark_alert_read", args=[alert.id]))
+
+        self.assertRedirects(response, reverse("alerts"))
+        alert.refresh_from_db()
+        self.assertTrue(alert.is_read)
+        self.assertIsNotNone(alert.read_at)
+
+    @patch("monitor.utils.send_mail")
+    @patch("monitor.utils.check_ssl_status", return_value="Invalid")
+    @patch("monitor.utils.requests.get")
+    def test_ssl_alert_and_incident_are_created_once(self, mock_get, _mock_ssl, _mock_send_mail):
+        MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=100)
+        mock_get.return_value = Mock(
+            status_code=200,
+            elapsed=Mock(total_seconds=Mock(return_value=0.2)),
+        )
+
+        run_single_check(self.website)
+        run_single_check(self.website)
+
+        self.assertEqual(Alert.objects.filter(website=self.website, alert_type=Alert.TYPE_SSL).count(), 1)
+        self.assertEqual(Incident.objects.filter(website=self.website, incident_type=Incident.TYPE_SSL).count(), 1)
+
+    def test_alerts_page_renders_real_alert_data(self):
+        alert = Alert.objects.create(
+            website=self.website,
+            alert_type=Alert.TYPE_DOWN,
+            status=Alert.STATUS_SENT,
+            message="https://example.com is DOWN.",
+            response_time=0,
+        )
+
+        response = self.client.get(reverse("alerts"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "https://example.com")
+        self.assertContains(response, alert.message)
+        self.assertEqual(response.context["recent_alerts_count"], 1)

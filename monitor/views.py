@@ -6,13 +6,15 @@ from django.contrib.auth import authenticate, login as auth_login, logout as aut
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib import messages
+from django.db.models import Avg
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 
 from .forms import LoginForm, SignUpForm
-from .models import Incident, MonitorLog, Website
+from .models import Alert, Incident, MonitorLog, Website
 from .utils import (
     check_ssl_status,
+    send_alert_email,
     get_favicon_url,
     get_latest_logs_by_website,
     get_site_snapshot,
@@ -265,8 +267,101 @@ def settings(request):
     return render(request, 'monitor/settings.html')
 
 
+@login_required
 def alerts(request):
-    return render(request, 'monitor/alerts.html')
+    alerts_qs = Alert.objects.filter(
+        website__user=request.user
+    ).select_related('website', 'incident').prefetch_related('incident__events').order_by('-created_at', '-id')
+    websites = Website.objects.filter(user=request.user).order_by('-created_at')
+
+    active_alerts = alerts_qs.filter(
+        is_read=False,
+    ).exclude(
+        alert_type=Alert.TYPE_RECOVERY,
+    ).exclude(
+        status=Alert.STATUS_FAILED,
+    ).count()
+    recovery_alerts = alerts_qs.filter(alert_type=Alert.TYPE_RECOVERY).count()
+    failed_alerts = alerts_qs.filter(status=Alert.STATUS_FAILED).count()
+    recent_alerts = alerts_qs[:20]
+    average_response_impact = alerts_qs.exclude(response_time__isnull=True).aggregate(
+        avg=Avg('response_time')
+    )['avg'] or 0
+
+    context = {
+        'alerts': recent_alerts,
+        'active_alerts': active_alerts,
+        'recent_alerts_count': alerts_qs.count(),
+        'recovery_alerts': recovery_alerts,
+        'failed_alerts': failed_alerts,
+        'average_response_impact': round(average_response_impact, 2),
+        'websites': websites,
+    }
+    return render(request, 'monitor/alerts.html', context)
+
+
+@login_required
+@require_POST
+def mark_alert_read(request, alert_id):
+    alert = get_object_or_404(
+        Alert,
+        id=alert_id,
+        website__user=request.user,
+    )
+    alert.is_read = True
+    alert.read_at = timezone.now()
+    alert.save(update_fields=['is_read', 'read_at'])
+    messages.success(request, 'Alert marked as read.')
+    return redirect('alerts')
+
+
+@login_required
+@require_POST
+def retry_alert(request, alert_id):
+    alert = get_object_or_404(
+        Alert,
+        id=alert_id,
+        website__user=request.user,
+    )
+    if not alert.website.email_notifications or not alert.website.user.email:
+        messages.error(request, 'Email notifications are disabled for this website.')
+        return redirect('alerts')
+
+    alert.status = Alert.STATUS_PENDING
+    alert.sent_to = alert.website.user.email
+    alert.save(update_fields=['status', 'sent_to'])
+
+    try:
+        send_alert_email(alert, recovery_time=alert.incident.resolved_at if alert.incident else None)
+        alert.status = Alert.STATUS_SENT
+        alert.save(update_fields=['status'])
+        messages.success(request, 'Alert delivery retried successfully.')
+    except Exception:
+        alert.status = Alert.STATUS_FAILED
+        alert.save(update_fields=['status'])
+        messages.error(request, 'Alert retry failed.')
+
+    return redirect('alerts')
+
+
+@login_required
+@require_POST
+def update_website_alert_settings(request, website_id):
+    website = get_object_or_404(
+        Website,
+        id=website_id,
+        user=request.user,
+    )
+    website.alerts_enabled = request.POST.get('alerts_enabled') == 'on'
+    website.email_notifications = request.POST.get('email_notifications') == 'on'
+    try:
+        threshold = int(request.POST.get('slow_alert_threshold', website.slow_alert_threshold))
+    except (TypeError, ValueError):
+        threshold = website.slow_alert_threshold
+    website.slow_alert_threshold = max(threshold, 2000)
+    website.save(update_fields=['alerts_enabled', 'email_notifications', 'slow_alert_threshold'])
+    messages.success(request, f'Updated alert settings for {website.url}.')
+    return redirect('alerts')
 
 
 def utilities(request):

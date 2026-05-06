@@ -18,6 +18,9 @@ urlpatterns = [
     path('profile/', views.profile, name='profile'),
     path('settings/', views.settings, name='settings'),
     path('alerts/', views.alerts, name='alerts'),
+    path('alerts/<int:alert_id>/mark-read/', views.mark_alert_read, name='mark_alert_read'),
+    path('alerts/<int:alert_id>/retry/', views.retry_alert, name='retry_alert'),
+    path('alerts/preferences/<int:website_id>/', views.update_website_alert_settings, name='update_website_alert_settings'),
     path('utilities/', views.utilities, name='utilities'),
 ]
 
