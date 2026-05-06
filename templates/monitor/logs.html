@@ -4,7 +4,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Error Log Analyzer | SiteGuard</title>
+    <title>Monitoring Logs | SiteGuard</title>
     <link
       href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
       rel="stylesheet"
@@ -97,54 +97,25 @@
                   class="p-3 border-bottom border-secondary"
                   style="border-color: rgba(255, 255, 255, 0.05) !important"
                 >
-                  <div
-                    class="d-flex justify-content-between align-items-center"
-                  >
+                  <div class="d-flex justify-content-between align-items-center">
                     <h6 class="m-0 text-white fw-bold">Notifications</h6>
-                    <span
-                      class="badge bg-purple-light text-white"
-                      style="background: #a855f7"
-                      >2 New</span
-                    >
+                    <span class="badge bg-purple-light text-white" style="background: #a855f7">
+                      {{ logs|length }} Logs
+                    </span>
                   </div>
                 </div>
                 <div class="notification-list">
-                  <a href="#" class="notification-item unread">
-                    <div class="notif-icon bg-critical-light text-critical">
-                      <i data-lucide="zap"></i>
+                  <a href="{% url 'reports' %}" class="notification-item">
+                    <div class="notif-icon bg-panel-light text-purple">
+                      <i data-lucide="history"></i>
                     </div>
                     <div>
                       <p class="m-0 text-white text-sm fw-medium">
-                        Complete Outage Detected
+                        Live monitoring history available
                       </p>
-                      <span class="text-xs text-muted"
-                        >myshop.io went down 2 mins ago</span
-                      >
+                      <span class="text-xs text-muted">Showing the latest 100 checks for your sites.</span>
                     </div>
                   </a>
-                  <a href="#" class="notification-item">
-                    <div class="notif-icon bg-good-light text-good">
-                      <i data-lucide="file-text"></i>
-                    </div>
-                    <div>
-                      <p class="m-0 text-slate-300 text-sm">
-                        Weekly Report Ready
-                      </p>
-                      <span class="text-xs text-muted"
-                        >Your analytics report is available.</span
-                      >
-                    </div>
-                  </a>
-                </div>
-                <div
-                  class="p-2 text-center border-top border-secondary"
-                  style="border-color: rgba(255, 255, 255, 0.05) !important"
-                >
-                  <a
-                    href="#"
-                    class="text-xs text-purple text-decoration-none fw-bold"
-                    >Mark all as read</a
-                  >
                 </div>
               </div>
             </div>
@@ -156,9 +127,9 @@
 
         <div class="content-wrapper">
           <div class="mb-4">
-            <h2 class="page-title text-white">Error Log Analyzer</h2>
+            <h2 class="page-title text-white">Monitoring Logs</h2>
             <p class="page-subtitle text-slate-300">
-              Upload error logs and analyze patterns across your sites.
+              Real monitoring history from your latest database checks.
             </p>
             <div class="product-flow mt-3">
               <a href="{% url 'logs' %}" class="product-flow-link active">Logs</a>
@@ -168,120 +139,63 @@
           </div>
 
           <div class="dash-panel mb-4 p-4 p-md-5">
-            <div class="upload-zone" id="dropZone">
-              <input
-                type="file"
-                id="fileInput"
-                hidden
-                accept=".log,.txt,.csv"
-              />
-              <div class="upload-icon-wrapper mb-3">
-                <div class="upload-icon-circle">
-                  <i data-lucide="upload-cloud"></i>
-                </div>
+            <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
+              <div>
+                <h5 class="text-white fw-bold mb-2">Real MonitorLog Stream</h5>
+                <p class="text-muted text-xs mb-0">
+                  Latest checks are pulled directly from your monitoring history with shared status resolution.
+                </p>
               </div>
-              <h5 class="text-white fw-bold mb-2">Upload Error Log File</h5>
-              <p class="text-muted text-xs mb-4">
-                Drag & drop a .log or .txt file, or click to browse
-              </p>
-              <button
-                class="btn btn-outline-dark-custom"
-                onclick="document.getElementById('fileInput').click()"
-              >
-                <i data-lucide="upload" class="me-2 size-sm"></i> Choose File
-              </button>
-              <div
-                id="uploadFeedback"
-                class="mt-3 text-success text-sm fw-bold"
-                style="display: none"
-              ></div>
+              <div class="d-flex gap-2 flex-wrap">
+                <span class="status-badge badge-down">&bull; {{ down_count }} DOWN</span>
+                <span class="status-badge badge-slow">&bull; {{ slow_count }} SLOW</span>
+                <span class="status-badge badge-up">&bull; {{ up_count }} UP</span>
+              </div>
             </div>
           </div>
 
           <div class="row g-4 mb-4">
             <div class="col-md-4">
               <div class="log-stat-card">
-                <div class="stat-icon-box bg-warning-light text-warning">
-                  <i data-lucide="file-warning"></i>
-                </div>
-                <div>
-                  <h2
-                    class="stat-value-lg counter m-0"
-                    data-target="142"
-                    data-suffix=""
-                  >
-                    0
-                  </h2>
-                  <span class="text-slate-300 text-sm fw-bold"
-                    >404 Not Found</span
-                  >
-                  <div class="mt-2">
-                    <span class="status-badge badge-slow">● SLOW</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="col-md-4">
-              <div class="log-stat-card">
                 <div class="stat-icon-box bg-critical-light text-critical">
                   <i data-lucide="server-crash"></i>
                 </div>
                 <div>
-                  <h2
-                    class="stat-value-lg counter m-0"
-                    data-target="37"
-                    data-suffix=""
-                  >
-                    0
-                  </h2>
-                  <span class="text-slate-300 text-sm fw-bold"
-                    >500 Server Error</span
-                  >
+                  <h2 class="stat-value-lg counter m-0" data-target="{{ down_count }}" data-suffix="">0</h2>
+                  <span class="text-slate-300 text-sm fw-bold">Failed Checks</span>
                   <div class="mt-2">
-                    <span class="status-badge badge-down">● DOWN</span>
+                    <span class="status-badge badge-down">&bull; DOWN</span>
                   </div>
                 </div>
               </div>
             </div>
             <div class="col-md-4">
               <div class="log-stat-card">
-                <div class="stat-icon-box bg-panel-light text-muted">
-                  <i data-lucide="clock"></i>
+                <div class="stat-icon-box bg-warning-light text-warning">
+                  <i data-lucide="clock-3"></i>
                 </div>
                 <div>
-                  <h2
-                    class="stat-value-lg counter m-0"
-                    data-target="21"
-                    data-suffix=""
-                  >
-                    0
-                  </h2>
-                  <span class="text-slate-300 text-sm fw-bold">Timeout</span>
+                  <h2 class="stat-value-lg counter m-0" data-target="{{ slow_count }}" data-suffix="">0</h2>
+                  <span class="text-slate-300 text-sm fw-bold">Slow Checks</span>
                   <div class="mt-2">
-                    <span class="status-badge badge-down">● DOWN</span>
+                    <span class="status-badge badge-slow">&bull; SLOW</span>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-
-          <div class="info-banner mb-4">
-            <i
-              data-lucide="info"
-              class="text-muted"
-              style="width: 24px; height: 24px"
-            ></i>
-            <div>
-              <h6
-                class="text-white m-0 mb-1 fw-bold"
-                style="font-size: 0.95rem"
-              >
-                Sample Data
-              </h6>
-              <p class="text-slate-300 m-0 text-sm">
-                The error logs below are sample data for demonstration purposes.
-                Upload your own log files to see real analysis.
-              </p>
+            <div class="col-md-4">
+              <div class="log-stat-card">
+                <div class="stat-icon-box bg-good-light text-good">
+                  <i data-lucide="check-circle"></i>
+                </div>
+                <div>
+                  <h2 class="stat-value-lg counter m-0" data-target="{{ up_count }}" data-suffix="">0</h2>
+                  <span class="text-slate-300 text-sm fw-bold">Healthy Checks</span>
+                  <div class="mt-2">
+                    <span class="status-badge badge-up">&bull; UP</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -290,9 +204,9 @@
               class="p-4 border-bottom"
               style="border-color: rgba(255, 255, 255, 0.05) !important"
             >
-              <h5 class="panel-title m-0">Error Log Entries</h5>
+              <h5 class="panel-title m-0">Monitoring Log Entries</h5>
               <p class="panel-subtitle mt-1 m-0">
-                Parsed error entries from uploaded logs
+                Latest 100 checks across your monitored websites
               </p>
             </div>
 
@@ -301,50 +215,36 @@
                 <thead>
                   <tr>
                     <th>Timestamp</th>
-                    <th>Type</th>
-                    <th>Message</th>
-                    <th class="text-end pe-4">Source</th>
+                    <th>Website</th>
+                    <th>Status</th>
+                    <th>Response Time</th>
+                    <th class="text-end pe-4">Message</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr class="activity-row">
-                    <td class="font-mono text-slate-300 text-sm fw-bold">
-                      2026-02-09 14:32
-                    </td>
-                    <td><span class="log-badge badge-404">404</span></td>
-                    <td class="text-white text-sm">
-                      GET /api/users/999 - Not Found
-                    </td>
-                    <td class="text-end font-mono text-slate-300 text-sm pe-4">
-                      api.example.com
-                    </td>
-                  </tr>
-                  <tr class="activity-row">
-                    <td class="font-mono text-slate-300 text-sm fw-bold">
-                      2026-02-09 14:32
-                    </td>
-                    <td>
-                      <span class="log-badge badge-timeout">TIMEOUT</span>
-                    </td>
-                    <td class="text-white text-sm">
-                      Internal Server Error in /checkout
-                    </td>
-                    <td class="text-end font-mono text-slate-300 text-sm pe-4">
-                      myshop.io
+                  {% if logs %}
+                    {% for log in logs %}
+                    <tr class="activity-row">
+                      <td class="font-mono text-slate-300 text-sm fw-bold">{{ log.checked_at|date:"Y-m-d H:i" }}</td>
+                      <td class="font-mono text-white text-sm">{{ log.url }}</td>
+                      <td><span class="status-badge {{ log.badge_class }}">&bull; {{ log.status }}</span></td>
+                      <td class="text-white text-sm">{{ log.response_time_display }}</td>
+                      <td class="text-end text-slate-300 text-sm pe-4">{{ log.message }}</td>
+                    </tr>
+                    {% endfor %}
+                  {% else %}
+                  <tr>
+                    <td colspan="5">
+                      <div class="empty-state">
+                        <i data-lucide="activity"></i>
+                        <h6>No monitoring logs yet</h6>
+                        <p class="text-sm mb-0">
+                          Run a check or start the monitor to populate real monitoring history.
+                        </p>
+                      </div>
                     </td>
                   </tr>
-                  <tr class="activity-row">
-                    <td class="font-mono text-slate-300 text-sm fw-bold">
-                      2026-02-09 14:32
-                    </td>
-                    <td><span class="log-badge badge-500">500</span></td>
-                    <td class="text-white text-sm">
-                      Connection timeout after 30s
-                    </td>
-                    <td class="text-end font-mono text-slate-300 text-sm pe-4">
-                      slow-server.demo
-                    </td>
-                  </tr>
+                  {% endif %}
                 </tbody>
               </table>
             </div>

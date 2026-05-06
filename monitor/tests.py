@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from unittest.mock import Mock, patch
 
 from django.contrib.auth.models import User
@@ -502,7 +504,7 @@ class MonitoringIntegrityTests(TestCase):
             title="Complete Outage",
             incident_type=Incident.TYPE_OUTAGE,
             status=Incident.STATUS_DOWN,
-            started_at=timezone.now() + timezone.timedelta(minutes=1),
+            started_at=timezone.now() + timedelta(minutes=1),
             latest_response_time=0,
         )
 
@@ -523,7 +525,7 @@ class MonitoringIntegrityTests(TestCase):
             title="Complete Outage",
             incident_type=Incident.TYPE_OUTAGE,
             status=Incident.STATUS_RESOLVED,
-            started_at=timezone.now() - timezone.timedelta(hours=1),
+            started_at=timezone.now() - timedelta(hours=1),
             resolved_at=timezone.now(),
             is_resolved=True,
             latest_response_time=0,
@@ -593,3 +595,120 @@ class MonitoringIntegrityTests(TestCase):
         event = incident.events.get(event_type=IncidentEvent.TYPE_DETECTED)
         self.assertIn(self.website.url, event.message)
         self.assertNotIn(self.other_website.url, event.message)
+
+
+class ReportingViewsTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="report-user",
+            password="StrongPass123!",
+            email="report@example.com",
+        )
+        self.other_user = User.objects.create_user(
+            username="other-report-user",
+            password="StrongPass123!",
+        )
+        self.client.login(username="report-user", password="StrongPass123!")
+        self.website = Website.objects.create(user=self.user, url="https://example.com")
+        self.second_website = Website.objects.create(user=self.user, url="https://slow.example.com")
+        self.other_website = Website.objects.create(user=self.other_user, url="https://other.com")
+
+    def test_logs_page_uses_current_user_monitor_logs_only(self):
+        own_log = MonitorLog.objects.create(
+            website=self.website,
+            status=MonitorLog.STATUS_UP,
+            response_time=120,
+        )
+        MonitorLog.objects.create(
+            website=self.other_website,
+            status=MonitorLog.STATUS_DOWN,
+            response_time=0,
+        )
+
+        response = self.client.get(reverse("logs"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["logs"]), 1)
+        self.assertEqual(response.context["logs"][0]["url"], self.website.url)
+        self.assertEqual(response.context["logs"][0]["response_time_display"], "120 ms")
+
+    def test_reports_page_calculates_real_analytics(self):
+        MonitorLog.objects.create(
+            website=self.website,
+            status=MonitorLog.STATUS_UP,
+            response_time=100,
+        )
+        MonitorLog.objects.create(
+            website=self.website,
+            status=MonitorLog.STATUS_DOWN,
+            response_time=0,
+        )
+        MonitorLog.objects.create(
+            website=self.second_website,
+            status=MonitorLog.STATUS_SLOW,
+            response_time=2500,
+        )
+        Incident.objects.create(
+            website=self.website,
+            title="Complete Outage",
+            incident_type=Incident.TYPE_OUTAGE,
+            status=Incident.STATUS_DOWN,
+            started_at=timezone.now(),
+            latest_response_time=0,
+        )
+        Alert.objects.create(
+            website=self.website,
+            alert_type=Alert.TYPE_DOWN,
+            status=Alert.STATUS_SENT,
+            message="down",
+            response_time=0,
+        )
+
+        response = self.client.get(reverse("reports"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["total_issues_today"], 2)
+        self.assertAlmostEqual(response.context["average_uptime"], 33.33, places=2)
+        self.assertAlmostEqual(response.context["average_response_time"], 866.67, places=2)
+        self.assertEqual(response.context["alert_counts"]["active"], 1)
+        self.assertEqual(response.context["ssl_failures"], 0)
+
+    def test_reports_range_filter_excludes_old_logs(self):
+        old_time = timezone.now() - timedelta(days=10)
+        recent_log = MonitorLog.objects.create(
+            website=self.website,
+            status=MonitorLog.STATUS_UP,
+            response_time=100,
+        )
+        old_log = MonitorLog.objects.create(
+            website=self.website,
+            status=MonitorLog.STATUS_DOWN,
+            response_time=0,
+        )
+        MonitorLog.objects.filter(pk=old_log.pk).update(checked_at=old_time)
+
+        response = self.client.get(reverse("reports"), {"range": "7d"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["logs_count"], 1)
+        self.assertEqual(response.context["selected_range"], "7d")
+
+    def test_reports_chart_data_has_safe_empty_state(self):
+        response = self.client.get(reverse("reports"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["has_monitoring_data"])
+        self.assertTrue(all(value == 0 for value in response.context["chart_data"]["uptime_trend"]))
+        self.assertContains(response, "No monitoring data yet")
+
+    def test_reports_chart_data_generation_has_expected_length(self):
+        MonitorLog.objects.create(
+            website=self.website,
+            status=MonitorLog.STATUS_UP,
+            response_time=100,
+        )
+
+        response = self.client.get(reverse("reports"), {"range": "30d"})
+
+        self.assertEqual(len(response.context["chart_data"]["labels"]), 30)
+        self.assertEqual(len(response.context["chart_data"]["error_trend"]), 30)

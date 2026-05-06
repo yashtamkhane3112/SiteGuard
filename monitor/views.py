@@ -1,4 +1,5 @@
 from datetime import timedelta
+from collections import defaultdict
 
 from django.shortcuts import get_object_or_404, redirect, render
 from django.http import JsonResponse
@@ -6,7 +7,7 @@ from django.contrib.auth import authenticate, login as auth_login, logout as aut
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib import messages
-from django.db.models import Avg
+from django.db.models import Avg, Count
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 
@@ -32,6 +33,317 @@ def format_duration_value(total_seconds):
     hours, remainder = divmod(int(total_seconds), 3600)
     minutes, _ = divmod(remainder, 60)
     return f"{hours}h {minutes}m" if hours else f"{minutes}m"
+
+
+def get_range_start(range_key):
+    now = timezone.now()
+    if range_key == '24h':
+        return now - timedelta(hours=24)
+    if range_key == '30d':
+        return now - timedelta(days=30)
+    return now - timedelta(days=7)
+
+
+def get_log_message(log):
+    status = get_site_status(log)
+    if status == "DOWN":
+        return "Connection failed"
+    if status == "SLOW":
+        return "Response exceeded threshold"
+    return "Website reachable"
+
+
+def serialize_log(log):
+    status = get_site_status(log)
+    response_time = round(log.response_time, 2) if log.response_time is not None else 0
+    return {
+        'website': log.website,
+        'url': log.website.url,
+        'status': status,
+        'response_time': response_time,
+        'response_time_display': f"{response_time:g} ms" if log.response_time is not None else '—',
+        'checked_at': log.checked_at,
+        'message': get_log_message(log),
+        'badge_class': (
+            'badge-down' if status == 'DOWN'
+            else 'badge-slow' if status == 'SLOW'
+            else 'badge-up'
+        ),
+    }
+
+
+def build_time_series(logs, range_key):
+    now = timezone.now()
+    if range_key == '24h':
+        labels = [
+            (now - timedelta(hours=hour_offset)).replace(minute=0, second=0, microsecond=0)
+            for hour_offset in range(23, -1, -2)
+        ]
+        bucket_key = lambda dt: dt.replace(minute=0, second=0, microsecond=0)
+        label_format = lambda dt: dt.strftime('%H:%M')
+        bucket_step = 2
+    else:
+        days = 30 if range_key == '30d' else 7
+        start_day = (now - timedelta(days=days - 1)).date()
+        labels = [start_day + timedelta(days=index) for index in range(days)]
+        bucket_key = lambda dt: dt.date()
+        label_format = lambda dt: dt.strftime('%b %d')
+        bucket_step = 1
+
+    uptime_counts = {label: {'up': 0, 'total': 0} for label in labels}
+    response_totals = {label: {'total': 0.0, 'count': 0} for label in labels}
+    error_counts = {label: 0 for label in labels}
+    percentile_values = {label: [] for label in labels}
+
+    for log in logs:
+        key = bucket_key(log.checked_at)
+        if key not in uptime_counts:
+            if range_key == '24h':
+                aligned_hour = key.hour - (key.hour % bucket_step)
+                key = key.replace(hour=aligned_hour, minute=0, second=0, microsecond=0)
+        if key not in uptime_counts:
+            continue
+
+        status = get_site_status(log)
+        uptime_counts[key]['total'] += 1
+        if status == "UP":
+            uptime_counts[key]['up'] += 1
+        else:
+            error_counts[key] += 1
+
+        if log.response_time is not None:
+            response_totals[key]['total'] += float(log.response_time)
+            response_totals[key]['count'] += 1
+            percentile_values[key].append(float(log.response_time))
+
+    chart_labels = [label_format(label) for label in labels]
+    uptime_trend = [
+        round((uptime_counts[label]['up'] / uptime_counts[label]['total']) * 100, 2)
+        if uptime_counts[label]['total'] else 0
+        for label in labels
+    ]
+    response_trend = [
+        round(response_totals[label]['total'] / response_totals[label]['count'], 2)
+        if response_totals[label]['count'] else 0
+        for label in labels
+    ]
+    error_trend = [error_counts[label] for label in labels]
+
+    percentile_p50 = []
+    percentile_p95 = []
+    percentile_p99 = []
+    for label in labels:
+        values = sorted(percentile_values[label])
+        if not values:
+            percentile_p50.append(0)
+            percentile_p95.append(0)
+            percentile_p99.append(0)
+            continue
+
+        def percentile(percent):
+            index = max(int((len(values) - 1) * percent), 0)
+            return round(values[index], 2)
+
+        percentile_p50.append(percentile(0.50))
+        percentile_p95.append(percentile(0.95))
+        percentile_p99.append(percentile(0.99))
+
+    return {
+        'labels': chart_labels,
+        'uptime_trend': uptime_trend,
+        'response_trend': response_trend,
+        'error_trend': error_trend,
+        'percentile_p50': percentile_p50,
+        'percentile_p95': percentile_p95,
+        'percentile_p99': percentile_p99,
+    }
+
+
+def build_heatmap_rows(websites, logs):
+    hour_labels = [f"{hour:02d}:00" for hour in range(0, 24, 2)]
+    grouped = defaultdict(lambda: defaultdict(list))
+
+    for log in logs:
+        bucket = log.checked_at.hour - (log.checked_at.hour % 2)
+        grouped[log.website_id][bucket].append(log)
+
+    rows = []
+    for website in websites:
+        cells = []
+        for hour in range(0, 24, 2):
+            bucket_logs = grouped[website.id].get(hour, [])
+            if not bucket_logs:
+                cells.append({'class': 'bg-ok', 'label': 'No data'})
+                continue
+
+            statuses = [get_site_status(log) for log in bucket_logs]
+            valid_times = [
+                float(log.response_time)
+                for log in bucket_logs
+                if log.response_time is not None
+            ]
+            avg_time = round(sum(valid_times) / len(valid_times), 2) if valid_times else 0
+
+            if "DOWN" in statuses:
+                block_class = 'bg-critical'
+                block_label = 'DOWN'
+            elif avg_time > 2000:
+                block_class = 'bg-warn'
+                block_label = 'SLOW'
+            elif avg_time > 800:
+                block_class = 'bg-ok'
+                block_label = 'NORMAL'
+            else:
+                block_class = 'bg-good'
+                block_label = 'FAST'
+
+            cells.append({
+                'class': block_class,
+                'label': f"{block_label} ({avg_time}ms)" if avg_time else block_label,
+            })
+
+        rows.append({
+            'website': website,
+            'cells': cells,
+        })
+
+    return hour_labels, rows
+
+
+def build_reports_context(user, range_key):
+    cleanup_monitoring_state(user=user)
+    range_start = get_range_start(range_key)
+    now = timezone.now()
+    websites = list(Website.objects.filter(user=user).order_by('-created_at'))
+    website_ids = [website.id for website in websites]
+
+    logs_qs = MonitorLog.objects.filter(
+        website__user=user,
+        checked_at__gte=range_start,
+    ).select_related('website').order_by('-checked_at')
+    logs = list(logs_qs)
+
+    incidents_qs = Incident.objects.filter(
+        website__user=user,
+        started_at__gte=range_start,
+    ).select_related('website').order_by('-started_at')
+    alerts_qs = Alert.objects.filter(
+        website__user=user,
+        created_at__gte=range_start,
+    ).select_related('website', 'incident').order_by('-created_at')
+
+    issue_logs_today = [
+        log for log in logs
+        if log.checked_at >= now - timedelta(hours=24) and get_site_status(log) in {"DOWN", "SLOW"}
+    ]
+    valid_response_times = [
+        float(log.response_time)
+        for log in logs
+        if log.response_time is not None
+    ]
+    up_count = sum(1 for log in logs if get_site_status(log) == "UP")
+    average_uptime = round((up_count / len(logs)) * 100, 2) if logs else 0
+    average_response_time = round(sum(valid_response_times) / len(valid_response_times), 2) if valid_response_times else 0
+
+    website_metrics = defaultdict(lambda: {'total': 0.0, 'count': 0})
+    for log in logs:
+        if log.response_time is not None:
+            website_metrics[log.website_id]['total'] += float(log.response_time)
+            website_metrics[log.website_id]['count'] += 1
+
+    slowest_websites = []
+    for website in websites:
+        metrics = website_metrics.get(website.id)
+        if not metrics or not metrics['count']:
+            continue
+        slowest_websites.append({
+            'website': website,
+            'average_response_time': round(metrics['total'] / metrics['count'], 2),
+        })
+    slowest_websites.sort(key=lambda item: item['average_response_time'], reverse=True)
+    slowest_websites = slowest_websites[:5]
+
+    most_incidents = list(
+        Incident.objects.filter(
+            website__user=user,
+            started_at__gte=range_start,
+        ).values('website__url').annotate(total=Count('id')).order_by('-total', 'website__url')[:5]
+    )
+
+    recent_outages = list(
+        Incident.objects.filter(
+            website__user=user,
+            incident_type=Incident.TYPE_OUTAGE,
+            started_at__gte=range_start,
+        ).select_related('website').order_by('-started_at')[:5]
+    )
+    ssl_failures = incidents_qs.filter(incident_type=Incident.TYPE_SSL).count()
+
+    alert_counts = {
+        'active': alerts_qs.filter(is_read=False).exclude(alert_type=Alert.TYPE_RECOVERY).exclude(status=Alert.STATUS_FAILED).count(),
+        'recovery': alerts_qs.filter(alert_type=Alert.TYPE_RECOVERY).count(),
+        'failed': alerts_qs.filter(status=Alert.STATUS_FAILED).count(),
+    }
+
+    chart_data = build_time_series(logs, range_key)
+    heatmap_labels, heatmap_rows = build_heatmap_rows(websites, logs)
+
+    distribution_rows = [
+        {
+            'label': 'Slow Checks',
+            'count': sum(1 for log in logs if get_site_status(log) == "SLOW"),
+            'class': 'bg-warning',
+        },
+        {
+            'label': 'Down Checks',
+            'count': sum(1 for log in logs if get_site_status(log) == "DOWN"),
+            'class': 'bg-danger',
+        },
+        {
+            'label': 'SSL Failures',
+            'count': ssl_failures,
+            'class': 'bg-info',
+        },
+        {
+            'label': 'Failed Alerts',
+            'count': alert_counts['failed'],
+            'class': 'bg-danger',
+        },
+    ]
+    distribution_total = sum(row['count'] for row in distribution_rows)
+    for row in distribution_rows:
+        row['percentage'] = round((row['count'] / distribution_total) * 100) if distribution_total else 0
+
+    export_rows = [
+        {
+            'date': log.checked_at.strftime('%Y-%m-%d %H:%M'),
+            'website': log.website.url,
+            'status': get_site_status(log),
+            'response_time': round(log.response_time, 2) if log.response_time is not None else '',
+        }
+        for log in logs[:100]
+    ]
+
+    return {
+        'selected_range': range_key,
+        'range_start': range_start,
+        'websites': websites,
+        'logs_count': len(logs),
+        'total_issues_today': len(issue_logs_today),
+        'average_uptime': average_uptime,
+        'average_response_time': average_response_time,
+        'slowest_websites': slowest_websites,
+        'most_incidents': most_incidents,
+        'recent_outages': recent_outages,
+        'ssl_failures': ssl_failures,
+        'alert_counts': alert_counts,
+        'chart_data': chart_data,
+        'heatmap_labels': heatmap_labels,
+        'heatmap_rows': heatmap_rows,
+        'distribution_rows': distribution_rows,
+        'export_rows': export_rows,
+        'has_monitoring_data': bool(logs),
+    }
 
 
 # ✅ STATUS HELPER
@@ -227,8 +539,14 @@ def check_now(request, website_id):
     return redirect('status')
 
 
+@login_required
 def reports(request):
-    return render(request, 'monitor/reports.html')
+    range_key = request.GET.get('range', '7d')
+    if range_key not in {'24h', '7d', '30d'}:
+        range_key = '7d'
+
+    context = build_reports_context(request.user, range_key)
+    return render(request, 'monitor/reports.html', context)
 
 
 @login_required
@@ -266,8 +584,21 @@ def incidents(request):
     return render(request, 'monitor/incidents.html', context)
 
 
+@login_required
 def logs(request):
-    return render(request, 'monitor/logs.html')
+    cleanup_monitoring_state(user=request.user)
+    logs_qs = MonitorLog.objects.filter(
+        website__user=request.user
+    ).select_related('website').order_by('-checked_at')[:100]
+    logs_data = [serialize_log(log) for log in logs_qs]
+
+    context = {
+        'logs': logs_data,
+        'down_count': sum(1 for log in logs_data if log['status'] == 'DOWN'),
+        'slow_count': sum(1 for log in logs_data if log['status'] == 'SLOW'),
+        'up_count': sum(1 for log in logs_data if log['status'] == 'UP'),
+    }
+    return render(request, 'monitor/logs.html', context)
 
 
 def profile(request):
