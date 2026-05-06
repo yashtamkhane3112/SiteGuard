@@ -397,6 +397,38 @@ body { font-family: 'Inter', sans-serif; background-color: var(--bg-dark); color
 .min-width-0 {
     min-width: 0;
 }
+.product-flow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.product-flow-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 34px;
+    padding: 7px 12px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    color: #cbd5e1;
+    text-decoration: none;
+    font-size: 0.82rem;
+    font-weight: 600;
+    transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+.product-flow-link:hover {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.10);
+    color: #fff;
+    transform: translateY(-1px);
+}
+.product-flow-link.active {
+    background: rgba(116, 48, 232, 0.16);
+    border-color: rgba(168, 85, 247, 0.28);
+    color: #f5f3ff;
+}
 
 /* Dashboard Tables */
 .table-responsive { overflow-x: auto; }
@@ -621,11 +653,6 @@ body { font-family: 'Inter', sans-serif; background-color: var(--bg-dark); color
 .incident-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .incident-icon i { width: 22px; height: 22px; }
 
-/* Badges & Meta */
-.badge-custom { padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;}
-.badge-critical { background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
-.badge-warning { background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); }
-.badge-good { background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
 .incident-meta { display: flex; flex-wrap: wrap; gap: 15px; font-size: 0.8rem; color: var(--text-muted); }
 
 /* Accordion Animations */
@@ -688,11 +715,6 @@ body { font-family: 'Inter', sans-serif; background-color: var(--bg-dark); color
 .incident-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .incident-icon i { width: 22px; height: 22px; }
 
-/* Badges & Meta */
-.badge-custom { padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;}
-.badge-critical { background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
-.badge-warning { background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); }
-.badge-good { background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
 .incident-meta { display: flex; flex-wrap: wrap; gap: 15px; font-size: 0.85rem; }
 
 /* Accordion Animations */

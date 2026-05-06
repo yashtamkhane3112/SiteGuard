@@ -41,7 +41,7 @@
             ><i data-lucide="bar-chart-2"></i> Reports</a
           >
           <a href="{% url 'incidents' %}" class="nav-item active"
-            ><i data-lucide="shield-alert"></i> Incidents</a
+            ><i data-lucide="alert-triangle"></i> Incidents</a
           >
           <a href="{% url 'logs' %}" class="nav-item"
             ><i data-lucide="file-text"></i> Logs</a
@@ -53,8 +53,8 @@
             ><i data-lucide="bell"></i> Alerts</a
           >
           <div style="flex-grow: 1"></div>
-          <a href="{% url 'login' %}" class="nav-item"
-            ><i data-lucide="log-out"></i> Sign Out</a
+          <a href="{% url 'logout' %}" class="nav-item"
+            ><i data-lucide="log-out"></i> Logout</a
           >
         </nav>
 
@@ -91,6 +91,11 @@
             <p class="page-subtitle text-slate-300" style="font-size: 0.95rem">
               Track and review all incidents with a detailed timeline of events.
             </p>
+            <div class="product-flow mt-3">
+              <a href="{% url 'logs' %}" class="product-flow-link">Logs</a>
+              <a href="{% url 'reports' %}" class="product-flow-link">Reports</a>
+              <a href="{% url 'incidents' %}" class="product-flow-link active">Incidents</a>
+            </div>
           </div>
 
           <div class="row g-4 mb-4">
@@ -180,7 +185,7 @@
                       <span class="text-white font-mono text-xs fw-bold"
                         >INC-001</span
                       >
-                      <span class="badge-custom badge-critical">Critical</span>
+                      <span class="status-badge badge-down">● DOWN</span>
                     </div>
                     <h5
                       class="m-0 text-white fw-bold"
@@ -268,7 +273,7 @@
                       <span class="text-white font-mono text-xs fw-bold"
                         >INC-002</span
                       >
-                      <span class="badge-custom badge-warning">Warning</span>
+                      <span class="status-badge badge-slow">● SLOW</span>
                     </div>
                     <h5
                       class="m-0 text-white fw-bold"
@@ -351,7 +356,7 @@
                       <span class="text-white font-mono text-xs fw-bold"
                         >INC-003</span
                       >
-                      <span class="badge-custom badge-good">Resolved</span>
+                      <span class="status-badge badge-up">● UP</span>
                     </div>
                     <h5
                       class="m-0 text-white fw-bold"

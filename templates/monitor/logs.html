@@ -37,6 +37,9 @@
           <a href="{% url 'reports' %}" class="nav-item"
             ><i data-lucide="bar-chart-2"></i> Reports</a
           >
+          <a href="{% url 'incidents' %}" class="nav-item"
+            ><i data-lucide="alert-triangle"></i> Incidents</a
+          >
           <a href="{% url 'logs' %}" class="nav-item active"
             ><i data-lucide="file-text"></i> Logs</a
           >
@@ -47,8 +50,8 @@
             ><i data-lucide="bell"></i> Alerts</a
           >
           <div style="flex-grow: 1"></div>
-          <a href="{% url 'login' %}" class="nav-item"
-            ><i data-lucide="log-out"></i> Sign Out</a
+          <a href="{% url 'logout' %}" class="nav-item"
+            ><i data-lucide="log-out"></i> Logout</a
           >
         </nav>
         <div class="pro-tip-card mt-4">
@@ -157,6 +160,11 @@
             <p class="page-subtitle text-slate-300">
               Upload error logs and analyze patterns across your sites.
             </p>
+            <div class="product-flow mt-3">
+              <a href="{% url 'logs' %}" class="product-flow-link active">Logs</a>
+              <a href="{% url 'reports' %}" class="product-flow-link">Reports</a>
+              <a href="{% url 'incidents' %}" class="product-flow-link">Incidents</a>
+            </div>
           </div>
 
           <div class="dash-panel mb-4 p-4 p-md-5">
@@ -207,6 +215,9 @@
                   <span class="text-slate-300 text-sm fw-bold"
                     >404 Not Found</span
                   >
+                  <div class="mt-2">
+                    <span class="status-badge badge-slow">● SLOW</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -226,6 +237,9 @@
                   <span class="text-slate-300 text-sm fw-bold"
                     >500 Server Error</span
                   >
+                  <div class="mt-2">
+                    <span class="status-badge badge-down">● DOWN</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -243,6 +257,9 @@
                     0
                   </h2>
                   <span class="text-slate-300 text-sm fw-bold">Timeout</span>
+                  <div class="mt-2">
+                    <span class="status-badge badge-down">● DOWN</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -292,7 +309,7 @@
                 <tbody>
                   <tr class="activity-row">
                     <td class="font-mono text-slate-300 text-sm fw-bold">
-                      2026-02-09 14:32:01
+                      2026-02-09 14:32
                     </td>
                     <td><span class="log-badge badge-404">404</span></td>
                     <td class="text-white text-sm">
@@ -304,7 +321,7 @@
                   </tr>
                   <tr class="activity-row">
                     <td class="font-mono text-slate-300 text-sm fw-bold">
-                      2026-02-09 14:32:01
+                      2026-02-09 14:32
                     </td>
                     <td>
                       <span class="log-badge badge-timeout">TIMEOUT</span>
@@ -318,7 +335,7 @@
                   </tr>
                   <tr class="activity-row">
                     <td class="font-mono text-slate-300 text-sm fw-bold">
-                      2026-02-09 14:32:01
+                      2026-02-09 14:32
                     </td>
                     <td><span class="log-badge badge-500">500</span></td>
                     <td class="text-white text-sm">

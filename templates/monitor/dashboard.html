@@ -53,15 +53,9 @@
             ><i data-lucide="bell"></i> Alerts</a
           >
           <div style="flex-grow: 1"></div>
-          {% if user.is_authenticated %}
           <a href="{% url 'logout' %}" class="nav-item"
             ><i data-lucide="log-out"></i> Logout</a
           >
-          {% else %}
-          <a href="{% url 'login' %}" class="nav-item"
-            ><i data-lucide="log-in"></i> Sign In</a
-          >
-          {% endif %}
         </nav>
 
         <div class="pro-tip-card mt-4">
