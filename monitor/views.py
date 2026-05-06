@@ -8,7 +8,7 @@ from django.views.decorators.http import require_POST
 
 from .forms import LoginForm, SignUpForm
 from .models import Website, MonitorLog
-from .utils import get_site_status, get_site_snapshot
+from .utils import get_latest_logs_by_website, get_site_snapshot, get_site_status
 
 
 # ✅ STATUS HELPER
@@ -76,10 +76,7 @@ def dashboard(request):
         website_id__in=website_ids
     ).select_related('website').order_by('-checked_at')
 
-    latest_logs = {}
-    for log in all_logs:
-        if log.website_id not in latest_logs:
-            latest_logs[log.website_id] = log
+    latest_logs = get_latest_logs_by_website(all_logs)
 
     # ✅ FIXED LOGS (NO TRUE ISSUE)
     logs = []
@@ -143,13 +140,15 @@ def dashboard(request):
 def dashboard_data(request):
     Website.cleanup_existing(user=request.user)
     sites = Website.objects.filter(user=request.user).order_by('-created_at')
+    website_ids = sites.values_list('id', flat=True)
+    all_logs = MonitorLog.objects.filter(
+        website_id__in=website_ids
+    ).order_by('-checked_at')
+    latest_logs = get_latest_logs_by_website(all_logs)
     data = []
 
     for site in sites:
-        latest = MonitorLog.objects.filter(
-            website=site
-        ).order_by('-checked_at').first()
-        snapshot = get_site_snapshot(latest)
+        snapshot = get_site_snapshot(latest_logs.get(site.id))
 
         data.append({
             'id': site.id,
@@ -167,13 +166,9 @@ def status(request):
     Website.cleanup_existing(user=request.user)
     websites = Website.objects.filter(user=request.user).order_by('-created_at')
     website_ids = websites.values_list('id', flat=True)
-    latest_logs = {}
-
-    for log in MonitorLog.objects.filter(
+    latest_logs = get_latest_logs_by_website(MonitorLog.objects.filter(
         website_id__in=website_ids
-    ).order_by('-checked_at'):
-        if log.website_id not in latest_logs:
-            latest_logs[log.website_id] = log
+    ).order_by('-checked_at'))
 
     for site in websites:
         snapshot = get_site_snapshot(latest_logs.get(site.id))

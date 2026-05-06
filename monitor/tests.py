@@ -7,6 +7,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from monitor.models import MonitorLog, Website
+from monitor.utils import get_site_status
 
 
 class AuthFlowTests(TestCase):
@@ -110,3 +111,58 @@ class MonitorEmailAlertTests(TestCase):
         call_command("monitor_sites", stdout=StringIO())
 
         mock_send_mail.assert_not_called()
+
+
+class MonitorStatusSyncTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="status-user",
+            password="StrongPass123!",
+        )
+        self.client.login(username="status-user", password="StrongPass123!")
+        self.gmail = Website.objects.create(user=self.user, url="https://gmail.com")
+        self.reddit = Website.objects.create(user=self.user, url="https://reddit.com")
+        self.google = Website.objects.create(user=self.user, url="https://google.com")
+
+    def test_shared_status_resolver_handles_up_slow_and_down(self):
+        up_log = MonitorLog(status=MonitorLog.STATUS_UP, response_time=350)
+        slow_log = MonitorLog(status=MonitorLog.STATUS_UP, response_time=2501)
+        down_log = MonitorLog(status=MonitorLog.STATUS_DOWN, response_time=100)
+        no_response_log = MonitorLog(status=MonitorLog.STATUS_UP, response_time=None)
+
+        self.assertEqual(get_site_status(up_log), "UP")
+        self.assertEqual(get_site_status(slow_log), "SLOW")
+        self.assertEqual(get_site_status(down_log), "DOWN")
+        self.assertEqual(get_site_status(no_response_log), "DOWN")
+
+    def test_dashboard_status_page_and_json_use_same_latest_status_per_site(self):
+        MonitorLog.objects.create(website=self.gmail, status=MonitorLog.STATUS_UP, response_time=2501)
+        MonitorLog.objects.create(website=self.gmail, status=MonitorLog.STATUS_UP, response_time=110)
+        MonitorLog.objects.create(website=self.reddit, status=MonitorLog.STATUS_UP, response_time=400)
+        MonitorLog.objects.create(website=self.google, status=MonitorLog.STATUS_UP, response_time=150)
+        MonitorLog.objects.create(website=self.google, status=MonitorLog.STATUS_DOWN, response_time=0)
+
+        dashboard_response = self.client.get(reverse("dashboard"))
+        status_response = self.client.get(reverse("status"))
+        json_response = self.client.get(reverse("dashboard_data"))
+
+        dashboard_sites = {
+            site.url: site.status for site in dashboard_response.context["sites"]
+        }
+        status_sites = {
+            site.url: site.status for site in status_response.context["sites"]
+        }
+        json_sites = {
+            site["url"]: site["status"] for site in json_response.json()["sites"]
+        }
+
+        expected = {
+            "https://gmail.com": "UP",
+            "https://reddit.com": "UP",
+            "https://google.com": "DOWN",
+        }
+
+        self.assertEqual(dashboard_sites, expected)
+        self.assertEqual(status_sites, expected)
+        self.assertEqual(json_sites, expected)
+        self.assertEqual(dashboard_response.context["status"], "DOWN")
