@@ -8,7 +8,7 @@ from django.views.decorators.http import require_POST
 
 from .forms import LoginForm, SignUpForm
 from .models import Website, MonitorLog
-from .utils import get_site_status
+from .utils import get_site_status, get_site_snapshot
 
 
 # ✅ STATUS HELPER
@@ -87,16 +87,16 @@ def dashboard(request):
         logs.append({
             'url': log.website.url,
             'status': get_site_status(log),
-            'response_time': round(log.response_time, 2),
+            'response_time': round(log.response_time, 2) if log.response_time is not None else 0,
             'checked_at': log.checked_at,
         })
 
     # ✅ FIXED SITES
     for website in websites:
-        site_log = latest_logs.get(website.id)
-        website.status = get_site_status(site_log)
-        website.response_time = round(site_log.response_time, 2) if site_log else 0
-        website.last_checked = site_log.checked_at if site_log else None
+        snapshot = get_site_snapshot(latest_logs.get(website.id))
+        website.status = snapshot['status']
+        website.response_time = snapshot['response_time']
+        website.last_checked = snapshot['last_checked']
 
     # ✅ FIXED TOP STATUS (NO TRUE)
     status = "UP"
@@ -141,6 +141,7 @@ def dashboard(request):
 
 @login_required
 def dashboard_data(request):
+    Website.cleanup_existing(user=request.user)
     sites = Website.objects.filter(user=request.user).order_by('-created_at')
     data = []
 
@@ -148,13 +149,14 @@ def dashboard_data(request):
         latest = MonitorLog.objects.filter(
             website=site
         ).order_by('-checked_at').first()
+        snapshot = get_site_snapshot(latest)
 
         data.append({
             'id': site.id,
             'url': site.url,
-            'status': get_site_status(latest),
-            'response_time': round(latest.response_time, 2) if latest else 0,
-            'last_checked': latest.checked_at.strftime('%Y-%m-%d %H:%M') if latest else '',
+            'status': snapshot['status'],
+            'response_time': snapshot['response_time'],
+            'last_checked': snapshot['last_checked'].strftime('%Y-%m-%d %H:%M') if snapshot['last_checked'] else '',
         })
 
     return JsonResponse({'sites': data})
@@ -162,15 +164,22 @@ def dashboard_data(request):
 
 @login_required
 def status(request):
+    Website.cleanup_existing(user=request.user)
     websites = Website.objects.filter(user=request.user).order_by('-created_at')
+    website_ids = websites.values_list('id', flat=True)
+    latest_logs = {}
+
+    for log in MonitorLog.objects.filter(
+        website_id__in=website_ids
+    ).order_by('-checked_at'):
+        if log.website_id not in latest_logs:
+            latest_logs[log.website_id] = log
 
     for site in websites:
-        latest_log = MonitorLog.objects.filter(
-            website=site
-        ).order_by('-checked_at').first()
-
-        site.status = get_site_status(latest_log)
-        site.response_time = round(latest_log.response_time, 2) if latest_log else 0
+        snapshot = get_site_snapshot(latest_logs.get(site.id))
+        site.status = snapshot['status']
+        site.response_time = snapshot['response_time']
+        site.last_checked = snapshot['last_checked']
 
     return render(request, 'monitor/status.html', {'sites': websites})
 

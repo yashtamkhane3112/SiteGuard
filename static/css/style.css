@@ -282,7 +282,7 @@ body { font-family: 'Inter', sans-serif; background-color: var(--bg-dark); color
 
 /* Status Badges */
 .status-badge { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; font-family: Inter, sans-serif; }
-.badge-up { color: #108981; background: #1089811A; font-size: 11.2px; padding: 3px 8px; }
+.badge-up { color: #10B981; background: #10B9811A; font-size: 11.2px; padding: 3px 8px; }
 .badge-slow { color: #F59E0B; background: #F59E0B1A; font-size: 12px; padding: 4px 10px; }
 .badge-down { color: #EF4444; background: #EF44441A; font-size: 12px; padding: 4px 10px; }
 
@@ -1059,7 +1059,7 @@ body {
 .stat-detail { font-size: 0.75rem; color: #94a3b8; margin: 8px 0 0 0; }
 /* Status Badges */
 .status-badge { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; font-family: Inter, sans-serif; }
-.badge-up { color: #108981; background: #1089811A; font-size: 11.2px; padding: 3px 8px; }
+.badge-up { color: #10B981; background: #10B9811A; font-size: 11.2px; padding: 3px 8px; }
 .badge-slow { color: #F59E0B; background: #F59E0B1A; font-size: 12px; padding: 4px 10px; }
 .badge-down { color: #EF4444; background: #EF44441A; font-size: 12px; padding: 4px 10px; }
 
