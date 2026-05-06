@@ -193,7 +193,7 @@
                         {{ incident.title }}
                       </h5>
                       <div class="incident-meta mt-2 text-slate-300 fw-medium">
-                        <span class="font-mono text-white">{{ incident.website.url }}</span>
+                        <span class="font-mono text-white">{{ incident.website.display_domain }}</span>
                         <span>Started: {{ incident.started_at|date:"Y-m-d H:i" }}</span>
                         <span>Duration: {{ incident.duration_display }}</span>
                       </div>

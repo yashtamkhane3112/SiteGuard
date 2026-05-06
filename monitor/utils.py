@@ -37,6 +37,19 @@ def get_latest_logs_by_website(logs):
     return latest_logs
 
 
+def normalize_domain_display(url):
+    raw_url = (url or '').strip()
+    if not raw_url:
+        return ''
+
+    parsed = urlparse(raw_url if '://' in raw_url else f'https://{raw_url}')
+    domain = (parsed.netloc or parsed.path or '').strip().lower()
+    domain = domain.rstrip('/')
+    if domain.startswith('www.'):
+        domain = domain[4:]
+    return domain
+
+
 def get_favicon_url(url):
     parsed = urlparse(url)
     domain = parsed.netloc or parsed.path.split("/")[0]

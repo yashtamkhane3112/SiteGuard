@@ -8,7 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from monitor.models import Alert, Incident, IncidentEvent, MonitorLog, Website
-from monitor.utils import cleanup_monitoring_state, get_favicon_url, get_site_status, run_single_check
+from monitor.utils import cleanup_monitoring_state, get_favicon_url, get_site_status, normalize_domain_display, run_single_check
 
 
 class AuthFlowTests(TestCase):
@@ -202,6 +202,11 @@ class MonitorStatusSyncTests(TestCase):
             "https://www.google.com/s2/favicons?domain=gmail.com&sz=64",
         )
 
+    def test_normalize_domain_display_removes_scheme_www_and_trailing_slash(self):
+        self.assertEqual(normalize_domain_display("https://www.reddit.com/"), "reddit.com")
+        self.assertEqual(normalize_domain_display("https://mail.google.com/"), "mail.google.com")
+        self.assertEqual(normalize_domain_display("https://abc-not-real-999.com"), "abc-not-real-999.com")
+
     @patch("monitor.views.run_single_check")
     def test_check_now_runs_shared_monitoring_logic_and_redirects(self, mock_run_single_check):
         response = self.client.get(reverse("check_now", args=[self.gmail.id]))
@@ -230,6 +235,8 @@ class MonitorStatusSyncTests(TestCase):
         self.assertEqual(status_site.favicon, "https://favicon.test/icon.png")
         self.assertEqual(dashboard_site.ssl_status, "Valid")
         self.assertEqual(status_site.ssl_status, "Valid")
+        self.assertEqual(dashboard_site.display_domain, "gmail.com")
+        self.assertEqual(status_site.display_domain, "gmail.com")
 
 
 class IncidentSyncTests(TestCase):
@@ -712,3 +719,16 @@ class ReportingViewsTests(TestCase):
 
         self.assertEqual(len(response.context["chart_data"]["labels"]), 30)
         self.assertEqual(len(response.context["chart_data"]["error_trend"]), 30)
+
+    def test_reports_and_logs_use_normalized_domains_for_display(self):
+        MonitorLog.objects.create(
+            website=self.second_website,
+            status=MonitorLog.STATUS_UP,
+            response_time=180,
+        )
+
+        reports_response = self.client.get(reverse("reports"))
+        logs_response = self.client.get(reverse("logs"))
+
+        self.assertEqual(reports_response.context["slowest_websites"][0]["display_domain"], "slow.example.com")
+        self.assertEqual(logs_response.context["logs"][0]["display_domain"], "slow.example.com")

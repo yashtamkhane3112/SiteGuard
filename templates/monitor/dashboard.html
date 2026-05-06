@@ -270,7 +270,7 @@
                   <span class="website-favicon-container">
                     <img src="{{ site.favicon }}" class="website-favicon" alt="" loading="lazy" />
                   </span>
-                  <h6 class="mb-0 font-mono text-light">{{ site.url }}</h6>
+                  <h6 class="mb-0 font-mono text-light">{{ site.display_domain }}</h6>
                 </div>
                 <span
                   id="status-{{ site.id }}"
@@ -361,7 +361,7 @@
                   {% if logs %}
                   {% for log in logs %}
                   <tr class="activity-row">
-                   <td class="font-mono text-light fw-medium">{{ log.url }}</td> 
+                   <td class="font-mono text-light fw-medium">{{ log.display_domain }}</td> 
                     <td>
                       <span class="status-badge {% if log.status == 'UP' %}badge-up{% elif log.status == 'SLOW' %}badge-slow{% else %}badge-down{% endif %}">● {{ log.status }}</span>
                     </td>

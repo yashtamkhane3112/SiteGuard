@@ -182,7 +182,7 @@
                                 {% endif %}
                               </div>
                               <h5 class="m-0 text-white fw-bold" style="font-size: 1.05rem">
-                                {{ alert.website.url }}
+                                {{ alert.website.display_domain }}
                               </h5>
                               <div class="incident-meta mt-2 text-slate-300 fw-medium">
                                 <span>Created: {{ alert.created_at|date:"Y-m-d H:i" }}</span>
@@ -292,7 +292,7 @@
                         <div class="d-flex align-items-start gap-3">
                           <i data-lucide="globe" class="text-purple mt-1"></i>
                           <div>
-                            <h6 class="text-white m-0 fw-bold text-sm">{{ website.url }}</h6>
+                            <h6 class="text-white m-0 fw-bold text-sm">{{ website.display_domain }}</h6>
                             <p class="text-slate-300 m-0 text-xs mt-1">
                               Control alert generation, email delivery, and custom slow alert threshold.
                             </p>

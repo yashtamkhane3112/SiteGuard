@@ -16,9 +16,10 @@ from .models import Alert, Incident, MonitorLog, Website
 from .utils import (
     check_ssl_status,
     cleanup_monitoring_state,
-    send_alert_email,
     get_favicon_url,
     get_latest_logs_by_website,
+    normalize_domain_display,
+    send_alert_email,
     get_valid_response_times,
     get_site_snapshot,
     get_site_status,
@@ -53,12 +54,18 @@ def get_log_message(log):
     return "Website reachable"
 
 
+def set_display_domain(obj, url_attr='url', display_attr='display_domain'):
+    setattr(obj, display_attr, normalize_domain_display(getattr(obj, url_attr, '')))
+    return obj
+
+
 def serialize_log(log):
     status = get_site_status(log)
     response_time = round(log.response_time, 2) if log.response_time is not None else 0
     return {
         'website': log.website,
         'url': log.website.url,
+        'display_domain': normalize_domain_display(log.website.url),
         'status': status,
         'response_time': response_time,
         'response_time_display': f"{response_time:g} ms" if log.response_time is not None else '—',
@@ -169,6 +176,7 @@ def build_heatmap_rows(websites, logs):
 
     rows = []
     for website in websites:
+        set_display_domain(website)
         cells = []
         for hour in range(0, 24, 2):
             bucket_logs = grouped[website.id].get(hour, [])
@@ -204,6 +212,7 @@ def build_heatmap_rows(websites, logs):
 
         rows.append({
             'website': website,
+            'display_domain': website.display_domain,
             'cells': cells,
         })
 
@@ -215,6 +224,8 @@ def build_reports_context(user, range_key):
     range_start = get_range_start(range_key)
     now = timezone.now()
     websites = list(Website.objects.filter(user=user).order_by('-created_at'))
+    for website in websites:
+        set_display_domain(website)
     website_ids = [website.id for website in websites]
 
     logs_qs = MonitorLog.objects.filter(
@@ -258,17 +269,23 @@ def build_reports_context(user, range_key):
             continue
         slowest_websites.append({
             'website': website,
+            'display_domain': website.display_domain,
             'average_response_time': round(metrics['total'] / metrics['count'], 2),
         })
     slowest_websites.sort(key=lambda item: item['average_response_time'], reverse=True)
     slowest_websites = slowest_websites[:5]
 
-    most_incidents = list(
-        Incident.objects.filter(
+    most_incidents = [
+        {
+            'website__url': item['website__url'],
+            'display_domain': normalize_domain_display(item['website__url']),
+            'total': item['total'],
+        }
+        for item in Incident.objects.filter(
             website__user=user,
             started_at__gte=range_start,
         ).values('website__url').annotate(total=Count('id')).order_by('-total', 'website__url')[:5]
-    )
+    ]
 
     recent_outages = list(
         Incident.objects.filter(
@@ -277,6 +294,8 @@ def build_reports_context(user, range_key):
             started_at__gte=range_start,
         ).select_related('website').order_by('-started_at')[:5]
     )
+    for incident in recent_outages:
+        set_display_domain(incident.website)
     ssl_failures = incidents_qs.filter(incident_type=Incident.TYPE_SSL).count()
 
     alert_counts = {
@@ -419,6 +438,7 @@ def dashboard(request):
     for log in all_logs[:20]:
         logs.append({
             'url': log.website.url,
+            'display_domain': normalize_domain_display(log.website.url),
             'status': get_site_status(log),
             'response_time': round(log.response_time, 2) if log.response_time is not None else 0,
             'checked_at': log.checked_at,
@@ -430,6 +450,7 @@ def dashboard(request):
         website.status = snapshot['status']
         website.response_time = snapshot['response_time']
         website.last_checked = snapshot['last_checked']
+        website.display_domain = normalize_domain_display(website.url)
         website.favicon = get_favicon_url(website.url)
         website.ssl_status = check_ssl_status(website.url)
 
@@ -493,10 +514,12 @@ def dashboard_data(request):
 
     for site in sites:
         snapshot = get_site_snapshot(latest_logs.get(site.id))
+        site.display_domain = normalize_domain_display(site.url)
 
         data.append({
             'id': site.id,
             'url': site.url,
+            'display_domain': site.display_domain,
             'status': snapshot['status'],
             'response_time': snapshot['response_time'],
             'last_checked': snapshot['last_checked'].strftime('%Y-%m-%d %H:%M') if snapshot['last_checked'] else '',
@@ -520,6 +543,7 @@ def status(request):
         site.status = snapshot['status']
         site.response_time = snapshot['response_time']
         site.last_checked = snapshot['last_checked']
+        site.display_domain = normalize_domain_display(site.url)
         site.favicon = get_favicon_url(site.url)
         site.ssl_status = check_ssl_status(site.url)
 
@@ -555,6 +579,8 @@ def incidents(request):
     incidents_qs = Incident.objects.filter(
         website__user=request.user
     ).select_related('website').prefetch_related('events').order_by('-started_at', '-created_at')
+    for incident in incidents_qs:
+        set_display_domain(incident.website)
 
     week_ago = timezone.now() - timedelta(days=7)
     active_incidents = incidents_qs.filter(is_resolved=False).count()
@@ -616,6 +642,10 @@ def alerts(request):
         website__user=request.user
     ).select_related('website', 'incident').prefetch_related('incident__events').order_by('-created_at', '-id')
     websites = Website.objects.filter(user=request.user).order_by('-created_at')
+    for alert in alerts_qs:
+        set_display_domain(alert.website)
+    for website in websites:
+        set_display_domain(website)
 
     active_alerts = alerts_qs.filter(
         is_read=False,

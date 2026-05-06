@@ -226,7 +226,7 @@
                     {% for log in logs %}
                     <tr class="activity-row">
                       <td class="font-mono text-slate-300 text-sm fw-bold">{{ log.checked_at|date:"Y-m-d H:i" }}</td>
-                      <td class="font-mono text-white text-sm">{{ log.url }}</td>
+                      <td class="font-mono text-white text-sm">{{ log.display_domain }}</td>
                       <td><span class="status-badge {{ log.badge_class }}">&bull; {{ log.status }}</span></td>
                       <td class="text-white text-sm">{{ log.response_time_display }}</td>
                       <td class="text-end text-slate-300 text-sm pe-4">{{ log.message }}</td>

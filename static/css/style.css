@@ -354,19 +354,22 @@ body { font-family: 'Inter', sans-serif; background-color: var(--bg-dark); color
     justify-content: center;
     width: 34px;
     height: 34px;
+    line-height: 0;
+    flex-shrink: 0;
     border-radius: 10px;
     background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.03) 100%);
     border: 1px solid rgba(255,255,255,0.04);
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 6px 18px rgba(0,0,0,0.12);
 }
 .result-details { display: flex; flex-direction: column; gap: 10px; width: 100%; min-width: 0; }
-.result-url { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #fff; font-size: 1rem; line-height: 1.4; overflow-wrap: anywhere; word-break: break-word; }
+.result-url { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #fff; font-size: 1rem; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .result-meta { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 14px; font-size: 0.85rem; color: var(--text-muted); }
 .website-favicon {
     width: 22px;
     height: 22px;
     border-radius: 6px;
     object-fit: cover;
+    display: block;
     background: rgba(255,255,255,0.05);
 }
 .ssl-valid {
@@ -533,7 +536,7 @@ body { font-family: 'Inter', sans-serif; background-color: var(--bg-dark); color
 .heatmap-container { width: 100%; overflow-x: auto; }
 .heatmap-labels-top { display: flex; margin-left: 120px; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--text-muted); margin-bottom: 8px;}
 .heatmap-row { display: flex; align-items: center; margin-bottom: 6px; }
-.heatmap-label { width: 120px; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--text-main); flex-shrink: 0;}
+.heatmap-label { width: 120px; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--text-main); flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px;}
 .heatmap-blocks { display: flex; flex-grow: 1; gap: 4px; justify-content: space-between;}
 .heatmap-blocks .block { flex: 1; height: 24px; border-radius: 4px; transition: opacity 0.2s;}
 .heatmap-blocks .block:hover { opacity: 0.7; }
@@ -653,7 +656,7 @@ body { font-family: 'Inter', sans-serif; background-color: var(--bg-dark); color
 .incident-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .incident-icon i { width: 22px; height: 22px; }
 
-.incident-meta { display: flex; flex-wrap: wrap; gap: 15px; font-size: 0.8rem; color: var(--text-muted); }
+.incident-meta { display: flex; flex-wrap: wrap; gap: 15px; font-size: 0.8rem; color: var(--text-muted); align-items: center; }
 
 /* Accordion Animations */
 .chevron-icon { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); margin-top: 10px;}
@@ -715,7 +718,7 @@ body { font-family: 'Inter', sans-serif; background-color: var(--bg-dark); color
 .incident-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .incident-icon i { width: 22px; height: 22px; }
 
-.incident-meta { display: flex; flex-wrap: wrap; gap: 15px; font-size: 0.85rem; }
+.incident-meta { display: flex; flex-wrap: wrap; gap: 15px; font-size: 0.85rem; align-items: center; }
 
 /* Accordion Animations */
 .chevron-icon { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); margin-top: 10px;}
@@ -1371,8 +1374,22 @@ body {
 .custom-table td.font-mono,
 .result-url {
     min-width: 0;
-    overflow-wrap: anywhere;
-    word-break: break-word;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.website-card .font-mono,
+.custom-table td.font-mono,
+.result-url,
+.incident-meta .font-mono {
+    white-space: nowrap;
+}
+
+.website-card .d-flex.align-items-center.gap-2.min-width-0,
+.result-card .result-details,
+.incident-header .d-flex.gap-3.align-items-center.flex-grow-1,
+.settings-item .d-flex.align-items-start.gap-3 {
+    min-width: 0;
 }
 
 .stat-subtext.text-success {

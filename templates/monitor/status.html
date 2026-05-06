@@ -218,12 +218,12 @@
           <div class="results-grid" id="resultsGrid">
             {% if sites %}
             {% for site in sites %}
-            <div class="result-card" data-site-card data-site-url="{{ site.url|lower }}">
+            <div class="result-card" data-site-card data-site-url="{{ site.display_domain|lower }}">
               <div class="result-icon website-favicon-container">
                 <img src="{{ site.favicon }}" class="website-favicon" alt="" loading="lazy" />
               </div>
               <div class="result-details">
-                <div class="result-url">{{ site.url }}</div>
+                <div class="result-url">{{ site.display_domain }}</div>
                 <div class="result-meta">
                   <span class="status-badge {% if site.status == 'UP' %}badge-up{% elif site.status == 'SLOW' %}badge-slow{% else %}badge-down{% endif %}">● {{ site.status }}</span>
                   <span>{% if site.response_time %}{{ site.response_time }}ms{% else %}&mdash;{% endif %}</span>

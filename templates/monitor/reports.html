@@ -254,7 +254,7 @@
                   </div>
                   {% for row in heatmap_rows %}
                   <div class="heatmap-row">
-                    <div class="heatmap-label">{{ row.website.url }}</div>
+                    <div class="heatmap-label" title="{{ row.display_domain }}">{{ row.display_domain }}</div>
                     <div class="heatmap-blocks">
                       {% for cell in row.cells %}
                       <div class="block {{ cell.class }}" title="{{ cell.label }}"></div>
@@ -335,7 +335,7 @@
                   {% if slowest_websites %}
                     {% for item in slowest_websites %}
                     <div class="d-flex justify-content-between align-items-center mb-3">
-                      <span class="font-mono text-slate-300 text-sm">{{ item.website.url }}</span>
+                      <span class="font-mono text-slate-300 text-sm">{{ item.display_domain }}</span>
                       <span class="status-badge badge-slow">&bull; {{ item.average_response_time }}ms</span>
                     </div>
                     {% endfor %}
@@ -348,7 +348,7 @@
                   {% if most_incidents %}
                     {% for item in most_incidents %}
                     <div class="d-flex justify-content-between align-items-center mb-3">
-                      <span class="font-mono text-slate-300 text-sm">{{ item.website__url }}</span>
+                      <span class="font-mono text-slate-300 text-sm">{{ item.display_domain }}</span>
                       <span class="status-badge badge-down">&bull; {{ item.total }}</span>
                     </div>
                     {% endfor %}
@@ -362,7 +362,7 @@
                     {% for incident in recent_outages %}
                     <div class="mb-3">
                       <div class="d-flex justify-content-between align-items-center gap-2">
-                        <span class="font-mono text-slate-300 text-sm">{{ incident.website.url }}</span>
+                        <span class="font-mono text-slate-300 text-sm">{{ incident.website.display_domain }}</span>
                         <span class="status-badge {% if incident.is_resolved %}badge-up{% else %}badge-down{% endif %}">
                           &bull; {% if incident.is_resolved %}RESOLVED{% else %}DOWN{% endif %}
                         </span>
