@@ -487,16 +487,27 @@ function toggleIncident(headerElement) {
     if (isExpanded) {
         bodyElement.classList.remove('expanded');
         headerElement.classList.remove('expanded');
+        headerElement.setAttribute('aria-expanded', 'false');
         bodyElement.style.maxHeight = '';
         if(chevron) chevron.style.transform = 'rotate(0deg)';
     } else {
         bodyElement.classList.add('expanded');
         headerElement.classList.add('expanded');
+        headerElement.setAttribute('aria-expanded', 'true');
         bodyElement.style.maxHeight = bodyElement.scrollHeight + 60 + 'px';
         // Point chevron up
         if(chevron) chevron.style.transform = 'rotate(180deg)'; 
     }
 }
+
+document.querySelectorAll('.incident-header[role="button"]').forEach((header) => {
+    header.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            toggleIncident(header);
+        }
+    });
+});
 
 // 3. Number Counters for Incident Stats
 const incidentCounters = document.querySelectorAll('.incident-stat-card .counter');
@@ -636,7 +647,7 @@ if (globalSearchInput && searchSuggestionsPanel) {
             items.forEach((item) => {
                 parts.push(`
                     <a class="search-suggestion-item" href="${item.url}">
-                        <span>${item.label}<br><span class="search-suggestion-meta">${item.group} • ${item.meta || ''}</span></span>
+                        <span>${item.label}<br><span class="search-suggestion-meta">${item.group}${item.meta ? ` • ${item.meta}` : ''}</span></span>
                     </a>
                 `);
             });
@@ -661,7 +672,7 @@ if (globalSearchInput && searchSuggestionsPanel) {
         clearTimeout(searchTimer);
         if (!endpoint) return;
 
-        searchSuggestionsPanel.innerHTML = '<div class="search-suggestions-state">Loading…</div>';
+        searchSuggestionsPanel.innerHTML = '<div class="search-suggestions-state">Loading...</div>';
         searchSuggestionsPanel.classList.remove('d-none');
 
         searchTimer = setTimeout(async () => {
@@ -713,4 +724,12 @@ document.querySelectorAll('.alert-read-form').forEach((form) => {
         window.setTimeout(() => form.submit(), 180);
     });
 });
+
+const skeletonItems = document.querySelectorAll('[data-skeleton-item]');
+if (skeletonItems.length > 0) {
+    skeletonItems.forEach((item) => item.classList.add('ui-skeleton-loading'));
+    window.setTimeout(() => {
+        skeletonItems.forEach((item) => item.classList.remove('ui-skeleton-loading'));
+    }, 320);
+}
 });

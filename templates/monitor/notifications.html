@@ -49,7 +49,7 @@
                 <option value="success" {% if selected_severity == 'success' %}selected{% endif %}>Success</option>
                 <option value="info" {% if selected_severity == 'info' %}selected{% endif %}>Info</option>
               </select>
-              <label class="site-item m-0">
+              <label class="notification-toggle-chip">
                 <span class="text-white font-mono text-sm fw-medium">Unread Only</span>
                 <input type="checkbox" name="unread" value="1" {% if unread_only %}checked{% endif %} />
               </label>
@@ -79,7 +79,7 @@
 
           <div class="notification-page-grid">
             {% for notification in notifications %}
-            <div class="dash-panel notification-page-card {% if not notification.is_read %}notification-page-card-unread{% endif %}">
+            <div class="dash-panel notification-page-card {% if not notification.is_read %}notification-page-card-unread{% endif %}" data-skeleton-item>
               <div class="d-flex justify-content-between gap-3 flex-wrap">
                 <div class="d-flex gap-3 min-width-0">
                   <div class="notif-icon {{ notification.icon_bg_class }} {{ notification.icon_text_class }}">

@@ -149,7 +149,7 @@
           <div id="report-canvas-area">
             <div class="row g-4 mb-4">
               <div class="col-md-4">
-                <div class="report-stat-card stat-issues">
+                <div class="report-stat-card stat-issues" data-skeleton-item>
                   <div class="d-flex justify-content-between align-items-start">
                     <span class="text-slate-300 text-sm fw-medium">Total Issues Today</span>
                     <i data-lucide="alert-triangle" class="text-warning size-sm"></i>
@@ -159,7 +159,7 @@
                 </div>
               </div>
               <div class="col-md-4">
-                <div class="report-stat-card stat-uptime">
+                <div class="report-stat-card stat-uptime" data-skeleton-item>
                   <div class="d-flex justify-content-between align-items-start">
                     <span class="text-slate-300 text-sm fw-medium">Average Uptime</span>
                     <i data-lucide="activity" class="text-success size-sm"></i>
@@ -169,7 +169,7 @@
                 </div>
               </div>
               <div class="col-md-4">
-                <div class="report-stat-card stat-response">
+                <div class="report-stat-card stat-response" data-skeleton-item>
                   <div class="d-flex justify-content-between align-items-start">
                     <span class="text-slate-300 text-sm fw-medium">Avg Response Time</span>
                     <i data-lucide="zap" class="text-purple size-sm"></i>
@@ -274,42 +274,47 @@
               </div>
               {% endfor %}
 
-              <div class="row g-4 mt-1">
+              <div class="row g-4 mt-4 report-subsection-grid">
                 <div class="col-lg-4">
+                  <div class="report-subsection-card">
                   <h6 class="text-white fw-bold mb-3">Slowest Websites</h6>
                   {% if slowest_websites %}
                     {% for item in slowest_websites %}
-                    <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-3 report-subsection-row">
                       <span class="font-mono text-slate-300 text-sm">{{ item.display_domain }}</span>
-                      <span class="status-badge badge-slow">&bull; {{ item.average_response_time }}ms</span>
+                      <span class="status-badge badge-slow">{{ item.average_response_time }}ms</span>
                     </div>
                     {% endfor %}
                   {% else %}
                   <p class="text-slate-300 text-sm mb-0">No response-time history in this range.</p>
                   {% endif %}
+                  </div>
                 </div>
                 <div class="col-lg-4">
+                  <div class="report-subsection-card">
                   <h6 class="text-white fw-bold mb-3">Most Incidents</h6>
                   {% if most_incidents %}
                     {% for item in most_incidents %}
-                    <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-3 report-subsection-row">
                       <span class="font-mono text-slate-300 text-sm">{{ item.display_domain }}</span>
-                      <span class="status-badge badge-down">&bull; {{ item.total }}</span>
+                      <span class="status-badge badge-down">{{ item.total }}</span>
                     </div>
                     {% endfor %}
                   {% else %}
                   <p class="text-slate-300 text-sm mb-0">No incident history in this range.</p>
                   {% endif %}
+                  </div>
                 </div>
                 <div class="col-lg-4">
+                  <div class="report-subsection-card">
                   <h6 class="text-white fw-bold mb-3">Recent Outages</h6>
                   {% if recent_outages %}
                     {% for incident in recent_outages %}
-                    <div class="mb-3">
+                    <div class="mb-3 report-subsection-row">
                       <div class="d-flex justify-content-between align-items-center gap-2">
                         <span class="font-mono text-slate-300 text-sm">{{ incident.website.display_domain }}</span>
                         <span class="status-badge {% if incident.is_resolved %}badge-up{% else %}badge-down{% endif %}">
-                          &bull; {% if incident.is_resolved %}RESOLVED{% else %}DOWN{% endif %}
+                          {% if incident.is_resolved %}RESOLVED{% else %}DOWN{% endif %}
                         </span>
                       </div>
                       <div class="text-slate-300 text-xs mt-1">{{ incident.started_at|date:"Y-m-d H:i" }}</div>
@@ -318,6 +323,7 @@
                   {% else %}
                   <p class="text-slate-300 text-sm mb-0">No outage incidents in this range.</p>
                   {% endif %}
+                  </div>
                 </div>
               </div>
             </div>

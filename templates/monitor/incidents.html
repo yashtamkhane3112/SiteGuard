@@ -87,7 +87,7 @@
 
           <div class="row g-4 mb-4">
             <div class="col-md-4">
-              <div class="incident-stat-card">
+              <div class="incident-stat-card" data-skeleton-item>
                 <div class="stat-icon-box bg-critical-light text-critical">
                   <i data-lucide="zap"></i>
                 </div>
@@ -108,7 +108,7 @@
               </div>
             </div>
             <div class="col-md-4">
-              <div class="incident-stat-card">
+              <div class="incident-stat-card" data-skeleton-item>
                 <div class="stat-icon-box bg-good-light text-good">
                   <i data-lucide="check-circle"></i>
                 </div>
@@ -129,7 +129,7 @@
               </div>
             </div>
             <div class="col-md-4">
-              <div class="incident-stat-card">
+              <div class="incident-stat-card" data-skeleton-item>
                 <div class="stat-icon-box bg-panel-light text-white">
                   <i data-lucide="clock"></i>
                 </div>
@@ -163,6 +163,9 @@
                 <div
                   class="incident-header{% if not incident.is_resolved %} expanded{% endif %}"
                   onclick="toggleIncident(this)"
+                  role="button"
+                  tabindex="0"
+                  aria-expanded="{% if not incident.is_resolved %}true{% else %}false{% endif %}"
                 >
                   <div class="d-flex gap-3 align-items-center flex-grow-1">
                     <div class="incident-icon {{ incident.icon_bg_class }} {{ incident.icon_text_class }}">
@@ -171,7 +174,7 @@
                     <div>
                       <div class="d-flex align-items-center gap-2 mb-1">
                         <span class="text-white font-mono text-xs fw-bold">{{ incident.incident_code }}</span>
-                        <span class="status-badge {{ incident.badge_class }}">&bull; {{ incident.status_label }}</span>
+                        <span class="status-badge {{ incident.badge_class }}">{{ incident.status_label }}</span>
                       </div>
                       <h5
                         class="m-0 text-white fw-bold"

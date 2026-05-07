@@ -90,9 +90,9 @@
                 </p>
               </div>
               <div class="d-flex gap-2 flex-wrap">
-                <span class="status-badge badge-down">&bull; {{ down_count }} DOWN</span>
-                <span class="status-badge badge-slow">&bull; {{ slow_count }} SLOW</span>
-                <span class="status-badge badge-up">&bull; {{ up_count }} UP</span>
+                <span class="status-badge badge-down">{{ down_count }} DOWN</span>
+                <span class="status-badge badge-slow">{{ slow_count }} SLOW</span>
+                <span class="status-badge badge-up">{{ up_count }} UP</span>
               </div>
             </div>
           </div>
@@ -107,7 +107,7 @@
                   <h2 class="stat-value-lg counter m-0" data-target="{{ down_count }}" data-suffix="">0</h2>
                   <span class="text-slate-300 text-sm fw-bold">Failed Checks</span>
                   <div class="mt-2">
-                    <span class="status-badge badge-down">&bull; DOWN</span>
+                    <span class="status-badge badge-down">DOWN</span>
                   </div>
                 </div>
               </div>
@@ -121,7 +121,7 @@
                   <h2 class="stat-value-lg counter m-0" data-target="{{ slow_count }}" data-suffix="">0</h2>
                   <span class="text-slate-300 text-sm fw-bold">Slow Checks</span>
                   <div class="mt-2">
-                    <span class="status-badge badge-slow">&bull; SLOW</span>
+                    <span class="status-badge badge-slow">SLOW</span>
                   </div>
                 </div>
               </div>
@@ -135,7 +135,7 @@
                   <h2 class="stat-value-lg counter m-0" data-target="{{ up_count }}" data-suffix="">0</h2>
                   <span class="text-slate-300 text-sm fw-bold">Healthy Checks</span>
                   <div class="mt-2">
-                    <span class="status-badge badge-up">&bull; UP</span>
+                    <span class="status-badge badge-up">UP</span>
                   </div>
                 </div>
               </div>
@@ -170,7 +170,7 @@
                     <tr class="activity-row">
                       <td class="font-mono text-slate-300 text-sm fw-bold">{{ log.checked_at|date:"Y-m-d H:i" }}</td>
                       <td class="font-mono text-white text-sm">{{ log.display_domain }}</td>
-                      <td><span class="status-badge {{ log.badge_class }}">&bull; {{ log.status }}</span></td>
+                      <td><span class="status-badge {{ log.badge_class }}">{{ log.status }}</span></td>
                       <td class="text-white text-sm">{{ log.response_time_display }}</td>
                       <td class="text-end text-slate-300 text-sm pe-4">{{ log.message }}</td>
                     </tr>

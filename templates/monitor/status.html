@@ -137,7 +137,7 @@
               <div class="result-details">
                 <div class="result-url">{{ site.display_domain }}</div>
                 <div class="result-meta">
-                  <span class="status-badge {% if site.status == 'UP' %}badge-up{% elif site.status == 'SLOW' %}badge-slow{% else %}badge-down{% endif %}">● {{ site.status }}</span>
+                  <span class="status-badge {% if site.status == 'UP' %}badge-up{% elif site.status == 'SLOW' %}badge-slow{% else %}badge-down{% endif %}">{{ site.status }}</span>
                   <span>{% if site.response_time %}{{ site.response_time }}ms{% else %}&mdash;{% endif %}</span>
                 </div>
                 <div class="result-meta">

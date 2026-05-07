@@ -132,7 +132,7 @@
               <!-- Card 1: Website Status -->
               <div class="stat-card">
                 <span class="panel-label">Website Status</span>
-                <span class="status-badge {% if status == 'UP' %}badge-up{% elif status == 'SLOW' %}badge-slow{% else %}badge-down{% endif %}">● {{ status }}</span>
+                <span class="status-badge {% if status == 'UP' %}badge-up{% elif status == 'SLOW' %}badge-slow{% else %}badge-down{% endif %}">{{ status }}</span>
                 <span class="stat-subtext fw-semibold {% if status == 'DOWN' %}text-danger{% elif has_slow %}text-warning{% else %}text-success{% endif %}"
                   >{% if status == 'DOWN' %}Issues detected{% elif has_slow %}Performance degraded{% else %}All systems operational{% endif %}</span
                 >
@@ -176,50 +176,48 @@
             <p class="panel-subtitle mb-4">Websites being monitored...</p>
 
             {% if sites %} {% for site in sites %}
-            <div id="site-{{ site.id }}" class="website-card p-3 mb-3 rounded-3 shadow-sm">
+            <div id="site-{{ site.id }}" class="website-card p-3 mb-3 rounded-3 shadow-sm" data-skeleton-item>
               <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <div class="d-flex align-items-center gap-2 min-width-0">
+                <div class="d-flex align-items-center gap-3 min-width-0 website-card-primary">
                   <span class="website-favicon-container">
                     <img src="{{ site.favicon }}" class="website-favicon" alt="" loading="lazy" />
                   </span>
-                  <h6 class="mb-0 font-mono text-light">{{ site.display_domain }}</h6>
+                  <div class="min-width-0">
+                    <h6 class="mb-1 font-mono text-light website-domain">{{ site.display_domain }}</h6>
+                    <div class="website-meta-inline">
+                      <span class="website-meta-pill">SSL: {{ site.ssl_status|default:"Unknown" }}</span>
+                      <span class="website-meta-pill">Added {{ site.created_at|date:"M d, Y" }}</span>
+                    </div>
+                  </div>
                 </div>
                 <span
                   id="status-{{ site.id }}"
                   class="status-badge {% if site.status == 'UP' %}badge-up{% elif site.status == 'SLOW' %}badge-slow{% else %}badge-down{% endif %}"
                 >
-                  ● {{ site.status }}
+                  {{ site.status }}
                 </span>
               </div>
 
-              <div class="d-flex justify-content-between mt-2 flex-wrap gap-2">
+              <div class="d-flex justify-content-between align-items-end mt-3 flex-wrap gap-3 website-card-metrics">
                 <small
                   id="response-{{ site.id }}"
-                  class="{% if site.response_time > 2000 %}text-warning{% else %}text-light{% endif %} fw-semibold"
+                  class="{% if site.response_time > 2000 %}text-warning{% else %}text-light{% endif %} fw-semibold website-response-value"
                 >
                   {{ site.response_time }} ms
                 </small>
 
-                <small id="time-{{ site.id }}" class="text-secondary">
-                  {% if site.last_checked %}{{ site.last_checked|date:"Y-m-d H:i" }}{% endif %}
+                <small id="time-{{ site.id }}" class="text-secondary website-last-checked">
+                  Last checked {% if site.last_checked %}{{ site.last_checked|date:"Y-m-d H:i" }}{% else %}pending{% endif %}
                 </small>
-              </div>
-
-              <div class="mt-2">
-                {% if site.ssl_status == "Valid" %}
-                <span class="ssl-valid">SSL: Valid</span>
-                {% else %}
-                <span class="ssl-invalid">SSL: Invalid</span>
-                {% endif %}
               </div>
 
               <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
                 <a
                   href="{% url 'reports' %}"
-                  class="text-sm fw-bold uptime-link"
+                  class="text-sm fw-bold uptime-link website-card-link"
                   title="View full uptime report"
                 >
-                  Added {{ site.created_at|date:"M d, Y" }}
+                  View monitoring details
                   <i
                     data-lucide="external-link"
                     style="
@@ -275,7 +273,7 @@
                   <tr class="activity-row">
                    <td class="font-mono text-light fw-medium">{{ log.display_domain }}</td> 
                     <td>
-                      <span class="status-badge {% if log.status == 'UP' %}badge-up{% elif log.status == 'SLOW' %}badge-slow{% else %}badge-down{% endif %}">● {{ log.status }}</span>
+                      <span class="status-badge {% if log.status == 'UP' %}badge-up{% elif log.status == 'SLOW' %}badge-slow{% else %}badge-down{% endif %}">{{ log.status }}</span>
                     </td>
                     <td class="text-light opacity-75">{{ log.response_time }} ms</td>
                     <td class="text-light opacity-75">OK</td>
@@ -324,7 +322,7 @@
 
             if (statusElement) {
               statusElement.className = `status-badge ${site.status === "DOWN" ? "badge-down" : site.status === "SLOW" ? "badge-slow" : "badge-up"}`;
-              statusElement.innerText = `● ${site.status}`;
+              statusElement.innerText = site.status;
             }
 
             if (responseElement) {
