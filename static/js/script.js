@@ -427,16 +427,40 @@ const sidebar = document.getElementById('sidebar');
 const overlay = document.getElementById('mobileOverlay');
 
 if (mobileToggle && sidebar && overlay) {
-    // Open sidebar
-    mobileToggle.addEventListener('click', () => {
+    const openSidebar = () => {
         sidebar.classList.add('open');
         overlay.classList.add('open');
-    });
+        document.body.classList.add('sidebar-open');
+    };
 
-    // Close sidebar when clicking the dark overlay
-    overlay.addEventListener('click', () => {
+    const closeSidebar = () => {
         sidebar.classList.remove('open');
         overlay.classList.remove('open');
+        document.body.classList.remove('sidebar-open');
+    };
+
+    mobileToggle.addEventListener('click', () => {
+        if (sidebar.classList.contains('open')) {
+            closeSidebar();
+        } else {
+            openSidebar();
+        }
+    });
+
+    overlay.addEventListener('click', () => {
+        closeSidebar();
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && sidebar.classList.contains('open')) {
+            closeSidebar();
+        }
+    });
+
+    window.addEventListener('resize', () => {
+        if (window.innerWidth > 992 && sidebar.classList.contains('open')) {
+            closeSidebar();
+        }
     });
 }
 // 1. Interactive Filters
@@ -569,14 +593,12 @@ const animateCounters = () => {
 animateCounters();
 
 // 4. "Check Status" Button Simulation
-const checkStatusBtn = document.getElementById('checkStatusBtn');
-if (checkStatusBtn) {
-    const statusSearchInput = document.getElementById('websiteUrl');
-    const statusCards = Array.from(document.querySelectorAll('[data-site-card]'));
-    const statusEmptyState = document.getElementById('statusSearchEmptyState');
+const statusSearchInput = document.getElementById('websiteUrl');
+const statusCards = Array.from(document.querySelectorAll('[data-site-card]'));
+const statusEmptyState = document.getElementById('statusSearchEmptyState');
 
+if (statusSearchInput && statusCards.length) {
     const filterStatusCards = (scrollToFirstMatch = false) => {
-        if (!statusSearchInput || !statusCards.length) return;
         const query = statusSearchInput.value.trim().toLowerCase();
         let firstMatch = null;
         let visibleCount = 0;
@@ -615,16 +637,13 @@ if (checkStatusBtn) {
         }
     };
 
-    if (statusSearchInput && statusCards.length) {
-        statusSearchInput.addEventListener('input', () => filterStatusCards(false));
-        statusSearchInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                filterStatusCards(true);
-            }
-        });
-        checkStatusBtn.addEventListener('click', () => filterStatusCards(true));
-    }
+    statusSearchInput.addEventListener('input', () => filterStatusCards(false));
+    statusSearchInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            filterStatusCards(true);
+        }
+    });
 }
 
 // 5. Table Live Search
