@@ -90,13 +90,20 @@
           </div>
         </header>
 
-        <div class="content-wrapper" style="max-width: 900px">
+        <div class="content-wrapper" style="max-width: 980px">
           <div class="mb-4">
             <h2 class="page-title text-white">Utilities</h2>
             <p class="page-subtitle text-slate-300">
-              Handy tools for domain checking and URL encoding/decoding.
+              Real webmaster diagnostics for encoding, DNS, SSL, headers, latency, and monitor onboarding.
             </p>
           </div>
+
+          {% if utility_feedback %}
+          <div class="utility-state-banner utility-state-{{ utility_feedback_state }} mb-4">
+            <i data-lucide="{% if utility_feedback_state == 'success' %}check-circle{% elif utility_feedback_state == 'warning' %}alert-triangle{% else %}x-circle{% endif %}"></i>
+            <span>{{ utility_feedback }}</span>
+          </div>
+          {% endif %}
 
           <div class="dash-panel mb-4">
             <div class="d-flex align-items-center gap-3 mb-4">
@@ -106,43 +113,89 @@
               <div>
                 <h5 class="m-0 text-white fw-bold">URL Encoder / Decoder</h5>
                 <p class="m-0 text-slate-300 text-sm">
-                  Encode or decode URL strings
+                  Safe backend conversion with Unicode support and invalid decode protection
                 </p>
               </div>
             </div>
 
-            <div class="mb-4">
-              <label class="form-label text-slate-300 text-sm fw-medium"
-                >Encode</label
-              >
-              <input
-                type="text"
-                class="form-control custom-input mb-3"
-                id="encodeInput"
-                placeholder="Enter URL to encode..."
-              />
-              <button class="btn btn-outline-dark-custom" id="encodeBtn">
-                <i data-lucide="arrow-right-left" class="me-2 size-sm"></i>
-                Encode
-              </button>
-            </div>
+            <div class="utility-split-grid">
+              <form method="post" class="utility-form-panel utility-submit-form">
+                {% csrf_token %}
+                <input type="hidden" name="utility_action" value="encode" />
+                <label class="form-label text-slate-300 text-sm fw-medium">Encode</label>
+                <input
+                  type="text"
+                  class="form-control custom-input mb-3"
+                  id="encodeInput"
+                  name="encode_input"
+                  value="{{ encode_value }}"
+                  placeholder="Enter URL or text to encode..."
+                />
+                <div class="utility-action-row">
+                  <button class="btn btn-outline-dark-custom" type="submit">
+                    <i data-lucide="arrow-right-left" class="me-2 size-sm"></i>
+                    Encode
+                  </button>
+                  <button class="btn btn-outline-dark-custom" type="button" data-clear-target="encodeInput">
+                    <i data-lucide="eraser" class="me-2 size-sm"></i>
+                    Clear
+                  </button>
+                </div>
+                <div class="utility-output-box {% if encode_result %}is-visible{% endif %}">
+                  {% if encode_result %}
+                  <div class="utility-output-head">
+                    <span class="status-badge badge-up">SUCCESS</span>
+                    <button class="btn btn-outline-dark-custom btn-sm" type="button" data-copy-target="encodeResultOutput">Copy</button>
+                  </div>
+                  <div class="utility-output-text font-mono" id="encodeResultOutput">{{ encode_result.result }}</div>
+                  {% else %}
+                  <div class="utility-empty-inline">No encoded result yet.</div>
+                  {% endif %}
+                </div>
+              </form>
 
-            <hr style="border-color: rgba(255, 255, 255, 0.1)" />
-
-            <div class="mt-4">
-              <label class="form-label text-slate-300 text-sm fw-medium"
-                >Decode</label
-              >
-              <input
-                type="text"
-                class="form-control custom-input mb-3"
-                id="decodeInput"
-                placeholder="Enter encoded URL..."
-              />
-              <button class="btn btn-outline-dark-custom" id="decodeBtn">
-                <i data-lucide="arrow-right-left" class="me-2 size-sm"></i>
-                Decode
-              </button>
+              <form method="post" class="utility-form-panel utility-submit-form">
+                {% csrf_token %}
+                <input type="hidden" name="utility_action" value="decode" />
+                <label class="form-label text-slate-300 text-sm fw-medium">Decode</label>
+                <input
+                  type="text"
+                  class="form-control custom-input mb-3"
+                  id="decodeInput"
+                  name="decode_input"
+                  value="{{ decode_value }}"
+                  placeholder="Enter encoded URL..."
+                />
+                <div class="utility-action-row">
+                  <button class="btn btn-outline-dark-custom" type="submit">
+                    <i data-lucide="arrow-right-left" class="me-2 size-sm"></i>
+                    Decode
+                  </button>
+                  <button class="btn btn-outline-dark-custom" type="button" data-clear-target="decodeInput">
+                    <i data-lucide="eraser" class="me-2 size-sm"></i>
+                    Clear
+                  </button>
+                </div>
+                <div class="utility-output-box {% if decode_result %}is-visible{% endif %}">
+                  {% if decode_result %}
+                  <div class="utility-output-head">
+                    <span class="status-badge {% if decode_result.success %}badge-up{% else %}badge-down{% endif %}">
+                      {% if decode_result.success %}SUCCESS{% else %}INVALID{% endif %}
+                    </span>
+                    {% if decode_result.success %}
+                    <button class="btn btn-outline-dark-custom btn-sm" type="button" data-copy-target="decodeResultOutput">Copy</button>
+                    {% endif %}
+                  </div>
+                  {% if decode_result.success %}
+                  <div class="utility-output-text font-mono" id="decodeResultOutput">{{ decode_result.result }}</div>
+                  {% else %}
+                  <div class="utility-error-text">{{ decode_result.error }}</div>
+                  {% endif %}
+                  {% else %}
+                  <div class="utility-empty-inline">No decoded result yet.</div>
+                  {% endif %}
+                </div>
+              </form>
             </div>
           </div>
 
@@ -154,55 +207,184 @@
               <div>
                 <h5 class="m-0 text-white fw-bold">Domain Checker</h5>
                 <p class="m-0 text-slate-300 text-sm">
-                  Check domain availability and info
+                  Inspect public domains with live network and security diagnostics
                 </p>
               </div>
             </div>
 
-            <div class="url-input-wrapper mb-3">
-              <i data-lucide="search" class="url-icon"></i>
-              <input
-                type="text"
-                class="url-input"
-                id="domainInput"
-                placeholder="example.com"
-                value="example.com"
-              />
-            </div>
-            <button class="btn btn-primary-custom w-100" id="checkDomainBtn">
-              <i data-lucide="globe" class="me-2 size-sm"></i> Check Domain
-            </button>
+            <form method="post" class="utility-submit-form">
+              {% csrf_token %}
+              <input type="hidden" name="utility_action" value="domain_check" />
+              <div class="url-input-wrapper mb-3">
+                <i data-lucide="search" class="url-icon"></i>
+                <input
+                  type="text"
+                  class="url-input"
+                  id="domainInput"
+                  name="domain_input"
+                  placeholder="google.com"
+                  value="{{ domain_value }}"
+                />
+              </div>
+              <div class="utility-action-row">
+                <button class="btn btn-primary-custom flex-grow-1" id="checkDomainBtn" type="submit">
+                  <i data-lucide="globe" class="me-2 size-sm"></i> Check Domain
+                </button>
+                <button class="btn btn-outline-dark-custom" type="button" data-clear-target="domainInput">
+                  <i data-lucide="eraser" class="me-2 size-sm"></i>
+                  Clear
+                </button>
+              </div>
+            </form>
 
-            <div
-              id="domainResult"
-              class="domain-result-card mt-4"
-              style="display: block"
-            >
-              <div class="d-flex align-items-center gap-2 mb-3">
-                <i data-lucide="check-circle" class="text-good size-sm"></i>
-                <span class="text-white fw-bold font-mono">example.com</span>
+            {% if domain_result %}
+            <div id="domainResult" class="domain-result-card mt-4 utility-state-card utility-state-{{ domain_result.state }}">
+              <div class="utility-result-head">
+                <div class="d-flex align-items-center gap-2 min-width-0">
+                  <i
+                    data-lucide="{% if domain_result.state == 'success' %}check-circle{% elif domain_result.state == 'warning' %}alert-triangle{% else %}x-circle{% endif %}"
+                    class="{% if domain_result.state == 'success' %}text-good{% elif domain_result.state == 'warning' %}text-warning{% else %}text-critical{% endif %} size-sm"
+                  ></i>
+                  <span class="text-white fw-bold font-mono utility-domain-name">{{ domain_result.domain|default:domain_result.input }}</span>
+                </div>
+                <span class="status-badge {{ domain_result.badge_class }}">{{ domain_result.status_label }}</span>
               </div>
-              <div class="d-flex justify-content-between mb-2">
-                <span class="text-slate-300 text-sm">Registrar</span>
-                <span class="text-white text-sm fw-medium">NameCheap Inc.</span>
+
+              {% if domain_result.error_message %}
+              <div class="utility-error-text mt-3">{{ domain_result.error_message }}</div>
+              {% endif %}
+
+              <div class="utility-metric-grid mt-4">
+                <div class="utility-metric-card">
+                  <span class="utility-metric-label">Normalized Domain</span>
+                  <span class="utility-metric-value font-mono">{{ domain_result.domain|default:"-" }}</span>
+                </div>
+                <div class="utility-metric-card">
+                  <span class="utility-metric-label">Resolved IP</span>
+                  <span class="utility-metric-value font-mono">{{ domain_result.ip_address|default:"-" }}</span>
+                </div>
+                <div class="utility-metric-card">
+                  <span class="utility-metric-label">HTTP Status</span>
+                  <span class="utility-metric-value">{{ domain_result.status|default:"-" }}</span>
+                </div>
+                <div class="utility-metric-card">
+                  <span class="utility-metric-label">Response Time</span>
+                  <span class="utility-metric-value">{% if domain_result.response_time %}{{ domain_result.response_time }} ms{% else %}-{% endif %}</span>
+                </div>
+                <div class="utility-metric-card">
+                  <span class="utility-metric-label">Nameservers</span>
+                  <span class="utility-metric-value">{{ domain_result.nameserver_count }}</span>
+                </div>
+                <div class="utility-metric-card">
+                  <span class="utility-metric-label">Security State</span>
+                  <span class="utility-metric-value">{{ domain_result.security_state }}</span>
+                </div>
               </div>
-              <div class="d-flex justify-content-between mb-2">
-                <span class="text-slate-300 text-sm">Created</span>
-                <span class="text-white text-sm fw-medium font-mono"
-                  >1997-09-15</span
-                >
+
+              <div class="utility-action-row mt-4">
+                {% if domain_result.domain %}
+                  {% if domain_result.already_monitored %}
+                  <span class="status-badge badge-up">Already Monitored</span>
+                  {% else %}
+                  <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="utility_action" value="add_to_monitoring" />
+                    <input type="hidden" name="monitor_domain" value="{{ domain_result.domain }}" />
+                    <button class="btn btn-primary-custom" type="submit">
+                      <i data-lucide="plus-circle" class="me-2 size-sm"></i>
+                      Add to Monitoring
+                    </button>
+                  </form>
+                  {% endif %}
+                {% endif %}
               </div>
-              <div class="d-flex justify-content-between mb-2">
-                <span class="text-slate-300 text-sm">Expires</span>
-                <span class="text-white text-sm fw-medium font-mono"
-                  >2027-09-14</span
-                >
-              </div>
-              <div class="d-flex justify-content-between">
-                <span class="text-slate-300 text-sm">Status</span>
-                <span class="text-good text-sm fw-bold">Active</span>
+
+              <div class="utility-diagnostics-grid mt-4">
+                <div class="utility-diagnostic-card">
+                  <div class="utility-card-head">
+                    <h6 class="text-white fw-bold m-0">SSL Diagnostics</h6>
+                    <span class="status-badge {% if domain_result.ssl_details.valid %}badge-up{% else %}badge-down{% endif %}">
+                      {% if domain_result.ssl_details.valid %}VALID{% else %}INVALID{% endif %}
+                    </span>
+                  </div>
+                  <div class="utility-kv-list">
+                    <div class="utility-kv-row"><span>Issuer</span><span>{{ domain_result.ssl_details.issuer|default:"-" }}</span></div>
+                    <div class="utility-kv-row"><span>Expiry Date</span><span class="font-mono">{{ domain_result.ssl_details.expiry_date|default:"-" }}</span></div>
+                    <div class="utility-kv-row"><span>Days Remaining</span><span>{{ domain_result.ssl_details.days_remaining|default:"-" }}</span></div>
+                    {% if domain_result.ssl_details.error %}
+                    <div class="utility-kv-row utility-kv-row-full"><span>SSL Error</span><span>{{ domain_result.ssl_details.error }}</span></div>
+                    {% endif %}
+                  </div>
+                </div>
+
+                <div class="utility-diagnostic-card">
+                  <div class="utility-card-head">
+                    <h6 class="text-white fw-bold m-0">Latency</h6>
+                    <span class="status-badge {% if domain_result.latency.reachable %}{% if domain_result.latency.is_slow %}badge-slow{% else %}badge-up{% endif %}{% else %}badge-down{% endif %}">
+                      {{ domain_result.latency.state }}
+                    </span>
+                  </div>
+                  <div class="utility-kv-list">
+                    <div class="utility-kv-row"><span>Reachable</span><span>{% if domain_result.latency.reachable %}Yes{% else %}No{% endif %}</span></div>
+                    <div class="utility-kv-row"><span>Status Code</span><span>{{ domain_result.latency.status_code|default:"-" }}</span></div>
+                    <div class="utility-kv-row"><span>Response Time</span><span>{% if domain_result.latency.response_time %}{{ domain_result.latency.response_time }} ms{% else %}-{% endif %}</span></div>
+                    <div class="utility-kv-row"><span>Threshold</span><span>{% if domain_result.latency.is_slow %}> 2000 ms{% else %}Normal{% endif %}</span></div>
+                  </div>
+                </div>
+
+                <div class="utility-diagnostic-card">
+                  <div class="utility-card-head">
+                    <h6 class="text-white fw-bold m-0">DNS Lookup</h6>
+                    <span class="status-badge {% if domain_result.dns_records.A or domain_result.dns_records.MX or domain_result.dns_records.NS or domain_result.dns_records.TXT %}badge-up{% else %}badge-slow{% endif %}">
+                      DNS
+                    </span>
+                  </div>
+                  <div class="utility-record-group">
+                    <div><span class="utility-metric-label">A</span><div class="utility-chip-wrap">{% for item in domain_result.dns_records.A %}<span class="utility-chip font-mono">{{ item }}</span>{% empty %}<span class="utility-empty-inline">No A records</span>{% endfor %}</div></div>
+                    <div><span class="utility-metric-label">MX</span><div class="utility-chip-wrap">{% for item in domain_result.dns_records.MX %}<span class="utility-chip font-mono">{{ item }}</span>{% empty %}<span class="utility-empty-inline">No MX records</span>{% endfor %}</div></div>
+                    <div><span class="utility-metric-label">NS</span><div class="utility-chip-wrap">{% for item in domain_result.dns_records.NS %}<span class="utility-chip font-mono">{{ item }}</span>{% empty %}<span class="utility-empty-inline">No NS records</span>{% endfor %}</div></div>
+                    <div><span class="utility-metric-label">TXT</span><div class="utility-chip-wrap">{% for item in domain_result.dns_records.TXT %}<span class="utility-chip font-mono">{{ item }}</span>{% empty %}<span class="utility-empty-inline">No TXT records</span>{% endfor %}</div></div>
+                  </div>
+                </div>
+
+                <div class="utility-diagnostic-card">
+                  <div class="utility-card-head">
+                    <h6 class="text-white fw-bold m-0">Headers Analyzer</h6>
+                    <span class="status-badge {% if domain_result.headers.missing_security_headers or domain_result.headers.weak_configurations %}badge-slow{% else %}badge-up{% endif %}">
+                      HEADERS
+                    </span>
+                  </div>
+                  <div class="utility-kv-list">
+                    <div class="utility-kv-row"><span>Server</span><span>{{ domain_result.headers.server|default:"-" }}</span></div>
+                    <div class="utility-kv-row"><span>Content-Type</span><span>{{ domain_result.headers.content_type|default:"-" }}</span></div>
+                    <div class="utility-kv-row"><span>Cache-Control</span><span>{{ domain_result.headers.cache_control|default:"-" }}</span></div>
+                    <div class="utility-kv-row"><span>X-Frame-Options</span><span>{{ domain_result.headers.x_frame_options|default:"-" }}</span></div>
+                    <div class="utility-kv-row"><span>HSTS</span><span>{{ domain_result.headers.strict_transport_security|default:"-" }}</span></div>
+                    {% if domain_result.headers.missing_security_headers %}
+                    <div class="utility-kv-row utility-kv-row-full">
+                      <span>Missing Headers</span>
+                      <span>{{ domain_result.headers.missing_security_headers|join:", " }}</span>
+                    </div>
+                    {% endif %}
+                    {% if domain_result.headers.weak_configurations %}
+                    <div class="utility-kv-row utility-kv-row-full">
+                      <span>Weak Config</span>
+                      <span>{{ domain_result.headers.weak_configurations|join:", " }}</span>
+                    </div>
+                    {% endif %}
+                  </div>
+                </div>
               </div>
             </div>
+            {% else %}
+            <div class="domain-result-card mt-4 utility-empty-state">
+              <i data-lucide="radar"></i>
+              <h6 class="text-white fw-bold mb-2">Run a live domain inspection</h6>
+              <p class="m-0 text-slate-300 text-sm">
+                Results here are generated from real DNS, SSL, HTTP header, and latency checks. Demo utility data has been removed.
+              </p>
+            </div>
+            {% endif %}
           </div>
         </div>
       </main>
@@ -210,5 +392,43 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{% static 'js/script.js' %}"></script>
+    <script>
+      document.querySelectorAll("[data-clear-target]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const target = document.getElementById(button.dataset.clearTarget);
+          if (target) {
+            target.value = "";
+            target.focus();
+          }
+        });
+      });
+
+      document.querySelectorAll("[data-copy-target]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const target = document.getElementById(button.dataset.copyTarget);
+          if (!target) return;
+          try {
+            await navigator.clipboard.writeText(target.textContent.trim());
+            button.textContent = "Copied";
+            window.setTimeout(() => {
+              button.textContent = "Copy";
+            }, 1200);
+          } catch (error) {
+            button.textContent = "Unavailable";
+          }
+        });
+      });
+
+      document.querySelectorAll(".utility-submit-form").forEach((form) => {
+        form.addEventListener("submit", () => {
+          form.classList.add("loading-skeleton");
+          const submitButton = form.querySelector('button[type="submit"]');
+          if (submitButton) {
+            submitButton.dataset.originalText = submitButton.innerHTML;
+            submitButton.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span> Loading';
+          }
+        });
+      });
+    </script>
   </body>
 </html>

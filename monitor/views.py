@@ -14,12 +14,16 @@ from django.utils import timezone
 from .forms import LoginForm, SignUpForm
 from .models import Alert, Incident, MonitorLog, Website
 from .utils import (
+    analyze_domain,
     check_ssl_status,
     cleanup_monitoring_state,
     get_favicon_url,
     get_latest_logs_by_website,
     normalize_domain_display,
+    normalize_utility_domain,
     send_alert_email,
+    safe_url_decode,
+    safe_url_encode,
     get_valid_response_times,
     get_site_snapshot,
     get_site_status,
@@ -737,8 +741,113 @@ def update_website_alert_settings(request, website_id):
     return redirect('alerts')
 
 
+def _build_utility_result_meta(domain_result):
+    state = 'failure'
+    badge_class = 'badge-down'
+    status_label = 'UNREACHABLE'
+
+    if not domain_result:
+        return {
+            'state': state,
+            'badge_class': badge_class,
+            'status_label': status_label,
+        }
+
+    if domain_result.get('reachable'):
+        latency = domain_result.get('latency', {})
+        if latency.get('is_slow'):
+            state = 'warning'
+            badge_class = 'badge-slow'
+            status_label = 'SLOW'
+        else:
+            state = 'success'
+            badge_class = 'badge-up'
+            status_label = 'REACHABLE'
+    elif domain_result.get('error_message') == 'Request timed out.':
+        state = 'warning'
+        badge_class = 'badge-slow'
+        status_label = 'TIMEOUT'
+    elif domain_result.get('error_message'):
+        status_label = 'UNREACHABLE' if domain_result.get('domain') else 'INVALID DOMAIN'
+
+    return {
+        'state': state,
+        'badge_class': badge_class,
+        'status_label': status_label,
+    }
+
+
+@login_required
 def utilities(request):
-    return render(request, 'monitor/utilities.html')
+    utility_context = {
+        'encode_value': '',
+        'encode_result': None,
+        'decode_value': '',
+        'decode_result': None,
+        'domain_value': 'example.com',
+        'domain_result': None,
+        'utility_feedback': '',
+        'utility_feedback_state': '',
+    }
+
+    if request.method == 'POST':
+        action = request.POST.get('utility_action')
+
+        if action == 'encode':
+            encoded = safe_url_encode(request.POST.get('encode_input', ''))
+            utility_context.update({
+                'encode_value': encoded['value'],
+                'encode_result': encoded,
+            })
+        elif action == 'decode':
+            decoded = safe_url_decode(request.POST.get('decode_input', ''))
+            utility_context.update({
+                'decode_value': decoded['value'],
+                'decode_result': decoded,
+            })
+        elif action == 'domain_check':
+            domain_value = request.POST.get('domain_input', '')
+            domain_result = analyze_domain(domain_value)
+            domain_result.update(_build_utility_result_meta(domain_result))
+            domain_result['already_monitored'] = (
+                Website.objects.filter(
+                    user=request.user,
+                    url=Website.normalize_url(domain_result.get('domain', '')),
+                ).exists()
+                if domain_result.get('domain')
+                else False
+            )
+            utility_context.update({
+                'domain_value': domain_value,
+                'domain_result': domain_result,
+            })
+        elif action == 'add_to_monitoring':
+            raw_domain = request.POST.get('monitor_domain', '')
+            try:
+                normalized_domain = normalize_utility_domain(raw_domain)
+                normalized_url = Website.normalize_url(normalized_domain)
+                website, created = Website.objects.get_or_create(
+                    user=request.user,
+                    url=normalized_url,
+                )
+                utility_context['utility_feedback'] = (
+                    'Domain added to monitoring.'
+                    if created else
+                    'Already monitored.'
+                )
+                utility_context['utility_feedback_state'] = 'success' if created else 'warning'
+                domain_result = analyze_domain(normalized_domain)
+                domain_result.update(_build_utility_result_meta(domain_result))
+                domain_result['already_monitored'] = True
+                utility_context.update({
+                    'domain_value': normalized_domain,
+                    'domain_result': domain_result,
+                })
+            except Exception:
+                utility_context['utility_feedback'] = 'Unable to add this domain to monitoring.'
+                utility_context['utility_feedback_state'] = 'failure'
+
+    return render(request, 'monitor/utilities.html', utility_context)
 
 
 @login_required

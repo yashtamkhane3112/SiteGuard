@@ -2,13 +2,23 @@ from datetime import timedelta
 
 from unittest.mock import Mock, patch
 
+import requests
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
 from monitor.models import Alert, Incident, IncidentEvent, MonitorLog, Website
-from monitor.utils import cleanup_monitoring_state, get_favicon_url, get_site_status, normalize_domain_display, run_single_check
+from monitor.utils import (
+    analyze_domain,
+    cleanup_monitoring_state,
+    get_favicon_url,
+    get_site_status,
+    normalize_domain_display,
+    run_single_check,
+    safe_url_decode,
+    safe_url_encode,
+)
 
 
 class AuthFlowTests(TestCase):
@@ -732,3 +742,212 @@ class ReportingViewsTests(TestCase):
 
         self.assertEqual(reports_response.context["slowest_websites"][0]["display_domain"], "slow.example.com")
         self.assertEqual(logs_response.context["logs"][0]["display_domain"], "slow.example.com")
+
+
+class UtilityHelperTests(TestCase):
+    def test_safe_url_encode_and_decode_support_unicode(self):
+        encoded = safe_url_encode("https://example.com/नमस्ते world")
+        decoded = safe_url_decode(encoded["result"])
+
+        self.assertTrue(encoded["success"])
+        self.assertIn("%E0%A4%A8%E0%A4%AE", encoded["result"])
+        self.assertTrue(decoded["success"])
+        self.assertEqual(decoded["result"], "https://example.com/नमस्ते world")
+
+    def test_safe_url_decode_rejects_invalid_percent_encoding(self):
+        decoded = safe_url_decode("https%://example.com/%ZZ")
+
+        self.assertFalse(decoded["success"])
+        self.assertEqual(decoded["error"], "Invalid percent-encoding sequence.")
+
+    def test_analyze_domain_rejects_private_or_invalid_hosts(self):
+        invalid = analyze_domain("localhost")
+        private = analyze_domain("127.0.0.1")
+
+        self.assertIn("not allowed", invalid["error_message"].lower())
+        self.assertIn("not allowed", private["error_message"].lower())
+
+    @patch("monitor.utils.requests.get")
+    @patch("monitor.utils.fetch_ssl_details")
+    @patch("monitor.utils.lookup_dns_records")
+    @patch("monitor.utils.resolve_hostname", return_value="142.250.183.14")
+    def test_analyze_domain_collects_realistic_domain_metadata(
+        self,
+        _mock_resolve,
+        mock_dns,
+        mock_ssl,
+        mock_get,
+    ):
+        mock_dns.return_value = {
+            "A": ["142.250.183.14"],
+            "MX": ["10 smtp.google.com"],
+            "NS": ["ns1.google.com", "ns2.google.com"],
+            "TXT": ["v=spf1 include:_spf.google.com ~all"],
+        }
+        mock_ssl.return_value = {
+            "valid": True,
+            "issuer": "Google Trust Services",
+            "expiry_date": "2030-01-01",
+            "days_remaining": 100,
+            "error": "",
+        }
+        mock_get.return_value = Mock(
+            status_code=200,
+            headers={
+                "server": "gws",
+                "content-type": "text/html; charset=utf-8",
+                "cache-control": "private, max-age=0",
+                "x-frame-options": "SAMEORIGIN",
+                "strict-transport-security": "max-age=31536000",
+                "x-content-type-options": "nosniff",
+                "content-security-policy": "default-src 'self'",
+                "referrer-policy": "strict-origin-when-cross-origin",
+            },
+        )
+
+        result = analyze_domain("google.com")
+
+        self.assertEqual(result["domain"], "google.com")
+        self.assertEqual(result["ip_address"], "142.250.183.14")
+        self.assertTrue(result["reachable"])
+        self.assertTrue(result["ssl_valid"])
+        self.assertEqual(result["status"], 200)
+        self.assertEqual(result["nameserver_count"], 2)
+        self.assertEqual(result["security_state"], "Warning")
+        self.assertEqual(result["dns_records"]["MX"], ["10 smtp.google.com"])
+
+    @patch("monitor.utils.requests.get", side_effect=requests.Timeout)
+    @patch("monitor.utils.fetch_ssl_details", return_value={"valid": False, "issuer": "", "expiry_date": "", "days_remaining": None, "error": "timeout"})
+    @patch("monitor.utils.lookup_dns_records", return_value={"A": ["93.184.216.34"], "MX": [], "NS": [], "TXT": []})
+    @patch("monitor.utils.resolve_hostname", return_value="93.184.216.34")
+    def test_analyze_domain_handles_timeout_without_crashing(self, _mock_resolve, _mock_dns, _mock_ssl, _mock_get):
+        result = analyze_domain("example.com")
+
+        self.assertEqual(result["error_message"], "Request timed out.")
+        self.assertEqual(result["latency"]["state"], "SLOW")
+        self.assertFalse(result["reachable"])
+
+    @patch("monitor.utils.requests.get", side_effect=requests.RequestException("offline"))
+    @patch("monitor.utils.fetch_ssl_details", return_value={"valid": False, "issuer": "", "expiry_date": "", "days_remaining": None, "error": ""})
+    @patch("monitor.utils.resolve_hostname", return_value="93.184.216.34")
+    def test_dns_lookup_fallback_returns_a_record_without_dnspython(self, _mock_resolve, _mock_ssl, _mock_get):
+        with patch("monitor.utils.dns_resolver", None):
+            result = analyze_domain("example.com")
+
+        self.assertIn("93.184.216.34", result["dns_records"]["A"])
+
+
+class UtilitiesViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="utility-user",
+            password="StrongPass123!",
+            email="utility@example.com",
+        )
+        self.client.login(username="utility-user", password="StrongPass123!")
+
+    def test_utilities_page_requires_authentication(self):
+        self.client.logout()
+
+        response = self.client.get(reverse("utilities"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response.url)
+
+    def test_utilities_encode_submission_renders_real_result(self):
+        response = self.client.post(reverse("utilities"), {
+            "utility_action": "encode",
+            "encode_input": "hello world",
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["encode_result"]["result"], "hello%20world")
+        self.assertContains(response, "hello%20world")
+
+    def test_utilities_decode_invalid_input_renders_error_state(self):
+        response = self.client.post(reverse("utilities"), {
+            "utility_action": "decode",
+            "decode_input": "%ZZ",
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["decode_result"]["success"])
+        self.assertContains(response, "Invalid percent-encoding sequence.")
+
+    @patch("monitor.views.analyze_domain")
+    def test_utilities_domain_result_shows_already_monitored_state(self, mock_analyze_domain):
+        Website.objects.create(user=self.user, url="https://google.com")
+        mock_analyze_domain.return_value = {
+            "input": "google.com",
+            "domain": "google.com",
+            "url": "https://google.com",
+            "ip_address": "8.8.8.8",
+            "reachable": True,
+            "ssl_valid": True,
+            "response_time": 120.5,
+            "status": 200,
+            "error_message": "",
+            "nameserver_count": 2,
+            "security_state": "Secure",
+            "dns_records": {"A": ["8.8.8.8"], "MX": [], "NS": ["ns1.google.com", "ns2.google.com"], "TXT": []},
+            "ssl_details": {"valid": True, "issuer": "Google", "expiry_date": "2030-01-01", "days_remaining": 100, "error": ""},
+            "headers": {
+                "server": "gws",
+                "content_type": "text/html",
+                "cache_control": "private",
+                "x_frame_options": "SAMEORIGIN",
+                "strict_transport_security": "max-age=31536000",
+                "security_headers": {},
+                "missing_security_headers": [],
+                "weak_configurations": [],
+            },
+            "latency": {"response_time": 120.5, "status_code": 200, "reachable": True, "state": "UP", "is_slow": False},
+        }
+
+        response = self.client.post(reverse("utilities"), {
+            "utility_action": "domain_check",
+            "domain_input": "google.com",
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["domain_result"]["already_monitored"])
+        self.assertContains(response, "Already Monitored")
+
+    @patch("monitor.views.analyze_domain")
+    def test_add_to_monitoring_creates_website_and_preserves_result_context(self, mock_analyze_domain):
+        mock_analyze_domain.return_value = {
+            "input": "example.com",
+            "domain": "example.com",
+            "url": "https://example.com",
+            "ip_address": "93.184.216.34",
+            "reachable": False,
+            "ssl_valid": False,
+            "response_time": None,
+            "status": None,
+            "error_message": "Request timed out.",
+            "nameserver_count": 0,
+            "security_state": "Timeout",
+            "dns_records": {"A": ["93.184.216.34"], "MX": [], "NS": [], "TXT": []},
+            "ssl_details": {"valid": False, "issuer": "", "expiry_date": "", "days_remaining": None, "error": "timeout"},
+            "headers": {
+                "server": "",
+                "content_type": "",
+                "cache_control": "",
+                "x_frame_options": "",
+                "strict_transport_security": "",
+                "security_headers": {},
+                "missing_security_headers": [],
+                "weak_configurations": [],
+            },
+            "latency": {"response_time": None, "status_code": None, "reachable": False, "state": "SLOW", "is_slow": False},
+        }
+
+        response = self.client.post(reverse("utilities"), {
+            "utility_action": "add_to_monitoring",
+            "monitor_domain": "example.com",
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Website.objects.filter(user=self.user, url="https://example.com").exists())
+        self.assertContains(response, "Domain added to monitoring.")
+        self.assertTrue(response.context["domain_result"]["already_monitored"])

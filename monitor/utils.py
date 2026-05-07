@@ -1,14 +1,36 @@
+import ipaddress
+import re
 import socket
 import ssl
-from urllib.parse import urlparse
+from datetime import datetime, timezone as dt_timezone
+from time import perf_counter
+from urllib.parse import quote, unquote, urlparse
 
 import requests
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.db import transaction
 from django.utils import timezone
 
 from .models import Alert, Incident, IncidentEvent, MonitorLog
+from .models import Website
+
+try:
+    import dns.resolver as dns_resolver
+except Exception:  # pragma: no cover - optional dependency
+    dns_resolver = None
+
+
+UTILITY_TIMEOUT = 5
+UTILITY_SLOW_THRESHOLD_MS = 2000
+SECURITY_HEADERS = {
+    'strict-transport-security': 'Missing HSTS',
+    'x-frame-options': 'Missing clickjacking protection',
+    'x-content-type-options': 'Missing MIME sniffing protection',
+    'content-security-policy': 'Missing CSP',
+    'referrer-policy': 'Missing referrer policy',
+}
 
 
 def get_site_status(log):
@@ -69,6 +91,336 @@ def check_ssl_status(url):
                 return "Valid"
     except Exception:
         return "Invalid"
+
+
+def _has_invalid_percent_encoding(value):
+    return bool(re.search(r'%(?![0-9A-Fa-f]{2})', value or ''))
+
+
+def safe_url_encode(value):
+    text = value or ''
+    return {
+        'value': text,
+        'result': quote(text, safe=''),
+        'success': True,
+        'error': '',
+    }
+
+
+def safe_url_decode(value):
+    text = value or ''
+    if _has_invalid_percent_encoding(text):
+        return {
+            'value': text,
+            'result': '',
+            'success': False,
+            'error': 'Invalid percent-encoding sequence.',
+        }
+
+    return {
+        'value': text,
+        'result': unquote(text),
+        'success': True,
+        'error': '',
+    }
+
+
+def _extract_hostname(raw_value):
+    value = (raw_value or '').strip()
+    if not value:
+        raise ValidationError('Enter a domain to inspect.')
+
+    candidate = value if '://' in value else f'https://{value}'
+    parsed = urlparse(candidate)
+    if parsed.scheme not in {'http', 'https'}:
+        raise ValidationError('Only HTTP and HTTPS domains are allowed.')
+
+    hostname = (parsed.hostname or '').strip().rstrip('.')
+    if not hostname:
+        raise ValidationError('Enter a valid domain.')
+    return hostname
+
+
+def _is_blocked_host(hostname):
+    lowered = hostname.lower()
+    if lowered in {'localhost', 'localhost.localdomain'} or lowered.endswith('.local'):
+        return True
+
+    try:
+        ip_obj = ipaddress.ip_address(lowered)
+    except ValueError:
+        return False
+
+    blocked_flags = (
+        ip_obj.is_private,
+        ip_obj.is_loopback,
+        ip_obj.is_reserved,
+        ip_obj.is_link_local,
+        ip_obj.is_multicast,
+        ip_obj.is_unspecified,
+    )
+    return any(blocked_flags)
+
+
+def _is_blocked_ip_value(value):
+    try:
+        ip_obj = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+
+    return any((
+        ip_obj.is_private,
+        ip_obj.is_loopback,
+        ip_obj.is_reserved,
+        ip_obj.is_link_local,
+        ip_obj.is_multicast,
+        ip_obj.is_unspecified,
+    ))
+
+
+def normalize_utility_domain(raw_value):
+    hostname = _extract_hostname(raw_value)
+
+    try:
+        ascii_hostname = hostname.encode('idna').decode('ascii').lower()
+    except UnicodeError as exc:
+        raise ValidationError('Domain contains invalid Unicode characters.') from exc
+
+    if _is_blocked_host(ascii_hostname):
+        raise ValidationError('Local, private, and reserved hosts are not allowed.')
+
+    if '.' not in ascii_hostname:
+        raise ValidationError('Enter a valid public domain.')
+
+    if re.search(r'[^a-z0-9.-]', ascii_hostname):
+        raise ValidationError('Enter a valid public domain.')
+
+    return ascii_hostname
+
+
+def resolve_hostname(domain):
+    try:
+        return socket.gethostbyname(domain)
+    except socket.gaierror:
+        return None
+
+
+def fetch_ssl_details(domain, timeout=UTILITY_TIMEOUT):
+    result = {
+        'valid': False,
+        'issuer': '',
+        'expiry_date': '',
+        'days_remaining': None,
+        'error': '',
+    }
+
+    context = ssl.create_default_context()
+    try:
+        with socket.create_connection((domain, 443), timeout=timeout) as sock:
+            with context.wrap_socket(sock, server_hostname=domain) as wrapped:
+                certificate = wrapped.getpeercert()
+    except ssl.SSLError as exc:
+        result['error'] = str(exc)
+        return result
+    except Exception as exc:
+        result['error'] = str(exc)
+        return result
+
+    issuer_parts = []
+    for item in certificate.get('issuer', []):
+        for key, value in item:
+            if key.lower() in {'organizationname', 'commonname'} and value:
+                issuer_parts.append(value)
+    not_after = certificate.get('notAfter')
+
+    expiry_date = ''
+    days_remaining = None
+    if not_after:
+        try:
+            expires_at = datetime.strptime(not_after, '%b %d %H:%M:%S %Y %Z').replace(tzinfo=dt_timezone.utc)
+            expiry_date = expires_at.strftime('%Y-%m-%d')
+            days_remaining = max((expires_at - datetime.now(dt_timezone.utc)).days, 0)
+        except ValueError:
+            expiry_date = not_after
+
+    result.update({
+        'valid': True,
+        'issuer': ', '.join(issuer_parts),
+        'expiry_date': expiry_date,
+        'days_remaining': days_remaining,
+    })
+    return result
+
+
+def lookup_dns_records(domain):
+    records = {'A': [], 'MX': [], 'NS': [], 'TXT': []}
+    if dns_resolver is None:
+        ip_address = resolve_hostname(domain)
+        if ip_address:
+            records['A'] = [ip_address]
+        return records
+
+    query_types = ('A', 'MX', 'NS', 'TXT')
+    for record_type in query_types:
+        try:
+            answers = dns_resolver.resolve(domain, record_type, lifetime=UTILITY_TIMEOUT)
+            if record_type == 'MX':
+                records[record_type] = [
+                    f"{answer.preference} {str(answer.exchange).rstrip('.')}" for answer in answers
+                ]
+            elif record_type == 'TXT':
+                txt_values = []
+                for answer in answers:
+                    if hasattr(answer, 'strings'):
+                        txt_values.append(''.join(part.decode('utf-8', errors='ignore') for part in answer.strings))
+                    else:
+                        txt_values.append(str(answer).strip('"'))
+                records[record_type] = txt_values
+            else:
+                records[record_type] = [str(answer).rstrip('.') for answer in answers]
+        except Exception:
+            records[record_type] = []
+    return records
+
+
+def inspect_headers(headers, ssl_valid):
+    normalized = {str(key).lower(): str(value) for key, value in (headers or {}).items()}
+    missing_security_headers = [
+        message for header, message in SECURITY_HEADERS.items() if not normalized.get(header)
+    ]
+    weak_configurations = []
+    if normalized.get('server'):
+        weak_configurations.append(f"Server header exposed: {normalized['server']}")
+    if normalized.get('x-powered-by'):
+        weak_configurations.append(f"X-Powered-By exposed: {normalized['x-powered-by']}")
+    if ssl_valid and normalized.get('strict-transport-security') is None:
+        weak_configurations.append('HTTPS is enabled but HSTS is missing.')
+
+    return {
+        'server': normalized.get('server', ''),
+        'content_type': normalized.get('content-type', ''),
+        'cache_control': normalized.get('cache-control', ''),
+        'x_frame_options': normalized.get('x-frame-options', ''),
+        'strict_transport_security': normalized.get('strict-transport-security', ''),
+        'security_headers': {header: normalized.get(header, '') for header in SECURITY_HEADERS},
+        'missing_security_headers': missing_security_headers,
+        'weak_configurations': weak_configurations,
+    }
+
+
+def analyze_domain(domain, timeout=UTILITY_TIMEOUT):
+    result = {
+        'input': domain or '',
+        'domain': '',
+        'url': '',
+        'ip_address': '',
+        'reachable': False,
+        'ssl_valid': False,
+        'response_time': None,
+        'status': None,
+        'error_message': '',
+        'nameserver_count': 0,
+        'security_state': 'Unreachable',
+        'dns_records': {'A': [], 'MX': [], 'NS': [], 'TXT': []},
+        'ssl_details': {
+            'valid': False,
+            'issuer': '',
+            'expiry_date': '',
+            'days_remaining': None,
+            'error': '',
+        },
+        'headers': {
+            'server': '',
+            'content_type': '',
+            'cache_control': '',
+            'x_frame_options': '',
+            'strict_transport_security': '',
+            'security_headers': {},
+            'missing_security_headers': [],
+            'weak_configurations': [],
+        },
+        'latency': {
+            'response_time': None,
+            'status_code': None,
+            'reachable': False,
+            'state': 'DOWN',
+            'is_slow': False,
+        },
+    }
+
+    try:
+        normalized_domain = normalize_utility_domain(domain)
+    except ValidationError as exc:
+        result['error_message'] = exc.messages[0] if hasattr(exc, 'messages') else str(exc)
+        return result
+
+    result['domain'] = normalized_domain
+    result['url'] = f'https://{normalized_domain}'
+    result['ip_address'] = resolve_hostname(normalized_domain) or ''
+    if result['ip_address'] and _is_blocked_ip_value(result['ip_address']):
+        result['ip_address'] = ''
+        result['error_message'] = 'Resolved address is private or reserved.'
+        return result
+
+    dns_records = lookup_dns_records(normalized_domain)
+    result['dns_records'] = dns_records
+    result['nameserver_count'] = len(dns_records.get('NS', []))
+    if not result['ip_address'] and dns_records.get('A'):
+        result['ip_address'] = dns_records['A'][0]
+
+    ssl_details = fetch_ssl_details(normalized_domain, timeout=timeout)
+    result['ssl_details'] = ssl_details
+    result['ssl_valid'] = ssl_details['valid']
+
+    try:
+        started = perf_counter()
+        response = requests.get(
+            result['url'],
+            timeout=timeout,
+            allow_redirects=True,
+            headers={'User-Agent': 'SiteGuard Utilities/1.0'},
+            stream=True,
+        )
+        response_time_ms = round((perf_counter() - started) * 1000, 2)
+        headers_info = inspect_headers(response.headers, ssl_details['valid'])
+
+        result['reachable'] = True
+        result['status'] = response.status_code
+        result['response_time'] = response_time_ms
+        result['headers'] = headers_info
+        result['latency'] = {
+            'response_time': response_time_ms,
+            'status_code': response.status_code,
+            'reachable': True,
+            'state': 'SLOW' if response_time_ms > UTILITY_SLOW_THRESHOLD_MS else 'UP',
+            'is_slow': response_time_ms > UTILITY_SLOW_THRESHOLD_MS,
+        }
+        if ssl_details['valid'] and not headers_info['missing_security_headers'] and not headers_info['weak_configurations']:
+            result['security_state'] = 'Secure'
+        elif ssl_details['valid'] and response.status_code < 500:
+            result['security_state'] = 'Warning'
+        else:
+            result['security_state'] = 'Risk'
+    except requests.Timeout:
+        result['error_message'] = 'Request timed out.'
+        result['latency']['state'] = 'SLOW'
+        result['security_state'] = 'Timeout'
+    except requests.RequestException as exc:
+        result['error_message'] = str(exc)
+        result['security_state'] = 'Unreachable'
+
+    if not result['reachable'] and not result['error_message'] and not result['ip_address']:
+        result['error_message'] = 'Domain could not be resolved.'
+
+    return result
+
+
+def is_domain_monitored(user, domain):
+    if not getattr(user, 'is_authenticated', False) or not domain:
+        return False
+
+    normalized_url = Website.normalize_url(domain)
+    return Website.objects.filter(user=user, url=normalized_url).exists()
 
 
 def get_incident_title(status):
