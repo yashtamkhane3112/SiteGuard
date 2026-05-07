@@ -487,10 +487,12 @@ function toggleIncident(headerElement) {
     if (isExpanded) {
         bodyElement.classList.remove('expanded');
         headerElement.classList.remove('expanded');
+        bodyElement.style.maxHeight = '';
         if(chevron) chevron.style.transform = 'rotate(0deg)';
     } else {
         bodyElement.classList.add('expanded');
         headerElement.classList.add('expanded');
+        bodyElement.style.maxHeight = bodyElement.scrollHeight + 60 + 'px';
         // Point chevron up
         if(chevron) chevron.style.transform = 'rotate(180deg)'; 
     }
@@ -700,4 +702,15 @@ if (globalSearchInput && searchSuggestionsPanel) {
         }
     });
 }
+
+// 8. Alert Read Collapse
+document.querySelectorAll('.alert-read-form').forEach((form) => {
+    form.addEventListener('submit', (event) => {
+        const card = form.closest('.alert-incident-card');
+        if (!card) return;
+        event.preventDefault();
+        card.classList.add('is-collapsing');
+        window.setTimeout(() => form.submit(), 180);
+    });
+});
 });

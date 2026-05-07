@@ -210,3 +210,34 @@ class AccountPasswordChangeForm(PasswordChangeForm):
                 'placeholder': placeholders.get(field_name, ''),
                 'autocomplete': 'current-password' if field_name == 'old_password' else 'new-password',
             })
+
+
+class DeleteAccountForm(forms.Form):
+    password = forms.CharField(strip=False, widget=forms.PasswordInput)
+    confirm_phrase = forms.CharField(max_length=32)
+
+    def __init__(self, *args, user=None, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+        self.fields['password'].widget.attrs.update({
+            'class': 'form-control custom-input',
+            'placeholder': 'Confirm your password',
+            'autocomplete': 'current-password',
+        })
+        self.fields['confirm_phrase'].widget.attrs.update({
+            'class': 'form-control custom-input',
+            'placeholder': 'Type DELETE',
+            'autocomplete': 'off',
+        })
+
+    def clean_password(self):
+        password = self.cleaned_data.get('password') or ''
+        if self.user is None or not self.user.check_password(password):
+            raise forms.ValidationError('Password confirmation failed.')
+        return password
+
+    def clean_confirm_phrase(self):
+        phrase = (self.cleaned_data.get('confirm_phrase') or '').strip().upper()
+        if phrase != 'DELETE':
+            raise forms.ValidationError('Type DELETE to confirm account removal.')
+        return phrase

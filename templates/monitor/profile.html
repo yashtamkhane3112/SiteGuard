@@ -35,6 +35,7 @@
           <a href="{% url 'logs' %}" class="nav-item"><i data-lucide="file-text"></i> Logs</a>
           <a href="{% url 'utilities' %}" class="nav-item"><i data-lucide="wrench"></i> Utilities</a>
           <a href="{% url 'alerts' %}" class="nav-item"><i data-lucide="bell"></i> Alerts</a>
+          <a href="{% url 'notifications' %}" class="nav-item"><i data-lucide="inbox"></i> Notifications</a>
           <div style="flex-grow: 1"></div>
           <a href="{% url 'logout' %}" class="nav-item"><i data-lucide="log-out"></i> Logout</a>
         </nav>
@@ -282,17 +283,41 @@
           </div>
 
           <div class="dash-panel danger-zone-panel">
-            <h5 class="panel-title mb-1 text-white">Danger Zone</h5>
-            <p class="panel-subtitle mb-4 text-slate-300">
-              Account deletion is intentionally not exposed until the workflow is fully verified.
-            </p>
-
+            <div class="d-flex align-items-center gap-3 mb-2">
+              <div class="incident-icon bg-critical-light text-critical">
+                <i data-lucide="shield-alert"></i>
+              </div>
+              <div>
+                <h5 class="panel-title mb-1 text-white">Danger Zone</h5>
+                <p class="panel-subtitle mb-0 text-slate-300">
+                  Account deletion is irreversible. Confirm with your password and an explicit deletion phrase.
+                </p>
+              </div>
+            </div>
             <hr style="border-color: rgba(239, 68, 68, 0.2); margin-bottom: 24px" />
+            <form method="post" class="account-password-grid">
+              {% csrf_token %}
+              <input type="hidden" name="profile_action" value="delete_account" />
 
-            <button class="btn btn-danger-custom w-100 mb-3" type="button" disabled>Delete Account Coming Soon</button>
-            <p class="text-center text-muted text-sm m-0">
-              This panel remains visible for future account lifecycle controls, but no destructive fake action is exposed.
-            </p>
+              {% for field in delete_account_form %}
+              <div>
+                <label class="form-label text-slate-300 text-sm fw-medium">{{ field.label }}</label>
+                {{ field }}
+                {% for error in field.errors %}
+                <div class="account-field-error">{{ error }}</div>
+                {% endfor %}
+              </div>
+              {% endfor %}
+
+              {% if delete_account_form.non_field_errors %}
+              <div class="utility-error-text">{{ delete_account_form.non_field_errors|join:", " }}</div>
+              {% endif %}
+
+              <button class="btn btn-danger-custom w-100 mb-2" type="submit">Delete Account Permanently</button>
+              <p class="text-center text-muted text-sm m-0">
+                This removes your profile, monitored websites, logs, incidents, alerts, and notifications, then signs you out immediately.
+              </p>
+            </form>
           </div>
         </div>
       </main>

@@ -1116,6 +1116,37 @@ class AccountManagementTests(TestCase):
         self.assertIn("/login/", profile_response.url)
         self.assertIn("/login/", settings_response.url)
 
+    def test_delete_account_requires_password_and_phrase_then_logs_out(self):
+        response = self.client.post(
+            reverse("profile"),
+            {
+                "profile_action": "delete_account",
+                "password": "StrongPass123!",
+                "confirm_phrase": "DELETE",
+            },
+        )
+
+        self.assertRedirects(response, reverse("index"))
+        self.assertFalse(User.objects.filter(username="account-user").exists())
+
+
+class ImmediateMonitoringTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="instant-user",
+            password="StrongPass123!",
+            email="instant@example.com",
+        )
+        self.client.login(username="instant-user", password="StrongPass123!")
+
+    @patch("monitor.views.run_single_check")
+    def test_add_website_runs_initial_monitoring_immediately(self, mock_run_single_check):
+        response = self.client.post(reverse("add_website"), {"url": "example.com"})
+
+        self.assertRedirects(response, reverse("dashboard"))
+        website = Website.objects.get(user=self.user, url="https://example.com")
+        mock_run_single_check.assert_called_once_with(website)
+
 
 class NotificationAndSearchTests(TestCase):
     def setUp(self):

@@ -16,6 +16,7 @@ from .forms import (
     AccountPasswordChangeForm,
     AccountPreferencesForm,
     AccountSecurityForm,
+    DeleteAccountForm,
     LoginForm,
     ProfileUpdateForm,
     SignUpForm,
@@ -664,6 +665,7 @@ def profile(request):
             )
             security_form = AccountSecurityForm(instance=profile_obj)
             password_form = AccountPasswordChangeForm(request.user)
+            delete_account_form = DeleteAccountForm(user=request.user)
             if profile_form.is_valid():
                 profile_form.save()
                 messages.success(request, 'Profile updated successfully.')
@@ -672,6 +674,7 @@ def profile(request):
             profile_form = ProfileUpdateForm(user=request.user, profile=profile_obj)
             security_form = AccountSecurityForm(request.POST, instance=profile_obj)
             password_form = AccountPasswordChangeForm(request.user)
+            delete_account_form = DeleteAccountForm(user=request.user)
             previous_two_factor = profile_obj.two_factor_enabled
             if security_form.is_valid():
                 security_form.save()
@@ -684,25 +687,40 @@ def profile(request):
             profile_form = ProfileUpdateForm(user=request.user, profile=profile_obj)
             security_form = AccountSecurityForm(instance=profile_obj)
             password_form = AccountPasswordChangeForm(request.user, request.POST)
+            delete_account_form = DeleteAccountForm(user=request.user)
             if password_form.is_valid():
                 user = password_form.save()
                 update_session_auth_hash(request, user)
                 messages.success(request, 'Password changed successfully.')
                 return redirect('profile')
+        elif action == 'delete_account':
+            profile_form = ProfileUpdateForm(user=request.user, profile=profile_obj)
+            security_form = AccountSecurityForm(instance=profile_obj)
+            password_form = AccountPasswordChangeForm(request.user)
+            delete_account_form = DeleteAccountForm(request.POST, user=request.user)
+            if delete_account_form.is_valid():
+                user = request.user
+                auth_logout(request)
+                user.delete()
+                messages.success(request, 'Your account has been deleted.')
+                return redirect('index')
         else:
             profile_form = ProfileUpdateForm(user=request.user, profile=profile_obj)
             security_form = AccountSecurityForm(instance=profile_obj)
             password_form = AccountPasswordChangeForm(request.user)
+            delete_account_form = DeleteAccountForm(user=request.user)
     else:
         profile_form = ProfileUpdateForm(user=request.user, profile=profile_obj)
         security_form = AccountSecurityForm(instance=profile_obj)
         password_form = AccountPasswordChangeForm(request.user)
+        delete_account_form = DeleteAccountForm(user=request.user)
 
     account_snapshot = get_user_account_snapshot(request.user)
     context = {
         'profile_form': profile_form,
         'security_form': security_form,
         'password_form': password_form,
+        'delete_account_form': delete_account_form,
         'account_snapshot': account_snapshot,
     }
     return render(request, 'monitor/profile.html', context)
@@ -1126,8 +1144,9 @@ def add_website(request):
             return redirect('dashboard')
 
         try:
-            Website.objects.create(user=request.user, url=clean_url)
-            messages.success(request, 'Website added successfully!')
+            website = Website.objects.create(user=request.user, url=clean_url)
+            run_single_check(website)
+            messages.success(request, 'Website added and initial monitoring started immediately.')
         except Exception:
             messages.error(request, 'Invalid URL')
             return redirect('dashboard')
