@@ -147,8 +147,9 @@
           </div>
 
           <div id="report-canvas-area">
-            <div class="row g-4 mb-4">
+            <div class="row g-4 mb-4 report-metrics-row">
               <div class="col-md-4">
+                <div class="report-stat-shell">
                 <div class="report-stat-card stat-issues" data-skeleton-item>
                   <div class="d-flex justify-content-between align-items-start">
                     <span class="text-slate-300 text-sm fw-medium">Total Issues Today</span>
@@ -157,8 +158,10 @@
                   <h2 class="mt-2 mb-1 stat-value-lg counter" data-target="{{ total_issues_today }}" data-suffix="">0</h2>
                   <span class="text-danger text-xs fw-bold">{{ ssl_failures }} SSL failure{{ ssl_failures|pluralize }}</span>
                 </div>
+                </div>
               </div>
               <div class="col-md-4">
+                <div class="report-stat-shell">
                 <div class="report-stat-card stat-uptime" data-skeleton-item>
                   <div class="d-flex justify-content-between align-items-start">
                     <span class="text-slate-300 text-sm fw-medium">Average Uptime</span>
@@ -167,8 +170,10 @@
                   <h2 class="mt-2 mb-1 stat-value-lg counter" data-target="{{ average_uptime }}" data-suffix="%">0</h2>
                   <span class="text-success text-xs fw-bold">{{ logs_count }} log{{ logs_count|pluralize }} analyzed</span>
                 </div>
+                </div>
               </div>
               <div class="col-md-4">
+                <div class="report-stat-shell">
                 <div class="report-stat-card stat-response" data-skeleton-item>
                   <div class="d-flex justify-content-between align-items-start">
                     <span class="text-slate-300 text-sm fw-medium">Avg Response Time</span>
@@ -179,6 +184,7 @@
                     <span class="text-purple" style="font-size: 1.2rem">ms</span>
                   </h2>
                   <span class="text-purple text-xs fw-bold">Across valid checks in this range</span>
+                </div>
                 </div>
               </div>
             </div>

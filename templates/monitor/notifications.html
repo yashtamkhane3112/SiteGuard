@@ -42,7 +42,7 @@
               <p class="page-subtitle">Real monitoring events, recoveries, SSL changes, and report notices.</p>
             </div>
             <form method="get" class="notification-filter-row">
-              <select name="severity" class="form-select custom-input">
+              <select name="severity" class="form-select custom-input custom-select-dark notification-filter-select">
                 <option value="">All Severities</option>
                 <option value="critical" {% if selected_severity == 'critical' %}selected{% endif %}>Critical</option>
                 <option value="warning" {% if selected_severity == 'warning' %}selected{% endif %}>Warning</option>

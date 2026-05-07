@@ -161,11 +161,11 @@
             {% for incident in incidents %}
               <div class="incident-card" data-status="{{ incident.filter_key }}">
                 <div
-                  class="incident-header{% if not incident.is_resolved %} expanded{% endif %}"
+                  class="incident-header"
                   onclick="toggleIncident(this)"
                   role="button"
                   tabindex="0"
-                  aria-expanded="{% if not incident.is_resolved %}true{% else %}false{% endif %}"
+                  aria-expanded="false"
                 >
                   <div class="d-flex gap-3 align-items-center flex-grow-1">
                     <div class="incident-icon {{ incident.icon_bg_class }} {{ incident.icon_text_class }}">
@@ -190,12 +190,12 @@
                     </div>
                   </div>
                   <i
-                    data-lucide="{% if not incident.is_resolved %}chevron-down{% else %}chevron-right{% endif %}"
+                    data-lucide="chevron-right"
                     class="chevron-icon text-white"
                   ></i>
                 </div>
 
-                <div class="incident-body{% if not incident.is_resolved %} expanded{% endif %}">
+                <div class="incident-body">
                   <div class="timeline">
                     {% for event in incident.events.all %}
                       <div class="timeline-item">

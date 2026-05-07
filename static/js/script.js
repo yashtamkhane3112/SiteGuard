@@ -480,6 +480,7 @@ if (filterPills.length > 0 && incidentCards.length > 0) {
 function toggleIncident(headerElement) {
     const bodyElement = headerElement.nextElementSibling;
     const chevron = headerElement.querySelector('.chevron-icon');
+    if (!bodyElement) return;
     
     // Toggle expanded classes
     const isExpanded = bodyElement.classList.contains('expanded');
@@ -488,19 +489,26 @@ function toggleIncident(headerElement) {
         bodyElement.classList.remove('expanded');
         headerElement.classList.remove('expanded');
         headerElement.setAttribute('aria-expanded', 'false');
-        bodyElement.style.maxHeight = '';
+        bodyElement.style.maxHeight = '0px';
         if(chevron) chevron.style.transform = 'rotate(0deg)';
     } else {
         bodyElement.classList.add('expanded');
         headerElement.classList.add('expanded');
         headerElement.setAttribute('aria-expanded', 'true');
-        bodyElement.style.maxHeight = bodyElement.scrollHeight + 60 + 'px';
-        // Point chevron up
-        if(chevron) chevron.style.transform = 'rotate(180deg)'; 
+        bodyElement.style.maxHeight = bodyElement.scrollHeight + 40 + 'px';
+        if(chevron) chevron.style.transform = 'rotate(90deg)'; 
     }
 }
 
 document.querySelectorAll('.incident-header[role="button"]').forEach((header) => {
+    const body = header.nextElementSibling;
+    const chevron = header.querySelector('.chevron-icon');
+    if (body) {
+        body.style.maxHeight = header.classList.contains('expanded') ? `${body.scrollHeight + 40}px` : '0px';
+    }
+    if (chevron) {
+        chevron.style.transform = header.classList.contains('expanded') ? 'rotate(90deg)' : 'rotate(0deg)';
+    }
     header.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
@@ -558,22 +566,60 @@ animateCounters();
 // 4. "Check Status" Button Simulation
 const checkStatusBtn = document.getElementById('checkStatusBtn');
 if (checkStatusBtn) {
-    checkStatusBtn.addEventListener('click', function() {
-        const originalHtml = this.innerHTML;
-        this.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span> Checking...`;
-        this.disabled = true;
-        setTimeout(() => {
-            this.innerHTML = `<i data-lucide="check-circle" class="me-2 size-sm"></i> Checked`;
-            this.style.background = 'var(--color-success)'; 
-            if (typeof lucide !== 'undefined') lucide.createIcons();
-            setTimeout(() => {
-                this.innerHTML = originalHtml;
-                this.disabled = false;
-                this.style.background = ''; 
-                if (typeof lucide !== 'undefined') lucide.createIcons();
-            }, 2000);
-        }, 1500);
-    });
+    const statusSearchInput = document.getElementById('websiteUrl');
+    const statusCards = Array.from(document.querySelectorAll('[data-site-card]'));
+    const statusEmptyState = document.getElementById('statusSearchEmptyState');
+
+    const filterStatusCards = (scrollToFirstMatch = false) => {
+        if (!statusSearchInput || !statusCards.length) return;
+        const query = statusSearchInput.value.trim().toLowerCase();
+        let firstMatch = null;
+        let visibleCount = 0;
+
+        statusCards.forEach((card) => {
+            const haystack = card.dataset.siteSearch || '';
+            const isMatch = !query || haystack.includes(query);
+            if (card._hideTimer) {
+                window.clearTimeout(card._hideTimer);
+                card._hideTimer = null;
+            }
+
+            card.classList.toggle('result-card-filtered-out', !isMatch);
+            card.setAttribute('aria-hidden', isMatch ? 'false' : 'true');
+
+            if (isMatch) {
+                card.style.display = '';
+            } else {
+                card._hideTimer = window.setTimeout(() => {
+                    card.style.display = 'none';
+                }, 160);
+            }
+
+            if (isMatch) {
+                visibleCount += 1;
+                if (!firstMatch) firstMatch = card;
+            }
+        });
+
+        if (statusEmptyState) {
+            statusEmptyState.style.display = visibleCount === 0 ? 'flex' : 'none';
+        }
+
+        if (scrollToFirstMatch && firstMatch) {
+            firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    };
+
+    if (statusSearchInput && statusCards.length) {
+        statusSearchInput.addEventListener('input', () => filterStatusCards(false));
+        statusSearchInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                filterStatusCards(true);
+            }
+        });
+        checkStatusBtn.addEventListener('click', () => filterStatusCards(true));
+    }
 }
 
 // 5. Table Live Search
