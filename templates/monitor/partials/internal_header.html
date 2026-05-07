@@ -3,6 +3,10 @@
     <button class="mobile-toggle" id="mobileToggle">
       <i data-lucide="menu"></i>
     </button>
+    <a href="{% url 'dashboard' %}" class="internal-shell-brand text-decoration-none">
+      <div class="logo-icon"><i data-lucide="activity"></i></div>
+      <span>Site Guard</span>
+    </a>
     <form method="get" action="{% url 'search' %}" class="search-bar global-search-shell d-none d-sm-flex">
       <i data-lucide="search" class="search-icon"></i>
       <input

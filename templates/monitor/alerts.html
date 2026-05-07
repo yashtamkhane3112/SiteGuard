@@ -153,7 +153,7 @@
                   <div class="incidents-container">
                     {% for alert in alerts %}
                       <div class="incident-card alert-incident-card {% if not alert.is_read %}alert-incident-card-unread{% else %}alert-incident-card-read{% endif %}" data-status="{{ alert.filter_key }}" data-skeleton-item>
-                        <div class="incident-header{% if not alert.is_read %} expanded{% endif %}" onclick="toggleIncident(this)" role="button" tabindex="0" aria-expanded="{% if not alert.is_read %}true{% else %}false{% endif %}">
+                        <div class="incident-header" onclick="toggleIncident(this)" role="button" tabindex="0" aria-expanded="false">
                           <div class="d-flex gap-3 align-items-center flex-grow-1">
                             <div class="incident-icon {{ alert.icon_bg_class }} {{ alert.icon_text_class }}">
                               <i data-lucide="{{ alert.icon_name }}"></i>
@@ -192,11 +192,11 @@
                                 <button type="submit" class="alert-action-btn alert-action-btn-danger">Retry Failed Alert</button>
                               </form>
                             {% endif %}
-                            <i data-lucide="{% if not alert.is_read %}chevron-down{% else %}chevron-right{% endif %}" class="chevron-icon text-white"></i>
+                            <i data-lucide="chevron-right" class="chevron-icon text-white"></i>
                           </div>
                         </div>
 
-                        <div class="incident-body{% if not alert.is_read %} expanded{% endif %}">
+                        <div class="incident-body">
                           <div class="timeline">
                             <div class="timeline-item">
                               <div class="timeline-icon {{ alert.icon_text_class }}">

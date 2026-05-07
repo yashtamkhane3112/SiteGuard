@@ -503,11 +503,16 @@ function toggleIncident(headerElement) {
 document.querySelectorAll('.incident-header[role="button"]').forEach((header) => {
     const body = header.nextElementSibling;
     const chevron = header.querySelector('.chevron-icon');
+    header.classList.remove('expanded');
     if (body) {
-        body.style.maxHeight = header.classList.contains('expanded') ? `${body.scrollHeight + 40}px` : '0px';
+        body.classList.remove('expanded');
+    }
+    header.setAttribute('aria-expanded', 'false');
+    if (body) {
+        body.style.maxHeight = '0px';
     }
     if (chevron) {
-        chevron.style.transform = header.classList.contains('expanded') ? 'rotate(90deg)' : 'rotate(0deg)';
+        chevron.style.transform = 'rotate(0deg)';
     }
     header.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
