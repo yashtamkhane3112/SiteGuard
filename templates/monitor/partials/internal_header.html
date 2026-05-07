@@ -1,0 +1,107 @@
+<header class="top-header unified-glass-header">
+  <div class="d-flex align-items-center flex-grow-1 min-width-0">
+    <button class="mobile-toggle" id="mobileToggle">
+      <i data-lucide="menu"></i>
+    </button>
+    <form method="get" action="{% url 'search' %}" class="search-bar global-search-shell d-none d-sm-flex">
+      <i data-lucide="search" class="search-icon"></i>
+      <input
+        type="text"
+        name="q"
+        id="globalSearch"
+        value="{{ request.GET.q|default:'' }}"
+        placeholder="{{ global_search_placeholder|default:'Search websites, incidents, alerts, logs...' }}"
+        autocomplete="off"
+        data-search-suggestions-url="{% url 'search_suggestions' %}"
+      />
+      <div class="search-suggestions-panel d-none" id="searchSuggestionsPanel">
+        <div class="search-suggestions-state">Searching…</div>
+      </div>
+    </form>
+  </div>
+
+  <div class="header-actions">
+    <div class="dropdown">
+      <button
+        class="icon-btn"
+        type="button"
+        id="notificationMenu"
+        data-bs-toggle="dropdown"
+        aria-expanded="false"
+      >
+        <i data-lucide="bell"></i>
+        {% if global_unread_notifications_count %}
+        <span class="notification-dot"></span>
+        {% endif %}
+      </button>
+      <div
+        class="dropdown-menu dropdown-menu-end notification-dropdown premium-notification-dropdown"
+        aria-labelledby="notificationMenu"
+      >
+        <div class="notification-dropdown-head">
+          <div>
+            <h6 class="m-0 text-white fw-bold">Notifications</h6>
+            <span class="text-xs text-slate-300">{{ global_unread_notifications_count }} unread</span>
+          </div>
+          <span class="status-badge {% if global_unread_notifications_count %}badge-purple{% else %}badge-up{% endif %}">
+            {{ global_notifications|length }} recent
+          </span>
+        </div>
+
+        <div class="notification-list">
+          {% for notification in global_notifications %}
+          <div class="notification-card {% if not notification.is_read %}unread{% endif %}">
+            <div class="notif-icon {{ notification.icon_bg_class }} {{ notification.icon_text_class }}">
+              <i data-lucide="{{ notification.icon_name }}"></i>
+            </div>
+            <div class="notification-copy">
+              <div class="d-flex align-items-start justify-content-between gap-2">
+                <div>
+                  <p class="m-0 text-white text-sm fw-medium">{{ notification.title }}</p>
+                  <span class="text-xs text-slate-300">{{ notification.message|truncatechars:92 }}</span>
+                </div>
+                <span class="status-badge {{ notification.badge_class }}">{{ notification.severity|upper }}</span>
+              </div>
+              <div class="notification-meta-row">
+                <span class="text-xs text-muted">{{ notification.created_at|timesince }} ago</span>
+                <div class="notification-inline-actions">
+                  {% if not notification.is_read %}
+                  <form method="post" action="{% url 'mark_notification_read' notification.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+                    <button type="submit" class="notification-link-btn">Mark read</button>
+                  </form>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+          {% empty %}
+          <div class="notification-empty-state">
+            <i data-lucide="inbox"></i>
+            <h6>No notifications yet</h6>
+            <p class="text-sm mb-0">Monitoring events and weekly reports will appear here.</p>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="notification-dropdown-footer">
+          <form method="post" action="{% url 'mark_all_notifications_read' %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+            <button type="submit" class="notification-link-btn">Mark all as read</button>
+          </form>
+          <a href="{% url 'notifications' %}" class="notification-link-btn">View all notifications</a>
+        </div>
+      </div>
+    </div>
+
+    <a href="{% url 'profile' %}" class="text-decoration-none">
+      {% if account_snapshot and account_snapshot.profile.avatar %}
+      <img src="{{ account_snapshot.profile.avatar.url }}" alt="{{ request.user.username }}" class="user-avatar user-avatar-image" />
+      {% else %}
+      <div class="user-avatar user-avatar-text" title="Profile Settings">{% if account_snapshot %}{{ account_snapshot.initials }}{% else %}U{% endif %}</div>
+      {% endif %}
+    </a>
+  </div>
+</header>

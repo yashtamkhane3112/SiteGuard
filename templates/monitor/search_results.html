@@ -1,0 +1,160 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Search | SiteGuard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{% static 'css/style.css' %}" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <div class="overlay" id="mobileOverlay"></div>
+      <aside class="sidebar" id="sidebar">
+        <a href="{% url 'index' %}" style="text-decoration: none">
+          <div class="sidebar-brand">
+            <div class="logo-icon"><i data-lucide="activity"></i></div>
+            <span>Site Guard</span>
+          </div>
+        </a>
+        <nav class="sidebar-nav">
+          <a href="{% url 'dashboard' %}" class="nav-item"><i data-lucide="layout-dashboard"></i> Dashboard</a>
+          <a href="{% url 'status' %}" class="nav-item"><i data-lucide="globe"></i> Status Check</a>
+          <a href="{% url 'reports' %}" class="nav-item"><i data-lucide="bar-chart-2"></i> Reports</a>
+          <a href="{% url 'incidents' %}" class="nav-item"><i data-lucide="alert-triangle"></i> Incidents</a>
+          <a href="{% url 'logs' %}" class="nav-item"><i data-lucide="file-text"></i> Logs</a>
+          <a href="{% url 'utilities' %}" class="nav-item"><i data-lucide="wrench"></i> Utilities</a>
+          <a href="{% url 'alerts' %}" class="nav-item"><i data-lucide="bell"></i> Alerts</a>
+          <a href="{% url 'notifications' %}" class="nav-item"><i data-lucide="inbox"></i> Notifications</a>
+          <div style="flex-grow: 1"></div>
+          <a href="{% url 'logout' %}" class="nav-item"><i data-lucide="log-out"></i> Logout</a>
+        </nav>
+      </aside>
+      <main class="main-content">
+        {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search across SiteGuard..." %}
+        <div class="content-wrapper">
+          <div class="mb-4">
+            <h2 class="page-title">Search</h2>
+            <p class="page-subtitle">
+              {% if query %}Results for "{{ query }}" across websites, incidents, alerts, notifications, logs, and reports.{% else %}Search monitored domains, incidents, alerts, notifications, and logs.{% endif %}
+            </p>
+          </div>
+
+          {% if recent_searches %}
+          <div class="dash-panel mb-4">
+            <h5 class="panel-title">Recent Searches</h5>
+            <div class="utility-chip-wrap mt-3">
+              {% for item in recent_searches %}
+              <a href="{% url 'search' %}?q={{ item|urlencode }}" class="utility-chip text-decoration-none">{{ item }}</a>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+
+          {% if not total_count %}
+          <div class="dash-panel notification-empty-state">
+            <i data-lucide="search-x"></i>
+            <h5 class="text-white fw-bold">No results found</h5>
+            <p class="page-subtitle mb-0">Try a domain fragment, incident label, alert type, or notification keyword.</p>
+          </div>
+          {% endif %}
+
+          {% if reports %}
+          <div class="dash-panel mb-4">
+            <h5 class="panel-title">Reports</h5>
+            {% for report in reports %}
+            <a href="{% url report.url_name %}" class="search-result-card">
+              <div class="notif-icon bg-panel-light text-purple"><i data-lucide="file-text"></i></div>
+              <div>
+                <div class="text-white fw-bold">{{ report.title }}</div>
+                <div class="text-slate-300 text-sm">{{ report.description }}</div>
+              </div>
+            </a>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          {% if websites %}
+          <div class="dash-panel mb-4">
+            <h5 class="panel-title">Websites</h5>
+            {% for website in websites %}
+            <a href="{% url 'status' %}" class="search-result-card">
+              <div class="notif-icon bg-good-light text-good"><i data-lucide="globe"></i></div>
+              <div>
+                <div class="text-white fw-bold font-mono">{{ website.display_domain }}</div>
+                <div class="text-slate-300 text-sm">{{ website.url }}</div>
+              </div>
+            </a>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          {% if incidents %}
+          <div class="dash-panel mb-4">
+            <h5 class="panel-title">Incidents</h5>
+            {% for incident in incidents %}
+            <a href="{% url 'incidents' %}" class="search-result-card">
+              <div class="notif-icon {{ incident.icon_bg_class }} {{ incident.icon_text_class }}"><i data-lucide="{{ incident.icon_name }}"></i></div>
+              <div>
+                <div class="text-white fw-bold">{{ incident.title }}</div>
+                <div class="text-slate-300 text-sm">{{ incident.website.display_domain }} • {{ incident.status_label }}</div>
+              </div>
+            </a>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          {% if alerts %}
+          <div class="dash-panel mb-4">
+            <h5 class="panel-title">Alerts</h5>
+            {% for alert in alerts %}
+            <a href="{% url 'alerts' %}" class="search-result-card">
+              <div class="notif-icon {{ alert.icon_bg_class }} {{ alert.icon_text_class }}"><i data-lucide="{{ alert.icon_name }}"></i></div>
+              <div>
+                <div class="text-white fw-bold">{{ alert.alert_type }}</div>
+                <div class="text-slate-300 text-sm">{{ alert.website.display_domain }} • {{ alert.message|truncatechars:90 }}</div>
+              </div>
+            </a>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          {% if notifications %}
+          <div class="dash-panel mb-4">
+            <h5 class="panel-title">Notifications</h5>
+            {% for notification in notifications %}
+            <a href="{% url 'notifications' %}" class="search-result-card">
+              <div class="notif-icon {{ notification.icon_bg_class }} {{ notification.icon_text_class }}"><i data-lucide="{{ notification.icon_name }}"></i></div>
+              <div>
+                <div class="text-white fw-bold">{{ notification.title }}</div>
+                <div class="text-slate-300 text-sm">{{ notification.message|truncatechars:90 }}</div>
+              </div>
+            </a>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          {% if logs %}
+          <div class="dash-panel">
+            <h5 class="panel-title">Logs</h5>
+            {% for log in logs %}
+            <a href="{% url 'logs' %}" class="search-result-card">
+              <div class="notif-icon bg-panel-light text-purple"><i data-lucide="history"></i></div>
+              <div>
+                <div class="text-white fw-bold font-mono">{{ log.display_domain }}</div>
+                <div class="text-slate-300 text-sm">{{ log.status }} • {{ log.checked_at|date:"Y-m-d H:i" }}</div>
+              </div>
+            </a>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+      </main>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{% static 'js/script.js' %}"></script>
+  </body>
+</html>

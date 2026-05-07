@@ -1,0 +1,130 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Notifications | SiteGuard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{% static 'css/style.css' %}" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <div class="overlay" id="mobileOverlay"></div>
+      <aside class="sidebar" id="sidebar">
+        <a href="{% url 'index' %}" style="text-decoration: none">
+          <div class="sidebar-brand">
+            <div class="logo-icon"><i data-lucide="activity"></i></div>
+            <span>Site Guard</span>
+          </div>
+        </a>
+        <nav class="sidebar-nav">
+          <a href="{% url 'dashboard' %}" class="nav-item"><i data-lucide="layout-dashboard"></i> Dashboard</a>
+          <a href="{% url 'status' %}" class="nav-item"><i data-lucide="globe"></i> Status Check</a>
+          <a href="{% url 'reports' %}" class="nav-item"><i data-lucide="bar-chart-2"></i> Reports</a>
+          <a href="{% url 'incidents' %}" class="nav-item"><i data-lucide="alert-triangle"></i> Incidents</a>
+          <a href="{% url 'logs' %}" class="nav-item"><i data-lucide="file-text"></i> Logs</a>
+          <a href="{% url 'utilities' %}" class="nav-item"><i data-lucide="wrench"></i> Utilities</a>
+          <a href="{% url 'alerts' %}" class="nav-item"><i data-lucide="bell"></i> Alerts</a>
+          <a href="{% url 'notifications' %}" class="nav-item active"><i data-lucide="inbox"></i> Notifications</a>
+          <div style="flex-grow: 1"></div>
+          <a href="{% url 'logout' %}" class="nav-item"><i data-lucide="log-out"></i> Logout</a>
+        </nav>
+      </aside>
+      <main class="main-content">
+        {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search notifications, incidents, websites..." %}
+        <div class="content-wrapper">
+          <div class="d-flex flex-column flex-md-row justify-content-between gap-3 mb-4">
+            <div>
+              <h2 class="page-title">Notifications</h2>
+              <p class="page-subtitle">Real monitoring events, recoveries, SSL changes, and report notices.</p>
+            </div>
+            <form method="get" class="notification-filter-row">
+              <select name="severity" class="form-select custom-input">
+                <option value="">All Severities</option>
+                <option value="critical" {% if selected_severity == 'critical' %}selected{% endif %}>Critical</option>
+                <option value="warning" {% if selected_severity == 'warning' %}selected{% endif %}>Warning</option>
+                <option value="success" {% if selected_severity == 'success' %}selected{% endif %}>Success</option>
+                <option value="info" {% if selected_severity == 'info' %}selected{% endif %}>Info</option>
+              </select>
+              <label class="site-item m-0">
+                <span class="text-white font-mono text-sm fw-medium">Unread Only</span>
+                <input type="checkbox" name="unread" value="1" {% if unread_only %}checked{% endif %} />
+              </label>
+              <button type="submit" class="btn btn-primary-custom">Filter</button>
+            </form>
+          </div>
+
+          {% if messages %}
+            {% for message in messages %}
+            <div class="utility-state-banner utility-state-success mb-3"><i data-lucide="check-circle"></i><span>{{ message }}</span></div>
+            {% endfor %}
+          {% endif %}
+
+          <div class="dash-panel mb-4">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+              <div class="d-flex gap-3 flex-wrap">
+                <span class="status-badge badge-purple">{{ page_obj.paginator.count }} total</span>
+                <span class="status-badge badge-slow">{{ unread_count }} unread</span>
+              </div>
+              <form method="post" action="{% url 'mark_all_notifications_read' %}">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+                <button type="submit" class="btn btn-outline-dark-custom">Mark all as read</button>
+              </form>
+            </div>
+          </div>
+
+          <div class="notification-page-grid">
+            {% for notification in notifications %}
+            <div class="dash-panel notification-page-card {% if not notification.is_read %}notification-page-card-unread{% endif %}">
+              <div class="d-flex justify-content-between gap-3 flex-wrap">
+                <div class="d-flex gap-3 min-width-0">
+                  <div class="notif-icon {{ notification.icon_bg_class }} {{ notification.icon_text_class }}">
+                    <i data-lucide="{{ notification.icon_name }}"></i>
+                  </div>
+                  <div class="min-width-0">
+                    <div class="d-flex gap-2 align-items-center flex-wrap mb-2">
+                      <h6 class="text-white fw-bold m-0">{{ notification.title }}</h6>
+                      <span class="status-badge {{ notification.badge_class }}">{{ notification.severity|upper }}</span>
+                    </div>
+                    <p class="text-slate-300 text-sm mb-2">{{ notification.message }}</p>
+                    <div class="notification-meta-row">
+                      <span class="text-xs text-muted">{{ notification.created_at|date:"Y-m-d H:i" }}</span>
+                      <span class="text-xs text-muted">{{ notification.notification_type|title }}</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="notification-page-actions">
+                  {% if not notification.is_read %}
+                  <form method="post" action="{% url 'mark_notification_read' notification.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+                    <button type="submit" class="notification-link-btn">Mark read</button>
+                  </form>
+                  {% endif %}
+                  <form method="post" action="{% url 'delete_notification' notification.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+                    <button type="submit" class="notification-link-btn">Delete</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+            {% empty %}
+            <div class="dash-panel notification-empty-state">
+              <i data-lucide="inbox"></i>
+              <h5 class="text-white fw-bold">No notifications found</h5>
+              <p class="page-subtitle mb-0">Adjust your filters or wait for the next monitoring event.</p>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </main>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{% static 'js/script.js' %}"></script>
+  </body>
+</html>

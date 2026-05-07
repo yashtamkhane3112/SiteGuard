@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page.title }} | SiteGuard{% endblock %}
+
+{% block content %}
+<section class="legal-shell">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="container">
+    <div class="legal-hero">
+      <span class="hero-badge">{{ page.eyebrow }}</span>
+      <h1 class="hero-title mb-3">{{ page.title }}</h1>
+      <p class="section-subtitle">Clear trust and policy details presented in the same premium SiteGuard language.</p>
+    </div>
+    <div class="legal-grid">
+      {% for heading, body in page.sections %}
+      <div class="dash-panel legal-card">
+        <h5 class="panel-title">{{ heading }}</h5>
+        <p class="page-subtitle mb-0">{{ body }}</p>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="text-center mt-4">
+      <a href="{% url 'index' %}" class="btn btn-outline-dark-custom">Back to SiteGuard</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

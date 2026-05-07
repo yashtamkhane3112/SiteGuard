@@ -63,22 +63,7 @@
       </aside>
 
       <main class="main-content">
-        <header class="top-header">
-          <div class="d-flex align-items-center">
-            <button class="mobile-toggle" id="mobileToggle">
-              <i data-lucide="menu"></i>
-            </button>
-            <div class="search-bar d-none d-sm-flex">
-              <i data-lucide="search" class="search-icon"></i>
-              <input type="text" placeholder="Search alert history..." />
-            </div>
-          </div>
-          <div class="header-actions">
-            <a href="{% url 'profile' %}" class="text-decoration-none"
-              ><div class="user-avatar">U</div></a
-            >
-          </div>
-        </header>
+        {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search alert history..." %}
 
         <div class="content-wrapper">
           <div class="mb-4">

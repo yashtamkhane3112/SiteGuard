@@ -10,10 +10,11 @@ import requests
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
+from django.db.models import Q
 from django.db import transaction
 from django.utils import timezone
 
-from .models import Alert, Incident, IncidentEvent, MonitorLog, UserProfile, Website
+from .models import Alert, Incident, IncidentEvent, MonitorLog, Notification, UserProfile, Website
 
 try:
     import dns.resolver as dns_resolver
@@ -30,6 +31,7 @@ SECURITY_HEADERS = {
     'content-security-policy': 'Missing CSP',
     'referrer-policy': 'Missing referrer policy',
 }
+RECENT_SEARCHES_SESSION_KEY = 'siteguard_recent_searches'
 
 
 def get_site_status(log):
@@ -458,6 +460,214 @@ def get_user_account_snapshot(user):
     }
 
 
+def get_notification_queryset(user):
+    return Notification.objects.filter(user=user).select_related(
+        'related_incident',
+        'related_website',
+    )
+
+
+def get_recent_notifications(user, limit=6):
+    if not getattr(user, 'is_authenticated', False):
+        return []
+    return list(get_notification_queryset(user)[:limit])
+
+
+def get_unread_notification_count(user):
+    if not getattr(user, 'is_authenticated', False):
+        return 0
+    return Notification.objects.filter(user=user, is_read=False).count()
+
+
+def create_notification(
+    *,
+    user,
+    title,
+    message,
+    notification_type,
+    severity,
+    related_incident=None,
+    related_website=None,
+):
+    existing = Notification.objects.filter(
+        user=user,
+        title=title,
+        message=message,
+        notification_type=notification_type,
+        severity=severity,
+        related_incident=related_incident,
+        related_website=related_website,
+        is_read=False,
+    ).first()
+    if existing:
+        return existing
+
+    return Notification.objects.create(
+        user=user,
+        title=title,
+        message=message,
+        notification_type=notification_type,
+        severity=severity,
+        related_incident=related_incident,
+        related_website=related_website,
+    )
+
+
+def create_notification_from_alert(alert):
+    website = alert.website
+    incident = alert.incident
+    domain = normalize_domain_display(website.url)
+
+    if alert.alert_type == Alert.TYPE_DOWN:
+        title = f"Outage detected for {domain}"
+        notification_type = Notification.TYPE_OUTAGE
+        severity = Notification.SEVERITY_CRITICAL
+    elif alert.alert_type == Alert.TYPE_SLOW:
+        title = f"Slow response warning for {domain}"
+        notification_type = Notification.TYPE_WARNING
+        severity = Notification.SEVERITY_WARNING
+    elif alert.alert_type == Alert.TYPE_SSL:
+        title = f"SSL warning for {domain}"
+        notification_type = Notification.TYPE_SSL
+        severity = Notification.SEVERITY_WARNING
+    else:
+        title = f"Recovery confirmed for {domain}"
+        notification_type = Notification.TYPE_RECOVERY
+        severity = Notification.SEVERITY_SUCCESS
+        if incident and incident.incident_type == Incident.TYPE_SSL:
+            title = f"SSL restored for {domain}"
+
+    return create_notification(
+        user=website.user,
+        title=title,
+        message=alert.message,
+        notification_type=notification_type,
+        severity=severity,
+        related_incident=incident,
+        related_website=website,
+    )
+
+
+def ensure_weekly_report_notification(user):
+    if not getattr(user, 'is_authenticated', False):
+        return None
+
+    now = timezone.now()
+    week_key = now.strftime('%G-W%V')
+    title = f"Weekly report ready for {week_key}"
+    message = "Your latest SiteGuard monitoring analytics and uptime trends are ready to review."
+    return create_notification(
+        user=user,
+        title=title,
+        message=message,
+        notification_type=Notification.TYPE_REPORT,
+        severity=Notification.SEVERITY_INFO,
+    )
+
+
+def remember_recent_search(request, query):
+    cleaned = (query or '').strip()
+    if not cleaned:
+        return
+
+    recent = request.session.get(RECENT_SEARCHES_SESSION_KEY, [])
+    recent = [item for item in recent if item.lower() != cleaned.lower()]
+    recent.insert(0, cleaned)
+    request.session[RECENT_SEARCHES_SESSION_KEY] = recent[:5]
+    request.session.modified = True
+
+
+def get_recent_searches(request):
+    return request.session.get(RECENT_SEARCHES_SESSION_KEY, [])[:5]
+
+
+def normalize_search_query(query):
+    return (query or '').strip()[:100]
+
+
+def build_global_search_results(user, query, per_section=6):
+    normalized_query = normalize_search_query(query)
+    if not getattr(user, 'is_authenticated', False) or not normalized_query:
+        return {
+            'query': normalized_query,
+            'websites': [],
+            'incidents': [],
+            'alerts': [],
+            'notifications': [],
+            'logs': [],
+            'reports': [],
+            'total_count': 0,
+        }
+
+    filters = (
+        Q(url__icontains=normalized_query)
+    )
+    websites = list(Website.objects.filter(user=user).filter(filters).order_by('url')[:per_section])
+    incidents = list(
+        Incident.objects.filter(website__user=user).select_related('website').filter(
+            Q(title__icontains=normalized_query) |
+            Q(website__url__icontains=normalized_query) |
+            Q(status__icontains=normalized_query)
+        ).order_by('-started_at')[:per_section]
+    )
+    alerts = list(
+        Alert.objects.filter(website__user=user).select_related('website', 'incident').filter(
+            Q(message__icontains=normalized_query) |
+            Q(website__url__icontains=normalized_query) |
+            Q(alert_type__icontains=normalized_query)
+        ).order_by('-created_at')[:per_section]
+    )
+    notifications = list(
+        get_notification_queryset(user).filter(
+            Q(title__icontains=normalized_query) |
+            Q(message__icontains=normalized_query) |
+            Q(notification_type__icontains=normalized_query) |
+            Q(related_website__url__icontains=normalized_query)
+        )[:per_section]
+    )
+    logs = list(
+        MonitorLog.objects.filter(website__user=user).select_related('website').filter(
+            Q(website__url__icontains=normalized_query) |
+            Q(status__icontains=normalized_query)
+        ).order_by('-checked_at')[:per_section]
+    )
+
+    report_matches = []
+    if (
+        'report' in normalized_query.lower()
+        or websites
+        or incidents
+        or alerts
+        or logs
+    ):
+        report_matches.append({
+            'title': 'Open monitoring analytics report',
+            'description': f"Analytics for query '{normalized_query}' across your monitored websites.",
+            'url_name': 'reports',
+        })
+
+    for website in websites:
+        website.display_domain = normalize_domain_display(website.url)
+    for incident in incidents:
+        incident.website.display_domain = normalize_domain_display(incident.website.url)
+    for alert in alerts:
+        alert.website.display_domain = normalize_domain_display(alert.website.url)
+    for log in logs:
+        log.display_domain = normalize_domain_display(log.website.url)
+
+    total_count = sum(len(section) for section in (websites, incidents, alerts, notifications, logs, report_matches))
+    return {
+        'query': normalized_query,
+        'websites': websites,
+        'incidents': incidents,
+        'alerts': alerts,
+        'notifications': notifications,
+        'logs': logs,
+        'reports': report_matches,
+        'total_count': total_count,
+    }
+
+
 def account_allows_email_alert(user, alert_type):
     profile = get_or_create_user_profile(user)
     if not profile.email_alerts_enabled:
@@ -635,6 +845,7 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
         if response_time is not None and alert.response_time != response_time:
             alert.response_time = response_time
             alert.save(update_fields=['response_time'])
+        create_notification_from_alert(alert)
         return alert
 
     if alert is None or alert.status == Alert.STATUS_FAILED or alert.message != message:
@@ -651,6 +862,7 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
     if not sent_to:
         alert.status = Alert.STATUS_SENT
         alert.save(update_fields=['status'])
+        create_notification_from_alert(alert)
         return alert
 
     try:
@@ -663,6 +875,7 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
         alert.message = f"{message}\n\nDelivery failure: {exc}"
         alert.save(update_fields=['status', 'message'])
 
+    create_notification_from_alert(alert)
     return alert
 
 

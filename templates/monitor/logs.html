@@ -63,67 +63,7 @@
       </aside>
 
       <main class="main-content">
-        <header class="top-header">
-          <div class="d-flex align-items-center">
-            <button class="mobile-toggle" id="mobileToggle">
-              <i data-lucide="menu"></i>
-            </button>
-            <div class="search-bar d-none d-sm-flex">
-              <i data-lucide="search" class="search-icon"></i>
-              <input
-                type="text"
-                id="globalSearch"
-                placeholder="Search websites..."
-              />
-            </div>
-          </div>
-          <div class="header-actions">
-            <div class="dropdown">
-              <button
-                class="icon-btn"
-                type="button"
-                id="notificationMenu"
-                data-bs-toggle="dropdown"
-                aria-expanded="false"
-              >
-                <i data-lucide="bell"></i>
-                <span class="notification-dot"></span>
-              </button>
-              <div
-                class="dropdown-menu dropdown-menu-end notification-dropdown"
-                aria-labelledby="notificationMenu"
-              >
-                <div
-                  class="p-3 border-bottom border-secondary"
-                  style="border-color: rgba(255, 255, 255, 0.05) !important"
-                >
-                  <div class="d-flex justify-content-between align-items-center">
-                    <h6 class="m-0 text-white fw-bold">Notifications</h6>
-                    <span class="badge bg-purple-light text-white" style="background: #a855f7">
-                      {{ logs|length }} Logs
-                    </span>
-                  </div>
-                </div>
-                <div class="notification-list">
-                  <a href="{% url 'reports' %}" class="notification-item">
-                    <div class="notif-icon bg-panel-light text-purple">
-                      <i data-lucide="history"></i>
-                    </div>
-                    <div>
-                      <p class="m-0 text-white text-sm fw-medium">
-                        Live monitoring history available
-                      </p>
-                      <span class="text-xs text-muted">Showing the latest 100 checks for your sites.</span>
-                    </div>
-                  </a>
-                </div>
-              </div>
-            </div>
-            <a href="{% url 'profile' %}" class="text-decoration-none">
-              <div class="user-avatar" title="Go to Profile">U</div>
-            </a>
-          </div>
-        </header>
+        {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search logs, websites, incidents..." %}
 
         <div class="content-wrapper">
           <div class="mb-4">

@@ -435,6 +435,104 @@ class Alert(models.Model):
         return 'text-good'
 
 
+class Notification(models.Model):
+    TYPE_OUTAGE = 'outage'
+    TYPE_RECOVERY = 'recovery'
+    TYPE_SSL = 'ssl'
+    TYPE_REPORT = 'report'
+    TYPE_WARNING = 'warning'
+    TYPE_INFO = 'info'
+    TYPE_CHOICES = [
+        (TYPE_OUTAGE, 'Outage'),
+        (TYPE_RECOVERY, 'Recovery'),
+        (TYPE_SSL, 'SSL'),
+        (TYPE_REPORT, 'Report'),
+        (TYPE_WARNING, 'Warning'),
+        (TYPE_INFO, 'Info'),
+    ]
+
+    SEVERITY_CRITICAL = 'critical'
+    SEVERITY_WARNING = 'warning'
+    SEVERITY_SUCCESS = 'success'
+    SEVERITY_INFO = 'info'
+    SEVERITY_CHOICES = [
+        (SEVERITY_CRITICAL, 'Critical'),
+        (SEVERITY_WARNING, 'Warning'),
+        (SEVERITY_SUCCESS, 'Success'),
+        (SEVERITY_INFO, 'Info'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+    notification_type = models.CharField(max_length=20, choices=TYPE_CHOICES)
+    severity = models.CharField(max_length=20, choices=SEVERITY_CHOICES, default=SEVERITY_INFO)
+    related_incident = models.ForeignKey(
+        Incident,
+        on_delete=models.SET_NULL,
+        related_name='notifications',
+        null=True,
+        blank=True,
+    )
+    related_website = models.ForeignKey(
+        Website,
+        on_delete=models.SET_NULL,
+        related_name='notifications',
+        null=True,
+        blank=True,
+    )
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['user', 'is_read', '-created_at']),
+            models.Index(fields=['user', 'notification_type', 'severity']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.title}"
+
+    @property
+    def badge_class(self):
+        return {
+            self.SEVERITY_CRITICAL: 'badge-down',
+            self.SEVERITY_WARNING: 'badge-slow',
+            self.SEVERITY_SUCCESS: 'badge-up',
+            self.SEVERITY_INFO: 'badge-purple',
+        }.get(self.severity, 'badge-purple')
+
+    @property
+    def icon_name(self):
+        return {
+            self.TYPE_OUTAGE: 'wifi-off',
+            self.TYPE_RECOVERY: 'check-circle',
+            self.TYPE_SSL: 'shield-alert',
+            self.TYPE_REPORT: 'file-text',
+            self.TYPE_WARNING: 'clock-3',
+            self.TYPE_INFO: 'bell',
+        }.get(self.notification_type, 'bell')
+
+    @property
+    def icon_bg_class(self):
+        return {
+            self.SEVERITY_CRITICAL: 'bg-critical-light',
+            self.SEVERITY_WARNING: 'bg-warning-light',
+            self.SEVERITY_SUCCESS: 'bg-good-light',
+            self.SEVERITY_INFO: 'bg-panel-light',
+        }.get(self.severity, 'bg-panel-light')
+
+    @property
+    def icon_text_class(self):
+        return {
+            self.SEVERITY_CRITICAL: 'text-critical',
+            self.SEVERITY_WARNING: 'text-warning',
+            self.SEVERITY_SUCCESS: 'text-good',
+            self.SEVERITY_INFO: 'text-purple',
+        }.get(self.severity, 'text-purple')
+
+
 @receiver(post_save, sender=User)
 def ensure_user_profile(sender, instance, created, **kwargs):
     if created:

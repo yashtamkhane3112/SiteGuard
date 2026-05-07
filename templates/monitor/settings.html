@@ -45,26 +45,7 @@
       </aside>
 
       <main class="main-content">
-        <header class="top-header">
-          <div class="d-flex align-items-center">
-            <button class="mobile-toggle" id="mobileToggle">
-              <i data-lucide="menu"></i>
-            </button>
-            <div class="search-bar d-none d-sm-flex">
-              <i data-lucide="search" class="search-icon"></i>
-              <input type="text" placeholder="Search websites..." />
-            </div>
-          </div>
-          <div class="header-actions">
-            <a href="{% url 'profile' %}" class="text-decoration-none">
-              {% if account_snapshot.profile.avatar %}
-              <img src="{{ account_snapshot.profile.avatar.url }}" alt="{{ request.user.username }}" class="user-avatar user-avatar-image" />
-              {% else %}
-              <div class="user-avatar user-avatar-text">{{ account_snapshot.initials }}</div>
-              {% endif %}
-            </a>
-          </div>
-        </header>
+        {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search settings, preferences, alerts..." %}
 
         <div class="content-wrapper" style="max-width: 980px">
           <div class="mb-4">

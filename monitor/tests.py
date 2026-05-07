@@ -12,7 +12,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from monitor.models import Alert, Incident, IncidentEvent, MonitorLog, UserProfile, Website
+from monitor.models import Alert, Incident, IncidentEvent, MonitorLog, Notification, UserProfile, Website
 from monitor.utils import (
     analyze_domain,
     cleanup_monitoring_state,
@@ -1115,3 +1115,157 @@ class AccountManagementTests(TestCase):
         self.assertEqual(settings_response.status_code, 302)
         self.assertIn("/login/", profile_response.url)
         self.assertIn("/login/", settings_response.url)
+
+
+class NotificationAndSearchTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="notify-user",
+            password="StrongPass123!",
+            email="notify@example.com",
+        )
+        self.client.login(username="notify-user", password="StrongPass123!")
+        self.website = Website.objects.create(user=self.user, url="https://example.com")
+
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    @patch("monitor.utils.requests.get")
+    def test_outage_notification_is_created_once_without_spam(self, mock_get, _mock_ssl):
+        MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=100)
+        mock_get.return_value = Mock(
+            status_code=503,
+            elapsed=Mock(total_seconds=Mock(return_value=0.2)),
+        )
+
+        run_single_check(self.website)
+        run_single_check(self.website)
+
+        notifications = Notification.objects.filter(user=self.user, notification_type=Notification.TYPE_OUTAGE)
+        self.assertEqual(notifications.count(), 1)
+
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    @patch("monitor.utils.requests.get")
+    def test_recovery_notification_is_created(self, mock_get, _mock_ssl):
+        MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=100)
+        mock_get.return_value = Mock(
+            status_code=503,
+            elapsed=Mock(total_seconds=Mock(return_value=0.2)),
+        )
+        run_single_check(self.website)
+
+        mock_get.return_value = Mock(
+            status_code=200,
+            elapsed=Mock(total_seconds=Mock(return_value=0.1)),
+        )
+        run_single_check(self.website)
+
+        self.assertTrue(Notification.objects.filter(user=self.user, notification_type=Notification.TYPE_RECOVERY).exists())
+
+    def test_notifications_page_filters_and_mark_read_work(self):
+        unread = Notification.objects.create(
+            user=self.user,
+            title="Critical outage",
+            message="example.com down",
+            notification_type=Notification.TYPE_OUTAGE,
+            severity=Notification.SEVERITY_CRITICAL,
+            related_website=self.website,
+        )
+        Notification.objects.create(
+            user=self.user,
+            title="Weekly report",
+            message="report ready",
+            notification_type=Notification.TYPE_REPORT,
+            severity=Notification.SEVERITY_INFO,
+            related_website=self.website,
+            is_read=True,
+        )
+
+        response = self.client.get(reverse("notifications"), {"severity": "critical", "unread": "1"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Critical outage")
+        self.assertEqual(len(response.context["notifications"]), 1)
+        self.assertEqual(response.context["notifications"][0].title, "Critical outage")
+
+        mark_response = self.client.post(reverse("mark_notification_read", args=[unread.id]), {"next": reverse("notifications")})
+        self.assertRedirects(mark_response, reverse("notifications"))
+        unread.refresh_from_db()
+        self.assertTrue(unread.is_read)
+
+    def test_mark_all_notifications_read_and_delete(self):
+        first = Notification.objects.create(
+            user=self.user,
+            title="First",
+            message="one",
+            notification_type=Notification.TYPE_INFO,
+            severity=Notification.SEVERITY_INFO,
+        )
+        second = Notification.objects.create(
+            user=self.user,
+            title="Second",
+            message="two",
+            notification_type=Notification.TYPE_WARNING,
+            severity=Notification.SEVERITY_WARNING,
+        )
+
+        response = self.client.post(reverse("mark_all_notifications_read"), {"next": reverse("notifications")})
+        self.assertRedirects(response, reverse("notifications"))
+        self.assertEqual(Notification.objects.filter(user=self.user, is_read=False).count(), 0)
+
+        delete_response = self.client.post(reverse("delete_notification", args=[first.id]), {"next": reverse("notifications")})
+        self.assertRedirects(delete_response, reverse("notifications"))
+        self.assertFalse(Notification.objects.filter(id=first.id).exists())
+        self.assertTrue(Notification.objects.filter(id=second.id).exists())
+
+    def test_reports_view_creates_weekly_report_notification(self):
+        response = self.client.get(reverse("reports"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Notification.objects.filter(user=self.user, notification_type=Notification.TYPE_REPORT).exists())
+
+    def test_global_search_results_and_suggestions_render_real_data(self):
+        Notification.objects.create(
+            user=self.user,
+            title="SSL warning for example.com",
+            message="certificate warning",
+            notification_type=Notification.TYPE_SSL,
+            severity=Notification.SEVERITY_WARNING,
+            related_website=self.website,
+        )
+        incident = Incident.objects.create(
+            website=self.website,
+            title="Complete Outage",
+            incident_type=Incident.TYPE_OUTAGE,
+            status=Incident.STATUS_DOWN,
+            started_at=timezone.now(),
+            latest_response_time=0,
+        )
+        Alert.objects.create(
+            website=self.website,
+            incident=incident,
+            alert_type=Alert.TYPE_DOWN,
+            status=Alert.STATUS_SENT,
+            message="example.com down",
+        )
+        MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_DOWN, response_time=0)
+
+        response = self.client.get(reverse("search"), {"q": "example"})
+        suggestions = self.client.get(reverse("search_suggestions"), {"q": "example"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Websites")
+        self.assertContains(response, "Notifications")
+        self.assertContains(response, "Logs")
+        self.assertEqual(suggestions.status_code, 200)
+        self.assertGreater(len(suggestions.json()["results"]), 0)
+
+    def test_legal_pages_and_shared_glass_header_load(self):
+        dashboard_response = self.client.get(reverse("dashboard"))
+        privacy_response = self.client.get(reverse("legal_page", args=["privacy"]))
+        terms_response = self.client.get(reverse("legal_page", args=["terms"]))
+
+        self.assertEqual(dashboard_response.status_code, 200)
+        self.assertContains(dashboard_response, "unified-glass-header")
+        self.assertEqual(privacy_response.status_code, 200)
+        self.assertContains(privacy_response, "Privacy Policy")
+        self.assertEqual(terms_response.status_code, 200)
+        self.assertContains(terms_response, "Terms")

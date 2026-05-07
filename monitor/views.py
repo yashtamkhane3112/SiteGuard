@@ -7,6 +7,7 @@ from django.contrib.auth import authenticate, login as auth_login, logout as aut
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib import messages
+from django.core.paginator import Paginator
 from django.db.models import Avg, Count
 from django.views.decorators.http import require_POST
 from django.utils import timezone
@@ -22,12 +23,18 @@ from .forms import (
 from .models import Alert, Incident, MonitorLog, Website
 from .utils import (
     analyze_domain,
+    build_global_search_results,
     check_ssl_status,
     cleanup_monitoring_state,
+    ensure_weekly_report_notification,
     get_favicon_url,
     get_latest_logs_by_website,
+    get_notification_queryset,
     get_or_create_user_profile,
+    get_recent_searches,
     get_user_account_snapshot,
+    get_unread_notification_count,
+    remember_recent_search,
     normalize_domain_display,
     normalize_utility_domain,
     send_alert_email,
@@ -582,6 +589,7 @@ def reports(request):
     if range_key not in {'24h', '7d', '30d'}:
         range_key = '7d'
 
+    ensure_weekly_report_notification(request.user)
     context = build_reports_context(request.user, range_key)
     return render(request, 'monitor/reports.html', context)
 
@@ -721,6 +729,168 @@ def settings(request):
         'account_snapshot': get_user_account_snapshot(request.user),
     }
     return render(request, 'monitor/settings.html', context)
+
+
+@login_required
+def notifications(request):
+    notifications_qs = get_notification_queryset(request.user)
+    selected_severity = request.GET.get('severity', '').strip().lower()
+    unread_only = request.GET.get('unread') == '1'
+
+    if selected_severity in {'critical', 'warning', 'success', 'info'}:
+        notifications_qs = notifications_qs.filter(severity=selected_severity)
+    if unread_only:
+        notifications_qs = notifications_qs.filter(is_read=False)
+
+    paginator = Paginator(notifications_qs, 20)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    context = {
+        'page_obj': page_obj,
+        'notifications': page_obj.object_list,
+        'selected_severity': selected_severity,
+        'unread_only': unread_only,
+        'unread_count': get_unread_notification_count(request.user),
+    }
+    return render(request, 'monitor/notifications.html', context)
+
+
+@login_required
+@require_POST
+def mark_notification_read(request, notification_id):
+    notification = get_object_or_404(get_notification_queryset(request.user), id=notification_id)
+    notification.is_read = True
+    notification.save(update_fields=['is_read'])
+    messages.success(request, 'Notification marked as read.')
+    return redirect(request.POST.get('next') or 'notifications')
+
+
+@login_required
+@require_POST
+def mark_all_notifications_read(request):
+    get_notification_queryset(request.user).filter(is_read=False).update(is_read=True)
+    messages.success(request, 'All notifications marked as read.')
+    return redirect(request.POST.get('next') or 'notifications')
+
+
+@login_required
+@require_POST
+def delete_notification(request, notification_id):
+    notification = get_object_or_404(get_notification_queryset(request.user), id=notification_id)
+    notification.delete()
+    messages.success(request, 'Notification deleted.')
+    return redirect(request.POST.get('next') or 'notifications')
+
+
+@login_required
+def search(request):
+    query = request.GET.get('q', '')
+    results = build_global_search_results(request.user, query)
+    if results['query']:
+        remember_recent_search(request, results['query'])
+    results['recent_searches'] = get_recent_searches(request)
+    return render(request, 'monitor/search_results.html', results)
+
+
+@login_required
+def search_suggestions(request):
+    query = request.GET.get('q', '')
+    results = build_global_search_results(request.user, query, per_section=3)
+    payload = []
+    for website in results['websites']:
+        payload.append({
+            'group': 'Websites',
+            'label': website.display_domain,
+            'meta': website.url,
+            'url': '/status/',
+        })
+    for incident in results['incidents']:
+        payload.append({
+            'group': 'Incidents',
+            'label': incident.title,
+            'meta': incident.website.display_domain,
+            'url': '/incidents/',
+        })
+    for alert in results['alerts']:
+        payload.append({
+            'group': 'Alerts',
+            'label': alert.alert_type,
+            'meta': alert.website.display_domain,
+            'url': '/alerts/',
+        })
+    for notification in results['notifications']:
+        payload.append({
+            'group': 'Notifications',
+            'label': notification.title,
+            'meta': notification.message[:80],
+            'url': '/notifications/',
+        })
+    for log in results['logs']:
+        payload.append({
+            'group': 'Logs',
+            'label': log.display_domain,
+            'meta': log.status,
+            'url': '/logs/',
+        })
+    return JsonResponse({
+        'query': results['query'],
+        'results': payload[:8],
+        'recent_searches': get_recent_searches(request),
+    })
+
+
+def legal_page(request, slug):
+    pages = {
+        'privacy': {
+            'title': 'Privacy Policy',
+            'eyebrow': 'Privacy',
+            'sections': [
+                ('Data We Collect', 'SiteGuard stores the account, monitoring, incident, alert, and notification data required to operate your workspace.'),
+                ('How We Use It', 'Data is used to authenticate users, run monitoring workflows, send alerts, and present analytics across the platform.'),
+                ('Security', 'We keep access scoped to authenticated users and avoid exposing monitoring data outside the owning account.'),
+            ],
+        },
+        'terms': {
+            'title': 'Terms & Conditions',
+            'eyebrow': 'Terms',
+            'sections': [
+                ('Service Usage', 'Use SiteGuard responsibly and do not attempt to abuse monitoring, search, notification, or account systems.'),
+                ('Account Responsibility', 'Users are responsible for their credentials, configured endpoints, and any alerts or websites they manage.'),
+                ('Availability', 'SiteGuard monitoring data is provided on a best-effort basis and may evolve as the platform grows.'),
+            ],
+        },
+        'cookies': {
+            'title': 'Cookie Policy',
+            'eyebrow': 'Cookies',
+            'sections': [
+                ('Essential Cookies', 'Session cookies are used for login persistence and secure access to monitoring areas.'),
+                ('Preference Storage', 'Recent searches and similar UX preferences may be stored in your session for a smoother experience.'),
+                ('Control', 'You can clear browser cookies, but some authenticated features may require a fresh sign-in afterward.'),
+            ],
+        },
+        'contact': {
+            'title': 'Contact',
+            'eyebrow': 'Contact',
+            'sections': [
+                ('Support', 'Reach the SiteGuard team for operational questions, account help, or product feedback.'),
+                ('Email', 'webmaster@localhost'),
+                ('Response', 'We aim to respond to platform questions as quickly as practical.'),
+            ],
+        },
+        'security': {
+            'title': 'Security Policy',
+            'eyebrow': 'Security',
+            'sections': [
+                ('Monitoring Safety', 'SiteGuard validates domains, restricts unsafe utility targets, and keeps monitoring actions within authenticated ownership boundaries.'),
+                ('Disclosure', 'If you discover a security issue, contact the team privately with clear reproduction details.'),
+                ('Platform Direction', 'The account system is prepared for future OAuth and stronger authentication layers, including full 2FA flows.'),
+            ],
+        },
+    }
+    page = pages.get(slug)
+    if page is None:
+        return redirect('index')
+    return render(request, 'legal_page.html', {'page': page})
 
 
 @login_required

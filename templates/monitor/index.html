@@ -22,7 +22,7 @@
   </head>
   <body>
     <nav
-      class="navbar navbar-expand-lg navbar-dark custom-navbar sticky-top reveal active"
+      class="navbar navbar-expand-lg navbar-dark custom-navbar unified-glass-nav sticky-top reveal active"
     >
       <div class="container">
         <a class="navbar-brand fw-bold d-flex align-items-center gap-2" href="{% url 'index' %}"
@@ -333,8 +333,8 @@
               <a href="#"><i class="bi bi-twitter-x"></i></a>
               <a href="#"><i class="bi bi-facebook"></i></a>
             </div>
-            <a href="mailto:xyz@siteguard.com" class="footer-email"
-              >xyz@siteguard.com</a
+            <a href="{% url 'legal_page' 'contact' %}" class="footer-email"
+              >Contact SiteGuard</a
             >
           </div>
         </div>
@@ -358,12 +358,18 @@
           </div>
           <div class="col-md-6 text-center text-md-end">
             <ul class="list-inline mb-0 footer-legal-links">
-              <li class="list-inline-item"><a href="#">Privacy Policy</a></li>
+              <li class="list-inline-item"><a href="{% url 'legal_page' 'privacy' %}">Privacy Policy</a></li>
               <li class="list-inline-item ms-3">
-                <a href="#">Terms & Conditions</a>
+                <a href="{% url 'legal_page' 'terms' %}">Terms & Conditions</a>
               </li>
               <li class="list-inline-item ms-3">
-                <a href="#">Cookies Setting</a>
+                <a href="{% url 'legal_page' 'cookies' %}">Cookie Policy</a>
+              </li>
+              <li class="list-inline-item ms-3">
+                <a href="{% url 'legal_page' 'security' %}">Security Policy</a>
+              </li>
+              <li class="list-inline-item ms-3">
+                <a href="{% url 'legal_page' 'contact' %}">Contact</a>
               </li>
             </ul>
           </div>

@@ -21,6 +21,13 @@ urlpatterns = [
     path('alerts/<int:alert_id>/mark-read/', views.mark_alert_read, name='mark_alert_read'),
     path('alerts/<int:alert_id>/retry/', views.retry_alert, name='retry_alert'),
     path('alerts/preferences/<int:website_id>/', views.update_website_alert_settings, name='update_website_alert_settings'),
+    path('notifications/', views.notifications, name='notifications'),
+    path('notifications/<int:notification_id>/mark-read/', views.mark_notification_read, name='mark_notification_read'),
+    path('notifications/<int:notification_id>/delete/', views.delete_notification, name='delete_notification'),
+    path('notifications/mark-all-read/', views.mark_all_notifications_read, name='mark_all_notifications_read'),
+    path('search/', views.search, name='search'),
+    path('search/suggestions/', views.search_suggestions, name='search_suggestions'),
     path('utilities/', views.utilities, name='utilities'),
+    path('legal/<slug:slug>/', views.legal_page, name='legal_page'),
 ]
 

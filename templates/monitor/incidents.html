@@ -67,23 +67,7 @@
       </aside>
 
       <main class="main-content">
-        <header class="top-header">
-          <div class="d-flex align-items-center">
-            <button class="mobile-toggle" id="mobileToggle">
-              <i data-lucide="menu"></i>
-            </button>
-            <div class="search-bar d-none d-sm-flex">
-              <i data-lucide="search" class="search-icon"></i>
-              <input type="text" placeholder="Search websites..." />
-            </div>
-          </div>
-          <div class="header-actions">
-            <button class="icon-btn">
-              <i data-lucide="bell"></i><span class="notification-dot"></span>
-            </button>
-            <div class="user-avatar">U</div>
-          </div>
-        </header>
+        {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search incidents, domains, statuses..." %}
 
         <div class="content-wrapper">
           <div class="mb-4">

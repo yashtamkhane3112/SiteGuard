@@ -614,4 +614,90 @@ if(container) {
         container.appendChild(segment);
     }
 }
+
+// 7. Global Search Suggestions
+const globalSearchInput = document.getElementById('globalSearch');
+const searchSuggestionsPanel = document.getElementById('searchSuggestionsPanel');
+
+if (globalSearchInput && searchSuggestionsPanel) {
+    let searchTimer = null;
+
+    const renderSuggestions = (items, recentSearches = []) => {
+        if ((!items || items.length === 0) && (!recentSearches || recentSearches.length === 0)) {
+            searchSuggestionsPanel.innerHTML = '<div class="search-suggestions-state">No results found.</div>';
+            searchSuggestionsPanel.classList.remove('d-none');
+            return;
+        }
+
+        const parts = [];
+        if (items && items.length) {
+            items.forEach((item) => {
+                parts.push(`
+                    <a class="search-suggestion-item" href="${item.url}">
+                        <span>${item.label}<br><span class="search-suggestion-meta">${item.group} • ${item.meta || ''}</span></span>
+                    </a>
+                `);
+            });
+        } else if (recentSearches && recentSearches.length) {
+            recentSearches.forEach((item) => {
+                parts.push(`
+                    <a class="search-suggestion-item" href="/search/?q=${encodeURIComponent(item)}">
+                        <span>${item}<br><span class="search-suggestion-meta">Recent search</span></span>
+                    </a>
+                `);
+            });
+        }
+
+        searchSuggestionsPanel.innerHTML = parts.join('');
+        searchSuggestionsPanel.classList.remove('d-none');
+    };
+
+    globalSearchInput.addEventListener('input', () => {
+        const query = globalSearchInput.value.trim();
+        const endpoint = globalSearchInput.dataset.searchSuggestionsUrl;
+
+        clearTimeout(searchTimer);
+        if (!endpoint) return;
+
+        searchSuggestionsPanel.innerHTML = '<div class="search-suggestions-state">Loading…</div>';
+        searchSuggestionsPanel.classList.remove('d-none');
+
+        searchTimer = setTimeout(async () => {
+            try {
+                const response = await fetch(`${endpoint}?q=${encodeURIComponent(query)}`, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const data = await response.json();
+                renderSuggestions(data.results, data.recent_searches);
+            } catch (error) {
+                searchSuggestionsPanel.innerHTML = '<div class="search-suggestions-state">Search is temporarily unavailable.</div>';
+                searchSuggestionsPanel.classList.remove('d-none');
+            }
+        }, 200);
+    });
+
+    globalSearchInput.addEventListener('focus', () => {
+        if (!globalSearchInput.value.trim()) {
+            const endpoint = globalSearchInput.dataset.searchSuggestionsUrl;
+            if (!endpoint) return;
+            fetch(`${endpoint}?q=`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then((response) => response.json())
+                .then((data) => renderSuggestions([], data.recent_searches))
+                .catch(() => {});
+        }
+    });
+
+    document.addEventListener('click', (event) => {
+        if (!searchSuggestionsPanel.contains(event.target) && event.target !== globalSearchInput) {
+            searchSuggestionsPanel.classList.add('d-none');
+        }
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+            event.preventDefault();
+            globalSearchInput.focus();
+        }
+    });
+}
 });

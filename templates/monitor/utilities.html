@@ -63,32 +63,7 @@
       </aside>
 
       <main class="main-content">
-        <header class="top-header">
-          <div class="d-flex align-items-center">
-            <button class="mobile-toggle" id="mobileToggle">
-              <i data-lucide="menu"></i>
-            </button>
-            <div class="search-bar d-none d-sm-flex">
-              <i data-lucide="search" class="search-icon"></i>
-              <input type="text" placeholder="Search websites..." />
-            </div>
-          </div>
-          <div class="header-actions">
-            <div class="dropdown">
-              <button
-                class="icon-btn"
-                type="button"
-                id="notificationMenu"
-                data-bs-toggle="dropdown"
-              >
-                <i data-lucide="bell"></i><span class="notification-dot"></span>
-              </button>
-            </div>
-            <a href="{% url 'profile' %}" class="text-decoration-none"
-              ><div class="user-avatar" title="Go to Profile">U</div></a
-            >
-          </div>
-        </header>
+        {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search utilities, domains, incidents..." %}
 
         <div class="content-wrapper" style="max-width: 980px">
           <div class="mb-4">
