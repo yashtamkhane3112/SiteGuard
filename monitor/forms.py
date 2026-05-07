@@ -1,6 +1,7 @@
 from django import forms
-from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.forms import PasswordChangeForm, UserCreationForm
 from django.contrib.auth.models import User
+from .models import UserProfile
 
 
 class LoginForm(forms.Form):
@@ -62,3 +63,150 @@ class SignUpForm(UserCreationForm):
                 "id": "id_password2",
             }
         )
+
+
+COMMON_TIMEZONES = [
+    'UTC',
+    'Asia/Calcutta',
+    'Asia/Kolkata',
+    'America/New_York',
+    'America/Chicago',
+    'America/Los_Angeles',
+    'Europe/London',
+    'Europe/Berlin',
+    'Asia/Tokyo',
+    'Australia/Sydney',
+]
+TIMEZONE_CHOICES = [(tz, tz) for tz in COMMON_TIMEZONES]
+
+
+class ProfileUpdateForm(forms.Form):
+    username = forms.CharField(max_length=150)
+    email = forms.EmailField(required=False)
+    avatar = forms.FileField(required=False)
+
+    allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+    max_avatar_size = 2 * 1024 * 1024
+
+    def __init__(self, *args, user=None, profile=None, **kwargs):
+        self.user = user
+        self.profile = profile
+        initial = kwargs.setdefault('initial', {})
+        if user is not None:
+            initial.setdefault('username', user.username)
+            initial.setdefault('email', user.email)
+        super().__init__(*args, **kwargs)
+
+        self.fields['username'].widget.attrs.update({
+            'class': 'form-control custom-input',
+            'placeholder': 'Choose a username',
+            'autocomplete': 'username',
+        })
+        self.fields['email'].widget.attrs.update({
+            'class': 'form-control custom-input',
+            'placeholder': 'you@example.com',
+            'autocomplete': 'email',
+        })
+        self.fields['avatar'].widget.attrs.update({
+            'class': 'form-control custom-input',
+            'accept': 'image/*',
+        })
+
+    def clean_username(self):
+        username = (self.cleaned_data.get('username') or '').strip()
+        if User.objects.exclude(pk=getattr(self.user, 'pk', None)).filter(username__iexact=username).exists():
+            raise forms.ValidationError('That username is already in use.')
+        return username
+
+    def clean_email(self):
+        email = (self.cleaned_data.get('email') or '').strip().lower()
+        if email and User.objects.exclude(pk=getattr(self.user, 'pk', None)).filter(email__iexact=email).exists():
+            raise forms.ValidationError('That email address is already in use.')
+        return email
+
+    def clean_avatar(self):
+        avatar = self.cleaned_data.get('avatar')
+        if not avatar:
+            return avatar
+
+        filename = (avatar.name or '').lower()
+        if not any(filename.endswith(ext) for ext in self.allowed_extensions):
+            raise forms.ValidationError('Upload a valid image file.')
+
+        content_type = getattr(avatar, 'content_type', '')
+        if content_type and not content_type.startswith('image/'):
+            raise forms.ValidationError('Upload a valid image file.')
+
+        if avatar.size > self.max_avatar_size:
+            raise forms.ValidationError('Avatar must be 2 MB or smaller.')
+
+        return avatar
+
+    def save(self):
+        self.user.username = self.cleaned_data['username']
+        self.user.email = self.cleaned_data['email']
+        self.user.save(update_fields=['username', 'email'])
+
+        avatar = self.cleaned_data.get('avatar')
+        if avatar:
+            self.profile.avatar = avatar
+            self.profile.save(update_fields=['avatar', 'updated_at'])
+
+        return self.user, self.profile
+
+
+class AccountSecurityForm(forms.ModelForm):
+    class Meta:
+        model = UserProfile
+        fields = ('email_alerts_enabled', 'two_factor_enabled')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name in self.fields:
+            self.fields[field_name].widget.attrs.update({'class': 'custom-toggle-input'})
+
+
+class AccountPreferencesForm(forms.ModelForm):
+    timezone = forms.ChoiceField(choices=TIMEZONE_CHOICES)
+
+    class Meta:
+        model = UserProfile
+        fields = (
+            'timezone',
+            'email_alerts_enabled',
+            'ssl_alerts_enabled',
+            'incident_alerts_enabled',
+            'marketing_emails_enabled',
+            'monitoring_frequency',
+            'two_factor_enabled',
+        )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['timezone'].widget.attrs.update({'class': 'form-select custom-input'})
+        self.fields['monitoring_frequency'].widget.attrs.update({'class': 'form-select custom-input'})
+        for field_name in (
+            'email_alerts_enabled',
+            'ssl_alerts_enabled',
+            'incident_alerts_enabled',
+            'marketing_emails_enabled',
+            'two_factor_enabled',
+        ):
+            self.fields[field_name].widget.attrs.update({'class': 'custom-toggle-input'})
+
+
+class AccountPasswordChangeForm(PasswordChangeForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        placeholders = {
+            'old_password': 'Current password',
+            'new_password1': 'New password',
+            'new_password2': 'Confirm new password',
+        }
+        for field_name, field in self.fields.items():
+            field.help_text = None
+            field.widget.attrs.update({
+                'class': 'form-control custom-input',
+                'placeholder': placeholders.get(field_name, ''),
+                'autocomplete': 'current-password' if field_name == 'old_password' else 'new-password',
+            })

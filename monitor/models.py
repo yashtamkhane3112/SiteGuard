@@ -1,7 +1,9 @@
-from django.db import models
-from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
+from django.contrib.auth.models import User
+from django.db import models
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 from django.utils import timezone
 import re
 from urllib.parse import urlsplit
@@ -108,6 +110,41 @@ class Website(models.Model):
     class Meta:
         ordering = ['-created_at']
         unique_together = ['user', 'url']
+
+
+class UserProfile(models.Model):
+    FREQ_1_MIN = '1'
+    FREQ_5_MIN = '5'
+    FREQ_15_MIN = '15'
+    FREQ_30_MIN = '30'
+    MONITORING_FREQUENCY_CHOICES = [
+        (FREQ_1_MIN, '1 min'),
+        (FREQ_5_MIN, '5 min'),
+        (FREQ_15_MIN, '15 min'),
+        (FREQ_30_MIN, '30 min'),
+    ]
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    avatar = models.FileField(upload_to='avatars/', blank=True, null=True)
+    timezone = models.CharField(max_length=64, default='UTC')
+    email_alerts_enabled = models.BooleanField(default=True)
+    ssl_alerts_enabled = models.BooleanField(default=True)
+    incident_alerts_enabled = models.BooleanField(default=True)
+    marketing_emails_enabled = models.BooleanField(default=False)
+    monitoring_frequency = models.CharField(
+        max_length=4,
+        choices=MONITORING_FREQUENCY_CHOICES,
+        default=FREQ_5_MIN,
+    )
+    two_factor_enabled = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['user__username']
+
+    def __str__(self):
+        return f"Profile for {self.user.username}"
 
 
 class MonitorLog(models.Model):
@@ -396,3 +433,12 @@ class Alert(models.Model):
         if self.alert_type in {self.TYPE_SLOW, self.TYPE_SSL}:
             return 'text-warning'
         return 'text-good'
+
+
+@receiver(post_save, sender=User)
+def ensure_user_profile(sender, instance, created, **kwargs):
+    if created:
+        UserProfile.objects.create(user=instance)
+        return
+
+    UserProfile.objects.get_or_create(user=instance)

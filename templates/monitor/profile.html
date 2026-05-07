@@ -28,37 +28,19 @@
           </div>
         </a>
         <nav class="sidebar-nav">
-          <a href="{% url 'dashboard' %}" class="nav-item"
-            ><i data-lucide="layout-dashboard"></i> Dashboard</a
-          >
-          <a href="{% url 'status' %}" class="nav-item"
-            ><i data-lucide="globe"></i> Status Check</a
-          >
-          <a href="{% url 'reports' %}" class="nav-item"
-            ><i data-lucide="bar-chart-2"></i> Reports</a
-          >
-          <a href="{% url 'incidents' %}" class="nav-item"
-            ><i data-lucide="shield-alert"></i> Incidents</a
-          >
-          <a href="{% url 'logs' %}" class="nav-item"
-            ><i data-lucide="file-text"></i> Logs</a
-          >
-          <a href="{% url 'utilities' %}" class="nav-item"
-            ><i data-lucide="wrench"></i> Utilities</a
-          >
-          <a href="{% url 'alerts' %}" class="nav-item"
-            ><i data-lucide="bell"></i> Alerts</a
-          >
+          <a href="{% url 'dashboard' %}" class="nav-item"><i data-lucide="layout-dashboard"></i> Dashboard</a>
+          <a href="{% url 'status' %}" class="nav-item"><i data-lucide="globe"></i> Status Check</a>
+          <a href="{% url 'reports' %}" class="nav-item"><i data-lucide="bar-chart-2"></i> Reports</a>
+          <a href="{% url 'incidents' %}" class="nav-item"><i data-lucide="shield-alert"></i> Incidents</a>
+          <a href="{% url 'logs' %}" class="nav-item"><i data-lucide="file-text"></i> Logs</a>
+          <a href="{% url 'utilities' %}" class="nav-item"><i data-lucide="wrench"></i> Utilities</a>
+          <a href="{% url 'alerts' %}" class="nav-item"><i data-lucide="bell"></i> Alerts</a>
           <div style="flex-grow: 1"></div>
-          <a href="{% url 'login' %}" class="nav-item"
-            ><i data-lucide="log-out"></i> Sign Out</a
-          >
+          <a href="{% url 'logout' %}" class="nav-item"><i data-lucide="log-out"></i> Logout</a>
         </nav>
         <div class="pro-tip-card mt-4">
           <h6>Pro Tip</h6>
-          <p>
-            Enable alerts to get notified instantly when your sites go down.
-          </p>
+          <p>Enable alerts to get notified instantly when your sites go down.</p>
         </div>
       </aside>
 
@@ -74,62 +56,81 @@
             </div>
           </div>
           <div class="header-actions">
-            <a href="{% url 'profile' %}" class="text-decoration-none"
-              ><div
-                class="user-avatar"
-                style="
-                  transform: scale(1.1);
-                  box-shadow: 0 0 15px rgba(116, 48, 232, 0.5);
-                "
-              >
-                U
-              </div></a
-            >
+            <a href="{% url 'profile' %}" class="text-decoration-none">
+              {% if account_snapshot.profile.avatar %}
+              <img src="{{ account_snapshot.profile.avatar.url }}" alt="{{ request.user.username }}" class="user-avatar user-avatar-image" />
+              {% else %}
+              <div class="user-avatar user-avatar-text" title="Profile Settings">{{ account_snapshot.initials }}</div>
+              {% endif %}
+            </a>
           </div>
         </header>
 
-        <div class="content-wrapper" style="max-width: 900px">
-          <div class="mb-5">
+        <div class="content-wrapper" style="max-width: 980px">
+          <div class="mb-4">
             <h2 class="page-title text-white">User Profile</h2>
             <p class="page-subtitle text-slate-300">
-              Manage your account settings and preferences
+              Real account data, security preferences, and monitoring analytics for {{ request.user.username }}.
             </p>
           </div>
 
-          <div
-            class="d-flex flex-column flex-md-row gap-4 mb-5 align-items-md-center"
-          >
-            <div class="profile-avatar-lg"></div>
-            <div class="flex-grow-1">
-              <h3 class="text-white fw-bold mb-1">John Doe</h3>
-              <p class="text-slate-300 mb-0">XYZ1213@gmail.com</p>
+          {% if messages %}
+            {% for message in messages %}
+            <div class="utility-state-banner utility-state-{{ message.tags|default:'success' }} mb-4">
+              <i data-lucide="{% if 'error' in message.tags %}x-circle{% elif 'warning' in message.tags %}alert-triangle{% else %}check-circle{% endif %}"></i>
+              <span>{{ message }}</span>
+            </div>
+            {% endfor %}
+          {% endif %}
+
+          <div class="account-hero-panel mb-4">
+            <div class="profile-hero-main">
+              <div class="profile-avatar-shell">
+                {% if account_snapshot.profile.avatar %}
+                <img
+                  src="{{ account_snapshot.profile.avatar.url }}"
+                  alt="{{ request.user.username }}"
+                  class="profile-avatar-lg profile-avatar-image"
+                  id="avatarPreview"
+                />
+                {% else %}
+                <div class="profile-avatar-lg profile-avatar-fallback" id="avatarPreviewFallback">{{ account_snapshot.initials }}</div>
+                <img src="" alt="{{ request.user.username }}" class="profile-avatar-lg profile-avatar-image d-none" id="avatarPreview" />
+                {% endif %}
+              </div>
+              <div class="flex-grow-1 min-width-0">
+                <h3 class="text-white fw-bold mb-1">{{ request.user.username }}</h3>
+                <p class="text-slate-300 mb-2">{{ request.user.email|default:"No email added yet" }}</p>
+                <div class="account-inline-meta">
+                  <span class="status-badge badge-up">{{ account_snapshot.account_status }}</span>
+                  <span class="account-inline-pill">Member since {{ account_snapshot.member_since|date:"M Y" }}</span>
+                  <span class="account-inline-pill">
+                    {% if account_snapshot.last_login %}Last login {{ account_snapshot.last_login|date:"M d, Y H:i" }}{% else %}No sign-in activity yet{% endif %}
+                  </span>
+                </div>
+              </div>
             </div>
 
-            <div class="d-flex gap-3 mt-3 mt-md-0 overflow-auto pb-2">
+            <div class="account-stats-grid">
               <div class="profile-stat-box">
-                <span class="text-slate-300 text-xs d-block mb-1"
-                  >Sites Monitored</span
-                >
-                <h3 class="text-white fw-bold m-0">14</h3>
-                <span class="text-purple text-xs d-block mt-1"
-                  >Across all sites</span
-                >
+                <span class="text-slate-300 text-xs d-block mb-1">Sites Monitored</span>
+                <h3 class="text-white fw-bold m-0">{{ account_snapshot.monitored_sites_count }}</h3>
+                <span class="text-purple text-xs d-block mt-1">Live websites tracked</span>
               </div>
               <div class="profile-stat-box">
-                <span class="text-slate-300 text-xs d-block mb-1"
-                  >Incidents Resolved</span
-                >
-                <h3 class="text-white fw-bold m-0">16</h3>
-                <span class="text-good text-xs d-block mt-1">Solved</span>
+                <span class="text-slate-300 text-xs d-block mb-1">Resolved Incidents</span>
+                <h3 class="text-white fw-bold m-0">{{ account_snapshot.resolved_incidents_count }}</h3>
+                <span class="text-good text-xs d-block mt-1">Recovered events</span>
               </div>
               <div class="profile-stat-box">
-                <span class="text-slate-300 text-xs d-block mb-1"
-                  >Member Since</span
-                >
-                <h3 class="text-white fw-bold m-0">Feb 2024</h3>
-                <span class="text-purple text-xs d-block mt-1"
-                  >Across all sites</span
-                >
+                <span class="text-slate-300 text-xs d-block mb-1">Total Incidents</span>
+                <h3 class="text-white fw-bold m-0">{{ account_snapshot.total_incidents_count }}</h3>
+                <span class="text-slate-300 text-xs d-block mt-1">Monitoring history</span>
+              </div>
+              <div class="profile-stat-box">
+                <span class="text-slate-300 text-xs d-block mb-1">Total Alerts</span>
+                <h3 class="text-white fw-bold m-0">{{ account_snapshot.total_alerts_count }}</h3>
+                <span class="text-slate-300 text-xs d-block mt-1">{{ account_snapshot.active_alerts_count }} active</span>
               </div>
             </div>
           </div>
@@ -137,87 +138,179 @@
           <div class="dash-panel mb-4">
             <h5 class="panel-title mb-1 text-white">Account Information</h5>
             <p class="panel-subtitle mb-4 text-slate-300">
-              Manage your personal details and contact information.
+              Update your username, email address, and avatar.
             </p>
 
-            <div class="row g-4 mb-4">
-              <div class="col-md-6">
-                <label class="form-label text-slate-300 text-sm fw-medium"
-                  >Username</label
-                >
-                <input
-                  type="text"
-                  class="form-control custom-input"
-                  placeholder="Min. 8 characters"
-                  value="John Doe"
-                />
+            <form method="post" enctype="multipart/form-data" class="account-form-grid">
+              {% csrf_token %}
+              <input type="hidden" name="profile_action" value="update_profile" />
+
+              {% if profile_form.non_field_errors %}
+              <div class="utility-error-text account-form-full">{{ profile_form.non_field_errors|join:", " }}</div>
+              {% endif %}
+
+              <div>
+                <label class="form-label text-slate-300 text-sm fw-medium">{{ profile_form.username.label }}</label>
+                {{ profile_form.username }}
+                {% for error in profile_form.username.errors %}
+                <div class="account-field-error">{{ error }}</div>
+                {% endfor %}
               </div>
-              <div class="col-md-6">
-                <label class="form-label text-slate-300 text-sm fw-medium"
-                  >Email Address</label
-                >
+
+              <div>
+                <label class="form-label text-slate-300 text-sm fw-medium">{{ profile_form.email.label }}</label>
                 <div class="position-relative">
                   <i data-lucide="mail" class="url-icon"></i>
-                  <input
-                    type="email"
-                    class="form-control custom-input"
-                    style="padding-left: 45px"
-                    placeholder="you@example.com"
-                    value="XYZ1213@gmail.com"
-                  />
+                  {{ profile_form.email }}
                 </div>
+                {% for error in profile_form.email.errors %}
+                <div class="account-field-error">{{ error }}</div>
+                {% endfor %}
               </div>
-            </div>
-            <button class="btn btn-primary-custom w-100" id="saveProfileBtn">
-              Save Changes
-            </button>
+
+              <div class="account-form-full">
+                <label class="form-label text-slate-300 text-sm fw-medium">{{ profile_form.avatar.label }}</label>
+                {{ profile_form.avatar }}
+                <div class="account-help-text">Image only. Maximum 2 MB. Supports JPG, PNG, GIF, and WebP.</div>
+                {% for error in profile_form.avatar.errors %}
+                <div class="account-field-error">{{ error }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="account-form-full">
+                <button class="btn btn-primary-custom" type="submit">Save Changes</button>
+              </div>
+            </form>
           </div>
 
-          <div class="dash-panel mb-4">
-            <h5 class="panel-title mb-1 text-white">Security Settings</h5>
-            <p class="panel-subtitle mb-4 text-slate-300">
-              Enhance your account security and authentication preferences.
-            </p>
+          <div class="account-two-col mb-4">
+            <div class="dash-panel">
+              <h5 class="panel-title mb-1 text-white">Security Settings</h5>
+              <p class="panel-subtitle mb-4 text-slate-300">
+                Persist core alert behavior and prepare future 2FA safely.
+              </p>
 
-            <div class="site-item mb-3">
-              <span class="text-white font-mono text-sm fw-medium"
-                >Enable Two-Factor Authentication</span
-              >
-              <label class="custom-toggle"
-                ><input type="checkbox" /><span class="toggle-slider"></span
-              ></label>
+              <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="profile_action" value="update_security" />
+
+                <div class="site-item mb-3">
+                  <div>
+                    <span class="text-white font-mono text-sm fw-medium">Email Alerts</span>
+                    <div class="account-help-text">Allow account-level monitoring emails to be sent to your saved address.</div>
+                  </div>
+                  <label class="custom-toggle">
+                    {{ security_form.email_alerts_enabled }}
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+
+                <div class="site-item mb-3">
+                  <div>
+                    <span class="text-white font-mono text-sm fw-medium">Two-Factor Authentication</span>
+                    <div class="account-help-text">Preference is saved now. Full verification flow is coming soon.</div>
+                  </div>
+                  <label class="custom-toggle">
+                    {{ security_form.two_factor_enabled }}
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+
+                {% for error in security_form.non_field_errors %}
+                <div class="account-field-error mb-3">{{ error }}</div>
+                {% endfor %}
+
+                <button class="btn btn-outline-dark-custom w-100" type="submit">Save Security Preferences</button>
+              </form>
             </div>
-            <div class="site-item">
-              <span class="text-white font-mono text-sm fw-medium"
-                >Email Alerts</span
-              >
-              <label class="custom-toggle"
-                ><input type="checkbox" checked /><span
-                  class="toggle-slider"
-                ></span
-              ></label>
+
+            <div class="dash-panel">
+              <h5 class="panel-title mb-1 text-white">Password Change</h5>
+              <p class="panel-subtitle mb-4 text-slate-300">
+                Change your password without ending the current session.
+              </p>
+
+              <form method="post" class="account-password-grid">
+                {% csrf_token %}
+                <input type="hidden" name="profile_action" value="change_password" />
+
+                {% for field in password_form %}
+                <div>
+                  <label class="form-label text-slate-300 text-sm fw-medium">{{ field.label }}</label>
+                  {{ field }}
+                  {% for error in field.errors %}
+                  <div class="account-field-error">{{ error }}</div>
+                  {% endfor %}
+                </div>
+                {% endfor %}
+
+                {% if password_form.non_field_errors %}
+                <div class="utility-error-text">{{ password_form.non_field_errors|join:", " }}</div>
+                {% endif %}
+
+                <button class="btn btn-primary-custom w-100" type="submit">Update Password</button>
+              </form>
+            </div>
+          </div>
+
+          <div class="account-two-col mb-4">
+            <div class="dash-panel">
+              <h5 class="panel-title mb-1 text-white">Session & Account Info</h5>
+              <p class="panel-subtitle mb-4 text-slate-300">
+                Live analytics pulled from your monitoring account.
+              </p>
+              <div class="utility-kv-list">
+                <div class="utility-kv-row"><span>Account Status</span><span>{{ account_snapshot.account_status }}</span></div>
+                <div class="utility-kv-row"><span>Member Since</span><span class="font-mono">{{ account_snapshot.member_since|date:"Y-m-d" }}</span></div>
+                <div class="utility-kv-row"><span>Last Login</span><span class="font-mono">{% if account_snapshot.last_login %}{{ account_snapshot.last_login|date:"Y-m-d H:i" }}{% else %}-{% endif %}</span></div>
+                <div class="utility-kv-row"><span>Total Monitored Websites</span><span>{{ account_snapshot.monitored_sites_count }}</span></div>
+                <div class="utility-kv-row"><span>Total Incidents</span><span>{{ account_snapshot.total_incidents_count }}</span></div>
+                <div class="utility-kv-row"><span>Total Alerts</span><span>{{ account_snapshot.total_alerts_count }}</span></div>
+              </div>
+            </div>
+
+            <div class="dash-panel">
+              <h5 class="panel-title mb-1 text-white">Future Sign-In Providers</h5>
+              <p class="panel-subtitle mb-4 text-slate-300">
+                The account layer is prepared for additional auth providers without changing your profile structure.
+              </p>
+              <div class="provider-state-list">
+                <div class="site-item mb-3">
+                  <div>
+                    <span class="text-white font-mono text-sm fw-medium">Password Login</span>
+                    <div class="account-help-text">Active primary authentication method.</div>
+                  </div>
+                  <span class="status-badge badge-up">ACTIVE</span>
+                </div>
+                <div class="site-item mb-3">
+                  <div>
+                    <span class="text-white font-mono text-sm fw-medium">Google OAuth</span>
+                    <div class="account-help-text">Foundation ready. Provider not connected yet.</div>
+                  </div>
+                  <span class="status-badge badge-slow">COMING SOON</span>
+                </div>
+                <div class="site-item">
+                  <div>
+                    <span class="text-white font-mono text-sm fw-medium">GitHub OAuth</span>
+                    <div class="account-help-text">Foundation ready. Provider not connected yet.</div>
+                  </div>
+                  <span class="status-badge badge-slow">COMING SOON</span>
+                </div>
+              </div>
             </div>
           </div>
 
           <div class="dash-panel danger-zone-panel">
             <h5 class="panel-title mb-1 text-white">Danger Zone</h5>
             <p class="panel-subtitle mb-4 text-slate-300">
-              Proceed carefully. These actions cannot be undone
+              Account deletion is intentionally not exposed until the workflow is fully verified.
             </p>
 
-            <hr
-              style="border-color: rgba(239, 68, 68, 0.2); margin-bottom: 30px"
-            />
+            <hr style="border-color: rgba(239, 68, 68, 0.2); margin-bottom: 24px" />
 
-            <button
-              class="btn btn-danger-custom w-100 mb-3"
-              id="deleteAccountBtn"
-            >
-              Delete Account
-            </button>
+            <button class="btn btn-danger-custom w-100 mb-3" type="button" disabled>Delete Account Coming Soon</button>
             <p class="text-center text-muted text-sm m-0">
-              Permanently delete your account and all associated data. This
-              action is irreversible.
+              This panel remains visible for future account lifecycle controls, but no destructive fake action is exposed.
             </p>
           </div>
         </div>
@@ -226,5 +319,24 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{% static 'js/script.js' %}"></script>
+    <script>
+      const avatarInput = document.getElementById("id_avatar");
+      const avatarPreview = document.getElementById("avatarPreview");
+      const avatarFallback = document.getElementById("avatarPreviewFallback");
+
+      if (avatarInput && avatarPreview) {
+        avatarInput.addEventListener("change", (event) => {
+          const file = event.target.files && event.target.files[0];
+          if (!file) return;
+
+          const objectUrl = URL.createObjectURL(file);
+          avatarPreview.src = objectUrl;
+          avatarPreview.classList.remove("d-none");
+          if (avatarFallback) {
+            avatarFallback.classList.add("d-none");
+          }
+        });
+      }
+    </script>
   </body>
 </html>

@@ -13,8 +13,7 @@ from django.core.mail import send_mail
 from django.db import transaction
 from django.utils import timezone
 
-from .models import Alert, Incident, IncidentEvent, MonitorLog
-from .models import Website
+from .models import Alert, Incident, IncidentEvent, MonitorLog, UserProfile, Website
 
 try:
     import dns.resolver as dns_resolver
@@ -423,6 +422,56 @@ def is_domain_monitored(user, domain):
     return Website.objects.filter(user=user, url=normalized_url).exists()
 
 
+def get_or_create_user_profile(user):
+    profile, _created = UserProfile.objects.get_or_create(user=user)
+    return profile
+
+
+def get_user_initials(user):
+    username = (getattr(user, 'username', '') or '').strip()
+    if not username:
+        return 'U'
+
+    parts = [part[0].upper() for part in username.replace('_', ' ').split() if part]
+    if len(parts) >= 2:
+        return ''.join(parts[:2])
+    return username[:2].upper()
+
+
+def get_user_account_snapshot(user):
+    profile = get_or_create_user_profile(user)
+    websites_qs = Website.objects.filter(user=user)
+    incidents_qs = Incident.objects.filter(website__user=user)
+    alerts_qs = Alert.objects.filter(website__user=user)
+
+    return {
+        'profile': profile,
+        'initials': get_user_initials(user),
+        'member_since': user.date_joined,
+        'last_login': user.last_login,
+        'account_status': 'Active' if user.is_active else 'Inactive',
+        'monitored_sites_count': websites_qs.count(),
+        'resolved_incidents_count': incidents_qs.filter(is_resolved=True).count(),
+        'total_incidents_count': incidents_qs.count(),
+        'total_alerts_count': alerts_qs.count(),
+        'active_alerts_count': alerts_qs.filter(is_read=False).count(),
+    }
+
+
+def account_allows_email_alert(user, alert_type):
+    profile = get_or_create_user_profile(user)
+    if not profile.email_alerts_enabled:
+        return False
+
+    if alert_type == Alert.TYPE_SSL:
+        return profile.ssl_alerts_enabled
+
+    if alert_type in {Alert.TYPE_DOWN, Alert.TYPE_SLOW, Alert.TYPE_RECOVERY}:
+        return profile.incident_alerts_enabled
+
+    return True
+
+
 def get_incident_title(status):
     if status == MonitorLog.STATUS_DOWN:
         return "Complete Outage"
@@ -568,7 +617,13 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
     if not website.alerts_enabled:
         return None
 
-    sent_to = website.user.email if website.email_notifications and website.user.email else ''
+    sent_to = (
+        website.user.email
+        if website.email_notifications
+        and website.user.email
+        and account_allows_email_alert(website.user, alert_type)
+        else ''
+    )
     alert = Alert.objects.filter(
         website=website,
         incident=incident,

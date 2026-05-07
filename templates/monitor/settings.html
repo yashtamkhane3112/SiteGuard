@@ -28,37 +28,19 @@
           </div>
         </a>
         <nav class="sidebar-nav">
-          <a href="{% url 'dashboard' %}" class="nav-item"
-            ><i data-lucide="layout-dashboard"></i> Dashboard</a
-          >
-          <a href="{% url 'status' %}" class="nav-item"
-            ><i data-lucide="globe"></i> Status Check</a
-          >
-          <a href="{% url 'reports' %}" class="nav-item"
-            ><i data-lucide="bar-chart-2"></i> Reports</a
-          >
-          <a href="{% url 'incidents' %}" class="nav-item"
-            ><i data-lucide="shield-alert"></i> Incidents</a
-          >
-          <a href="{% url 'logs' %}" class="nav-item"
-            ><i data-lucide="file-text"></i> Logs</a
-          >
-          <a href="{% url 'utilities' %}" class="nav-item"
-            ><i data-lucide="wrench"></i> Utilities</a
-          >
-          <a href="{% url 'alerts' %}" class="nav-item"
-            ><i data-lucide="bell"></i> Alerts</a
-          >
+          <a href="{% url 'dashboard' %}" class="nav-item"><i data-lucide="layout-dashboard"></i> Dashboard</a>
+          <a href="{% url 'status' %}" class="nav-item"><i data-lucide="globe"></i> Status Check</a>
+          <a href="{% url 'reports' %}" class="nav-item"><i data-lucide="bar-chart-2"></i> Reports</a>
+          <a href="{% url 'incidents' %}" class="nav-item"><i data-lucide="shield-alert"></i> Incidents</a>
+          <a href="{% url 'logs' %}" class="nav-item"><i data-lucide="file-text"></i> Logs</a>
+          <a href="{% url 'utilities' %}" class="nav-item"><i data-lucide="wrench"></i> Utilities</a>
+          <a href="{% url 'alerts' %}" class="nav-item"><i data-lucide="bell"></i> Alerts</a>
           <div style="flex-grow: 1"></div>
-          <a href="{% url 'login' %}" class="nav-item"
-            ><i data-lucide="log-out"></i> Sign Out</a
-          >
+          <a href="{% url 'logout' %}" class="nav-item"><i data-lucide="log-out"></i> Logout</a>
         </nav>
         <div class="pro-tip-card mt-4">
           <h6>Pro Tip</h6>
-          <p>
-            Enable alerts to get notified instantly when your sites go down.
-          </p>
+          <p>Enable alerts to get notified instantly when your sites go down.</p>
         </div>
       </aside>
 
@@ -74,67 +56,193 @@
             </div>
           </div>
           <div class="header-actions">
-            <a href="{% url 'profile' %}" class="text-decoration-none"
-              ><div class="user-avatar">U</div></a
-            >
+            <a href="{% url 'profile' %}" class="text-decoration-none">
+              {% if account_snapshot.profile.avatar %}
+              <img src="{{ account_snapshot.profile.avatar.url }}" alt="{{ request.user.username }}" class="user-avatar user-avatar-image" />
+              {% else %}
+              <div class="user-avatar user-avatar-text">{{ account_snapshot.initials }}</div>
+              {% endif %}
+            </a>
           </div>
         </header>
 
-        <div class="content-wrapper" style="max-width: 900px">
+        <div class="content-wrapper" style="max-width: 980px">
           <div class="mb-4">
             <h2 class="page-title text-white">Settings</h2>
             <p class="page-subtitle text-slate-300">
-              Configure your account and application preferences.
+              Persistent account, notification, and monitoring preferences for {{ request.user.username }}.
             </p>
           </div>
 
-          <div class="dash-panel mb-4">
-            <h5 class="panel-title mb-1 text-white">General Settings</h5>
+          {% if messages %}
+            {% for message in messages %}
+            <div class="utility-state-banner utility-state-{{ message.tags|default:'success' }} mb-4">
+              <i data-lucide="{% if 'error' in message.tags %}x-circle{% elif 'warning' in message.tags %}alert-triangle{% else %}check-circle{% endif %}"></i>
+              <span>{{ message }}</span>
+            </div>
+            {% endfor %}
+          {% endif %}
+
+          <div class="account-stats-grid mb-4">
+            <div class="profile-stat-box">
+              <span class="text-slate-300 text-xs d-block mb-1">Account Status</span>
+              <h3 class="text-white fw-bold m-0">{{ account_snapshot.account_status }}</h3>
+              <span class="text-purple text-xs d-block mt-1">Authenticated user</span>
+            </div>
+            <div class="profile-stat-box">
+              <span class="text-slate-300 text-xs d-block mb-1">Monitored Sites</span>
+              <h3 class="text-white fw-bold m-0">{{ account_snapshot.monitored_sites_count }}</h3>
+              <span class="text-slate-300 text-xs d-block mt-1">Connected to monitoring</span>
+            </div>
+            <div class="profile-stat-box">
+              <span class="text-slate-300 text-xs d-block mb-1">Total Incidents</span>
+              <h3 class="text-white fw-bold m-0">{{ account_snapshot.total_incidents_count }}</h3>
+              <span class="text-slate-300 text-xs d-block mt-1">{{ account_snapshot.resolved_incidents_count }} resolved</span>
+            </div>
+            <div class="profile-stat-box">
+              <span class="text-slate-300 text-xs d-block mb-1">Alerts Recorded</span>
+              <h3 class="text-white fw-bold m-0">{{ account_snapshot.total_alerts_count }}</h3>
+              <span class="text-slate-300 text-xs d-block mt-1">{{ account_snapshot.active_alerts_count }} active</span>
+            </div>
+          </div>
+
+          <form method="post" class="dash-panel mb-4">
+            {% csrf_token %}
+            <h5 class="panel-title mb-1 text-white">Notification Preferences</h5>
             <p class="panel-subtitle mb-4 text-slate-300">
-              Manage your basic preferences.
+              Control account-level notifications across the monitoring ecosystem.
             </p>
 
+            {% if preferences_form.non_field_errors %}
+            <div class="utility-error-text mb-4">{{ preferences_form.non_field_errors|join:", " }}</div>
+            {% endif %}
+
             <div class="site-item mb-3">
-              <span class="text-white font-mono text-sm fw-medium"
-                >Dark Mode</span
-              >
-              <label class="custom-toggle"
-                ><input type="checkbox" checked /><span
-                  class="toggle-slider"
-                ></span
-              ></label>
+              <div>
+                <span class="text-white font-mono text-sm fw-medium">Email Alerts</span>
+                <div class="account-help-text">Master switch for account-level monitoring emails.</div>
+              </div>
+              <label class="custom-toggle">
+                {{ preferences_form.email_alerts_enabled }}
+                <span class="toggle-slider"></span>
+              </label>
             </div>
-            <div class="site-item">
-              <span class="text-white font-mono text-sm fw-medium"
-                >Email Notifications</span
-              >
-              <label class="custom-toggle"
-                ><input type="checkbox" checked /><span
-                  class="toggle-slider"
-                ></span
-              ></label>
+
+            <div class="site-item mb-3">
+              <div>
+                <span class="text-white font-mono text-sm fw-medium">Incident Alerts</span>
+                <div class="account-help-text">Receive updates when incidents are detected or resolved.</div>
+              </div>
+              <label class="custom-toggle">
+                {{ preferences_form.incident_alerts_enabled }}
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="site-item mb-3">
+              <div>
+                <span class="text-white font-mono text-sm fw-medium">SSL Alerts</span>
+                <div class="account-help-text">Track certificate failures and SSL-related warnings.</div>
+              </div>
+              <label class="custom-toggle">
+                {{ preferences_form.ssl_alerts_enabled }}
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="site-item mb-4">
+              <div>
+                <span class="text-white font-mono text-sm fw-medium">Marketing Emails</span>
+                <div class="account-help-text">Optional product updates. Disabled by default.</div>
+              </div>
+              <label class="custom-toggle">
+                {{ preferences_form.marketing_emails_enabled }}
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="account-settings-grid">
+              <div>
+                <label class="form-label text-slate-300 text-sm fw-medium">{{ preferences_form.timezone.label }}</label>
+                {{ preferences_form.timezone }}
+                {% for error in preferences_form.timezone.errors %}
+                <div class="account-field-error">{{ error }}</div>
+                {% endfor %}
+              </div>
+              <div>
+                <label class="form-label text-slate-300 text-sm fw-medium">Monitoring Frequency</label>
+                {{ preferences_form.monitoring_frequency }}
+                <div class="account-help-text">Saved now for future scheduler customization.</div>
+                {% for error in preferences_form.monitoring_frequency.errors %}
+                <div class="account-field-error">{{ error }}</div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="site-item mt-4">
+              <div>
+                <span class="text-white font-mono text-sm fw-medium">Two-Factor Authentication</span>
+                <div class="account-help-text">Preference persists now. Full implementation is coming soon.</div>
+              </div>
+              <label class="custom-toggle">
+                {{ preferences_form.two_factor_enabled }}
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="mt-4 d-flex flex-wrap gap-3">
+              <button class="btn btn-primary-custom" type="submit">Save Settings</button>
+              <a href="{% url 'profile' %}" class="btn btn-outline-dark-custom">Open Profile</a>
+            </div>
+          </form>
+
+          <div class="account-two-col mb-4">
+            <div class="dash-panel">
+              <h5 class="panel-title mb-1 text-white">Account Controls</h5>
+              <p class="panel-subtitle mb-4 text-slate-300">
+                These settings are bound to your authenticated SiteGuard account.
+              </p>
+              <div class="utility-kv-list">
+                <div class="utility-kv-row"><span>Username</span><span class="font-mono">{{ request.user.username }}</span></div>
+                <div class="utility-kv-row"><span>Email</span><span>{{ request.user.email|default:"Not set" }}</span></div>
+                <div class="utility-kv-row"><span>Member Since</span><span class="font-mono">{{ account_snapshot.member_since|date:"Y-m-d" }}</span></div>
+                <div class="utility-kv-row"><span>Last Login</span><span class="font-mono">{% if account_snapshot.last_login %}{{ account_snapshot.last_login|date:"Y-m-d H:i" }}{% else %}-{% endif %}</span></div>
+              </div>
+            </div>
+
+            <div class="dash-panel">
+              <h5 class="panel-title mb-1 text-white">Future Authentication</h5>
+              <p class="panel-subtitle mb-4 text-slate-300">
+                SiteGuard account settings are organized to allow Google and GitHub OAuth later without changing your profile data model.
+              </p>
+              <div class="provider-state-list">
+                <div class="site-item mb-3">
+                  <div>
+                    <span class="text-white font-mono text-sm fw-medium">Google OAuth</span>
+                    <div class="account-help-text">Not connected yet.</div>
+                  </div>
+                  <span class="status-badge badge-slow">READY FOR FUTURE</span>
+                </div>
+                <div class="site-item">
+                  <div>
+                    <span class="text-white font-mono text-sm fw-medium">GitHub OAuth</span>
+                    <div class="account-help-text">Not connected yet.</div>
+                  </div>
+                  <span class="status-badge badge-slow">READY FOR FUTURE</span>
+                </div>
+              </div>
             </div>
           </div>
 
           <div class="dash-panel danger-zone-panel">
             <h5 class="panel-title mb-1 text-white">Danger Zone</h5>
             <p class="panel-subtitle mb-4 text-slate-300">
-              Proceed carefully. These actions cannot be undone
+              Destructive account actions are intentionally withheld until a fully verified flow is added.
             </p>
-
-            <hr
-              style="border-color: rgba(239, 68, 68, 0.2); margin-bottom: 30px"
-            />
-
-            <button
-              class="btn btn-danger-custom w-100 mb-3"
-              id="deleteAccountBtn"
-            >
-              Delete Account
-            </button>
+            <hr style="border-color: rgba(239, 68, 68, 0.2); margin-bottom: 24px" />
+            <button class="btn btn-danger-custom w-100 mb-3" type="button" disabled>Account Deletion Coming Soon</button>
             <p class="text-center text-muted text-sm m-0">
-              Permanently delete your account and all associated data. This
-              action is irreversible.
+              No fake delete action is exposed here. Current settings are fully persistent, but destructive operations remain disabled.
             </p>
           </div>
         </div>

@@ -3,7 +3,7 @@ from collections import defaultdict
 
 from django.shortcuts import get_object_or_404, redirect, render
 from django.http import JsonResponse
-from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
+from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib import messages
@@ -11,7 +11,14 @@ from django.db.models import Avg, Count
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 
-from .forms import LoginForm, SignUpForm
+from .forms import (
+    AccountPasswordChangeForm,
+    AccountPreferencesForm,
+    AccountSecurityForm,
+    LoginForm,
+    ProfileUpdateForm,
+    SignUpForm,
+)
 from .models import Alert, Incident, MonitorLog, Website
 from .utils import (
     analyze_domain,
@@ -19,6 +26,8 @@ from .utils import (
     cleanup_monitoring_state,
     get_favicon_url,
     get_latest_logs_by_website,
+    get_or_create_user_profile,
+    get_user_account_snapshot,
     normalize_domain_display,
     normalize_utility_domain,
     send_alert_email,
@@ -631,12 +640,87 @@ def logs(request):
     return render(request, 'monitor/logs.html', context)
 
 
+@login_required
 def profile(request):
-    return render(request, 'monitor/profile.html')
+    profile_obj = get_or_create_user_profile(request.user)
+
+    if request.method == 'POST':
+        action = request.POST.get('profile_action')
+
+        if action == 'update_profile':
+            profile_form = ProfileUpdateForm(
+                request.POST,
+                request.FILES,
+                user=request.user,
+                profile=profile_obj,
+            )
+            security_form = AccountSecurityForm(instance=profile_obj)
+            password_form = AccountPasswordChangeForm(request.user)
+            if profile_form.is_valid():
+                profile_form.save()
+                messages.success(request, 'Profile updated successfully.')
+                return redirect('profile')
+        elif action == 'update_security':
+            profile_form = ProfileUpdateForm(user=request.user, profile=profile_obj)
+            security_form = AccountSecurityForm(request.POST, instance=profile_obj)
+            password_form = AccountPasswordChangeForm(request.user)
+            previous_two_factor = profile_obj.two_factor_enabled
+            if security_form.is_valid():
+                security_form.save()
+                if not previous_two_factor and security_form.cleaned_data.get('two_factor_enabled'):
+                    messages.warning(request, 'Two-factor is saved as a preference. Full 2FA verification is coming soon.')
+                else:
+                    messages.success(request, 'Security preferences updated successfully.')
+                return redirect('profile')
+        elif action == 'change_password':
+            profile_form = ProfileUpdateForm(user=request.user, profile=profile_obj)
+            security_form = AccountSecurityForm(instance=profile_obj)
+            password_form = AccountPasswordChangeForm(request.user, request.POST)
+            if password_form.is_valid():
+                user = password_form.save()
+                update_session_auth_hash(request, user)
+                messages.success(request, 'Password changed successfully.')
+                return redirect('profile')
+        else:
+            profile_form = ProfileUpdateForm(user=request.user, profile=profile_obj)
+            security_form = AccountSecurityForm(instance=profile_obj)
+            password_form = AccountPasswordChangeForm(request.user)
+    else:
+        profile_form = ProfileUpdateForm(user=request.user, profile=profile_obj)
+        security_form = AccountSecurityForm(instance=profile_obj)
+        password_form = AccountPasswordChangeForm(request.user)
+
+    account_snapshot = get_user_account_snapshot(request.user)
+    context = {
+        'profile_form': profile_form,
+        'security_form': security_form,
+        'password_form': password_form,
+        'account_snapshot': account_snapshot,
+    }
+    return render(request, 'monitor/profile.html', context)
 
 
+@login_required
 def settings(request):
-    return render(request, 'monitor/settings.html')
+    profile_obj = get_or_create_user_profile(request.user)
+    if request.method == 'POST':
+        preferences_form = AccountPreferencesForm(request.POST, instance=profile_obj)
+        if preferences_form.is_valid():
+            previous_two_factor = profile_obj.two_factor_enabled
+            preferences_form.save()
+            if not previous_two_factor and preferences_form.cleaned_data.get('two_factor_enabled'):
+                messages.warning(request, 'Two-factor is saved as a preference. Full 2FA verification is coming soon.')
+            else:
+                messages.success(request, 'Settings saved successfully.')
+            return redirect('settings')
+    else:
+        preferences_form = AccountPreferencesForm(instance=profile_obj)
+
+    context = {
+        'preferences_form': preferences_form,
+        'account_snapshot': get_user_account_snapshot(request.user),
+    }
+    return render(request, 'monitor/settings.html', context)
 
 
 @login_required

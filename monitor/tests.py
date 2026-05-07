@@ -1,14 +1,18 @@
 from datetime import timedelta
+import os
+import shutil
+import tempfile
 
 from unittest.mock import Mock, patch
 
 import requests
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from monitor.models import Alert, Incident, IncidentEvent, MonitorLog, Website
+from monitor.models import Alert, Incident, IncidentEvent, MonitorLog, UserProfile, Website
 from monitor.utils import (
     analyze_domain,
     cleanup_monitoring_state,
@@ -951,3 +955,163 @@ class UtilitiesViewTests(TestCase):
         self.assertTrue(Website.objects.filter(user=self.user, url="https://example.com").exists())
         self.assertContains(response, "Domain added to monitoring.")
         self.assertTrue(response.context["domain_result"]["already_monitored"])
+
+
+ACCOUNT_TEST_MEDIA_ROOT = os.path.join(os.path.dirname(__file__), "_test_media")
+os.makedirs(ACCOUNT_TEST_MEDIA_ROOT, exist_ok=True)
+
+
+@override_settings(MEDIA_ROOT=ACCOUNT_TEST_MEDIA_ROOT)
+class AccountManagementTests(TestCase):
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        shutil.rmtree(ACCOUNT_TEST_MEDIA_ROOT, ignore_errors=True)
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="account-user",
+            password="StrongPass123!",
+            email="account@example.com",
+        )
+        self.other_user = User.objects.create_user(
+            username="other-user",
+            password="StrongPass123!",
+            email="other@example.com",
+        )
+        self.client.login(username="account-user", password="StrongPass123!")
+        self.website = Website.objects.create(user=self.user, url="https://example.com")
+        Incident.objects.create(
+            website=self.website,
+            title="Complete Outage",
+            incident_type=Incident.TYPE_OUTAGE,
+            status=Incident.STATUS_RESOLVED,
+            started_at=timezone.now() - timedelta(hours=1),
+            resolved_at=timezone.now(),
+            is_resolved=True,
+            latest_response_time=0,
+        )
+        Alert.objects.create(
+            website=self.website,
+            alert_type=Alert.TYPE_DOWN,
+            status=Alert.STATUS_SENT,
+            message="down",
+            response_time=0,
+        )
+
+    def test_user_profile_is_auto_created(self):
+        self.assertTrue(UserProfile.objects.filter(user=self.user).exists())
+        self.assertEqual(self.user.profile.monitoring_frequency, UserProfile.FREQ_5_MIN)
+
+    def test_profile_page_uses_real_user_data(self):
+        response = self.client.get(reverse("profile"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "account-user")
+        self.assertContains(response, "account@example.com")
+        self.assertContains(response, "1")
+        self.assertNotContains(response, "John Doe")
+
+    def test_profile_update_persists_username_email_and_avatar(self):
+        avatar = SimpleUploadedFile("avatar.png", b"fake-image-data", content_type="image/png")
+
+        response = self.client.post(
+            reverse("profile"),
+            {
+                "profile_action": "update_profile",
+                "username": "updated-user",
+                "email": "updated@example.com",
+                "avatar": avatar,
+            },
+        )
+
+        self.assertRedirects(response, reverse("profile"))
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.username, "updated-user")
+        self.assertEqual(self.user.email, "updated@example.com")
+        self.assertTrue(bool(self.user.profile.avatar))
+
+    def test_profile_update_rejects_duplicate_email(self):
+        response = self.client.post(
+            reverse("profile"),
+            {
+                "profile_action": "update_profile",
+                "username": "account-user",
+                "email": "other@example.com",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "already in use")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.email, "account@example.com")
+
+    def test_password_change_updates_hash_and_keeps_session_valid(self):
+        response = self.client.post(
+            reverse("profile"),
+            {
+                "profile_action": "change_password",
+                "old_password": "StrongPass123!",
+                "new_password1": "NewStrongPass123!",
+                "new_password2": "NewStrongPass123!",
+            },
+        )
+
+        self.assertRedirects(response, reverse("profile"))
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("NewStrongPass123!"))
+        follow_up = self.client.get(reverse("profile"))
+        self.assertEqual(follow_up.status_code, 200)
+
+    def test_settings_persist_preferences_and_monitoring_frequency(self):
+        response = self.client.post(
+            reverse("settings"),
+            {
+                "timezone": "Asia/Calcutta",
+                "email_alerts_enabled": "on",
+                "ssl_alerts_enabled": "",
+                "incident_alerts_enabled": "on",
+                "marketing_emails_enabled": "on",
+                "monitoring_frequency": UserProfile.FREQ_15_MIN,
+                "two_factor_enabled": "on",
+            },
+        )
+
+        self.assertRedirects(response, reverse("settings"))
+        profile = self.user.profile
+        profile.refresh_from_db()
+        self.assertEqual(profile.timezone, "Asia/Calcutta")
+        self.assertTrue(profile.email_alerts_enabled)
+        self.assertFalse(profile.ssl_alerts_enabled)
+        self.assertTrue(profile.incident_alerts_enabled)
+        self.assertTrue(profile.marketing_emails_enabled)
+        self.assertEqual(profile.monitoring_frequency, UserProfile.FREQ_15_MIN)
+        self.assertTrue(profile.two_factor_enabled)
+
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    @patch("monitor.utils.send_mail")
+    @patch("monitor.utils.requests.get")
+    def test_account_alert_preferences_affect_email_delivery(self, mock_get, mock_send_mail, _mock_ssl):
+        self.user.profile.email_alerts_enabled = False
+        self.user.profile.save(update_fields=["email_alerts_enabled"])
+        MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=100)
+        mock_get.return_value = Mock(
+            status_code=503,
+            elapsed=Mock(total_seconds=Mock(return_value=0.123)),
+        )
+
+        run_single_check(self.website)
+
+        mock_send_mail.assert_not_called()
+        self.assertTrue(Alert.objects.filter(website=self.website, alert_type=Alert.TYPE_DOWN).exists())
+
+    def test_profile_and_settings_require_authentication(self):
+        self.client.logout()
+
+        profile_response = self.client.get(reverse("profile"))
+        settings_response = self.client.get(reverse("settings"))
+
+        self.assertEqual(profile_response.status_code, 302)
+        self.assertEqual(settings_response.status_code, 302)
+        self.assertIn("/login/", profile_response.url)
+        self.assertIn("/login/", settings_response.url)
