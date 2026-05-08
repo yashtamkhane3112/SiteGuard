@@ -536,7 +536,7 @@ class Notification(models.Model):
 @receiver(post_save, sender=User)
 def ensure_user_profile(sender, instance, created, **kwargs):
     if created:
-        UserProfile.objects.create(user=instance)
+        UserProfile.objects.get_or_create(user=instance)
         return
 
     UserProfile.objects.get_or_create(user=instance)

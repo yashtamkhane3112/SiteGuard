@@ -3,8 +3,8 @@ services:
     name: siteguard-web
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput --settings=siteguard.settings.prod
-    startCommand: python manage.py migrate --settings=siteguard.settings.prod --noinput && gunicorn siteguard.wsgi:application
+    buildCommand: pip install -r requirements.txt
+    startCommand: bash ./start.sh
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.3
