@@ -3,7 +3,7 @@ services:
     name: siteguard-web
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate --noinput
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput --settings=siteguard.settings.prod && python manage.py migrate --settings=siteguard.settings.prod --noinput
     startCommand: gunicorn siteguard.wsgi:application
     envVars:
       - key: PYTHON_VERSION
