@@ -13,6 +13,8 @@ from django.contrib.auth.models import User
 from django.contrib import messages
 from django.core.management import call_command
 from django.core.paginator import Paginator
+from django.db import connection
+from django.db.utils import OperationalError, ProgrammingError
 from django.db.models import Avg, Count
 from django.views.decorators.http import require_GET
 from django.views.decorators.http import require_POST
@@ -54,6 +56,14 @@ from .utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _auth_user_table_ready():
+    try:
+        return User._meta.db_table in connection.introspection.table_names()
+    except (OperationalError, ProgrammingError):
+        logger.warning("Auth tables are not ready yet; skipping admin bootstrap.", exc_info=True)
+        return False
 
 
 def format_duration_value(total_seconds):
@@ -399,12 +409,18 @@ def ensure_admin_user():
     if not django_settings.BOOTSTRAP_ADMIN_ENABLED:
         return
 
-    if not User.objects.filter(username='admin').exists():
-        User.objects.create_superuser(
-            username='admin',
-            password='admin123',
-            email='admin@example.com',
-        )
+    if not _auth_user_table_ready():
+        return
+
+    try:
+        if not User.objects.filter(username='admin').exists():
+            User.objects.create_superuser(
+                username='admin',
+                password='admin123',
+                email='admin@example.com',
+            )
+    except (OperationalError, ProgrammingError):
+        logger.warning("Skipping admin bootstrap because database migrations are not ready.", exc_info=True)
 
 
 def index(request):
