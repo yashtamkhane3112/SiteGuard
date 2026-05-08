@@ -27,12 +27,19 @@ from monitor.utils import (
 
 class AuthFlowTests(TestCase):
     def test_login_page_creates_default_admin_user(self):
-        self.client.get(reverse("login"))
+        with self.settings(BOOTSTRAP_ADMIN_ENABLED=True):
+            self.client.get(reverse("login"))
 
         admin_user = User.objects.get(username="admin")
         self.assertEqual(admin_user.email, "admin@example.com")
         self.assertTrue(admin_user.check_password("admin123"))
         self.assertTrue(admin_user.is_superuser)
+
+    def test_login_page_does_not_create_default_admin_when_bootstrap_disabled(self):
+        with self.settings(BOOTSTRAP_ADMIN_ENABLED=False):
+            self.client.get(reverse("login"))
+
+        self.assertFalse(User.objects.filter(username="admin").exists())
 
     def test_dashboard_redirects_anonymous_user_to_login(self):
         response = self.client.get(reverse("dashboard"))

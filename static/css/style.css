@@ -3414,3 +3414,84 @@ body.sidebar-open {
 .utility-state-banner {
     align-items: flex-start;
 }
+
+/* ========================================================= */
+/* ===== ERROR PAGES ====================================== */
+/* ========================================================= */
+.error-page-body {
+    min-height: 100vh;
+    background:
+        radial-gradient(circle at top, rgba(116, 48, 232, 0.18), transparent 35%),
+        linear-gradient(180deg, #120b1f 0%, #09050f 100%);
+}
+
+.error-shell {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    position: relative;
+    overflow: hidden;
+    padding: 32px 0;
+}
+
+.error-card {
+    position: relative;
+    z-index: 2;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: clamp(32px, 6vw, 56px);
+    text-align: center;
+    background: rgba(23, 15, 36, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 28px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(18px);
+}
+
+.error-eyebrow {
+    display: inline-block;
+    margin-bottom: 18px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: #d8b4fe;
+    background: rgba(116, 48, 232, 0.14);
+    border: 1px solid rgba(168, 85, 247, 0.34);
+}
+
+.error-title {
+    margin-bottom: 16px;
+    font-size: clamp(2.4rem, 6vw, 4.25rem);
+    font-weight: 800;
+    line-height: 1.05;
+    color: #ffffff;
+}
+
+.error-copy {
+    max-width: 540px;
+    margin: 0 auto 28px;
+    color: #cbd5e1;
+    font-size: 1.05rem;
+    line-height: 1.7;
+}
+
+.error-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 14px;
+}
+
+@media (max-width: 576px) {
+    .error-card {
+        border-radius: 22px;
+        padding: 28px 20px;
+    }
+
+    .error-actions {
+        flex-direction: column;
+    }
+}

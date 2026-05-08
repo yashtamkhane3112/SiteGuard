@@ -19,6 +19,9 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path, include
 
+handler404 = 'monitor.views.custom_404'
+handler500 = 'monitor.views.custom_500'
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('monitor.urls')),

@@ -1,14 +1,19 @@
 from datetime import timedelta
 from collections import defaultdict
+from hmac import compare_digest
+from io import StringIO
 
+from django.conf import settings as django_settings
 from django.shortcuts import get_object_or_404, redirect, render
-from django.http import JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib import messages
+from django.core.management import call_command
 from django.core.paginator import Paginator
 from django.db.models import Avg, Count
+from django.views.decorators.http import require_GET
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 
@@ -388,6 +393,9 @@ def build_reports_context(user, range_key):
 
 # ✅ STATUS HELPER
 def ensure_admin_user():
+    if not django_settings.BOOTSTRAP_ADMIN_ENABLED:
+        return
+
     if not User.objects.filter(username='admin').exists():
         User.objects.create_superuser(
             username='admin',
@@ -398,6 +406,31 @@ def ensure_admin_user():
 
 def index(request):
     return render(request, 'monitor/index.html')
+
+
+def custom_404(request, exception):
+    try:
+        return render(request, 'errors/404.html', status=404)
+    except Exception:
+        return HttpResponse("Not Found", status=404, content_type="text/plain")
+
+
+def custom_500(request):
+    try:
+        return render(request, 'errors/500.html', status=500)
+    except Exception:
+        return HttpResponse("Internal Server Error", status=500, content_type="text/plain")
+
+
+@require_GET
+def internal_monitoring_trigger(request, token):
+    secret = (django_settings.CRON_SECRET or '').strip()
+    if not secret or not compare_digest(token, secret):
+        raise Http404()
+
+    command_output = StringIO()
+    call_command('monitor_sites', stdout=command_output)
+    return HttpResponse(command_output.getvalue() or 'Monitoring run complete.\n', content_type='text/plain')
 
 
 def login(request):
