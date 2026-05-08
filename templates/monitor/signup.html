@@ -63,7 +63,16 @@
               <label class="form-label auth-label" for="{{ form.username.id_for_label }}">Username</label>
               <div class="auth-input-wrapper">
                 <i data-lucide="user" class="auth-input-icon"></i>
-                {{ form.username }}
+                <input
+                  type="text"
+                  name="username"
+                  id="{{ form.username.id_for_label }}"
+                  class="auth-input"
+                  placeholder="Choose a username"
+                  autocomplete="username"
+                  autofocus
+                  value="{{ form.username.value|default:'' }}"
+                />
               </div>
               {% for error in form.username.errors %}
               <div class="text-danger small mt-2">{{ error }}</div>
@@ -74,7 +83,14 @@
               <label class="form-label auth-label" for="{{ form.password1.id_for_label }}">Password</label>
               <div class="auth-input-wrapper">
                 <i data-lucide="lock" class="auth-input-icon"></i>
-                {{ form.password1 }}
+                <input
+                  type="password"
+                  name="password1"
+                  id="{{ form.password1.id_for_label }}"
+                  class="auth-input"
+                  placeholder="Create a strong password"
+                  autocomplete="new-password"
+                />
                 <i
                   data-lucide="eye"
                   id="togglePassword1"
@@ -90,7 +106,14 @@
               <label class="form-label auth-label" for="{{ form.password2.id_for_label }}">Confirm Password</label>
               <div class="auth-input-wrapper">
                 <i data-lucide="lock" class="auth-input-icon"></i>
-                {{ form.password2 }}
+                <input
+                  type="password"
+                  name="password2"
+                  id="{{ form.password2.id_for_label }}"
+                  class="auth-input"
+                  placeholder="Confirm your password"
+                  autocomplete="new-password"
+                />
                 <i
                   data-lucide="eye"
                   id="togglePassword2"

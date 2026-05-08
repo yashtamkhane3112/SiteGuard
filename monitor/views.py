@@ -1,3 +1,4 @@
+import logging
 from datetime import timedelta
 from collections import defaultdict
 from hmac import compare_digest
@@ -51,6 +52,8 @@ from .utils import (
     get_site_status,
     run_single_check,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def format_duration_value(total_seconds):
@@ -434,36 +437,44 @@ def internal_monitoring_trigger(request, token):
 
 
 def login(request):
-    ensure_admin_user()
-    if request.user.is_authenticated:
-        return redirect('dashboard')
-
-    form = LoginForm(request.POST or None)
-    if request.method == 'POST' and form.is_valid():
-        user = authenticate(
-            request,
-            username=form.cleaned_data['username'],
-            password=form.cleaned_data['password'],
-        )
-        if user is not None:
-            auth_login(request, user)
+    try:
+        ensure_admin_user()
+        if request.user.is_authenticated:
             return redirect('dashboard')
-        form.add_error(None, 'Invalid username or password.')
 
-    return render(request, 'monitor/login.html', {'form': form})
+        form = LoginForm(request.POST or None)
+        if request.method == 'POST' and form.is_valid():
+            user = authenticate(
+                request,
+                username=form.cleaned_data['username'],
+                password=form.cleaned_data['password'],
+            )
+            if user is not None:
+                auth_login(request, user)
+                return redirect('dashboard')
+            form.add_error(None, 'Invalid username or password.')
+
+        return render(request, 'monitor/login.html', {'form': form})
+    except Exception:
+        logger.exception("Failed to render or process login view.")
+        raise
 
 
 def signup(request):
-    ensure_admin_user()
-    if request.user.is_authenticated:
-        return redirect('dashboard')
+    try:
+        ensure_admin_user()
+        if request.user.is_authenticated:
+            return redirect('dashboard')
 
-    form = SignUpForm(request.POST or None)
-    if request.method == 'POST' and form.is_valid():
-        form.save()
-        return redirect('login')
+        form = SignUpForm(request.POST or None)
+        if request.method == 'POST' and form.is_valid():
+            form.save()
+            return redirect('login')
 
-    return render(request, 'monitor/signup.html', {'form': form})
+        return render(request, 'monitor/signup.html', {'form': form})
+    except Exception:
+        logger.exception("Failed to render or process signup view.")
+        raise
 
 
 def logout_view(request):

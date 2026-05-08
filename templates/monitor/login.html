@@ -63,7 +63,16 @@
               <label class="form-label auth-label" for="{{ form.username.id_for_label }}">Username</label>
               <div class="auth-input-wrapper">
                 <i data-lucide="mail" class="auth-input-icon"></i>
-                {{ form.username }}
+                <input
+                  type="text"
+                  name="username"
+                  id="{{ form.username.id_for_label }}"
+                  class="auth-input"
+                  placeholder="Enter your username"
+                  autocomplete="username"
+                  autofocus
+                  value="{{ form.username.value|default:'' }}"
+                />
               </div>
               {% for error in form.username.errors %}
               <div class="text-danger small mt-2">{{ error }}</div>
@@ -87,7 +96,14 @@
               </div>
               <div class="auth-input-wrapper">
                 <i data-lucide="lock" class="auth-input-icon"></i>
-                {{ form.password }}
+                <input
+                  type="password"
+                  name="password"
+                  id="{{ form.password.id_for_label }}"
+                  class="auth-input"
+                  placeholder="Enter your password"
+                  autocomplete="current-password"
+                />
                 <i
                   data-lucide="eye"
                   id="togglePassword"
