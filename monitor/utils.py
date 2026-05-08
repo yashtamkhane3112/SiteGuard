@@ -2,6 +2,7 @@ import ipaddress
 import re
 import socket
 import ssl
+from email.utils import format_datetime
 from datetime import datetime, timezone as dt_timezone
 from time import perf_counter
 from urllib.parse import quote, unquote, urlparse
@@ -704,6 +705,111 @@ def _format_response_time(response_time):
     return f"{round(response_time, 2)}ms"
 
 
+def _format_monitor_timestamp(value):
+    if value is None:
+        return timezone.now().strftime('%Y-%m-%d %H:%M:%S %Z')
+    return timezone.localtime(value).strftime('%Y-%m-%d %H:%M:%S %Z')
+
+
+def _format_email_timestamp(value):
+    if value is None:
+        value = timezone.now()
+    return format_datetime(timezone.localtime(value))
+
+
+def _describe_exception_reason(exc, timeout):
+    if isinstance(exc, requests.Timeout):
+        return f"Request timed out after {timeout}s."
+
+    if isinstance(exc, requests.ConnectionError):
+        detail = str(exc).lower()
+        if 'name or service not known' in detail or 'nodename nor servname provided' in detail or 'failed to resolve' in detail:
+            return "DNS resolution failed for the monitored host."
+        if 'connection refused' in detail:
+            return "Connection was actively refused by the target server."
+        if 'max retries exceeded' in detail:
+            return "Connection could not be established after retry attempts."
+        return "Connection to the monitored host failed."
+
+    if isinstance(exc, requests.SSLError):
+        return "TLS handshake failed while connecting to the monitored host."
+
+    return f"Monitoring request failed: {exc}"
+
+
+def build_monitoring_detail(
+    *,
+    website,
+    status,
+    checked_at,
+    response_time=None,
+    threshold=None,
+    status_code=None,
+    reason='',
+    recovery=False,
+    previous_status='',
+):
+    no_response_reason = bool(reason) and any(keyword in reason.lower() for keyword in ('timed out', 'dns', 'connection', 'tls handshake'))
+    response_metric = _format_response_time(None if no_response_reason and not response_time else response_time)
+    checked_label = _format_monitor_timestamp(checked_at)
+    segments = []
+
+    if recovery:
+        segments.append(f"{website.url} recovered at {checked_label}.")
+        if previous_status:
+            segments.append(f"Previous state: {previous_status}.")
+        if status_code is not None:
+            segments.append(f"HTTP status {status_code} is now returning successfully.")
+        if response_time is not None:
+            segments.append(f"Current response metric: {response_metric}.")
+        if threshold is not None and response_time is not None:
+            segments.append(f"This is below the slow threshold of {threshold}ms.")
+        if reason:
+            segments.append(f"Recovery context: {reason}.")
+        return ' '.join(segments)
+
+    if status == MonitorLog.STATUS_DOWN:
+        segments.append(f"Automated monitoring detected {website.url} as DOWN at {checked_label}.")
+        if reason:
+            segments.append(f"Reason: {reason}")
+        if status_code is not None:
+            segments.append(f"HTTP status code: {status_code}.")
+        segments.append(f"Response metric: {response_metric}.")
+        return ' '.join(segments)
+
+    if status == MonitorLog.STATUS_SLOW:
+        segments.append(f"Automated monitoring detected degraded performance for {website.url} at {checked_label}.")
+        if response_time is not None and threshold is not None:
+            segments.append(f"Response time {response_metric} exceeded the slow threshold of {threshold}ms.")
+        elif response_time is not None:
+            segments.append(f"Measured response time: {response_metric}.")
+        if status_code is not None:
+            segments.append(f"HTTP status code: {status_code}.")
+        if reason:
+            segments.append(f"Reason: {reason}")
+        return ' '.join(segments)
+
+    segments.append(f"SSL validation failed for {website.url} at {checked_label}.")
+    if reason:
+        segments.append(f"Reason: {reason}")
+    if status_code is not None:
+        segments.append(f"Latest HTTP status code: {status_code}.")
+    segments.append(f"Response metric: {response_metric}.")
+    return ' '.join(segments)
+
+
+def build_recovery_context(previous_status, response_time, threshold, status_code):
+    if previous_status == MonitorLog.STATUS_DOWN:
+        return "The monitored endpoint is reachable again."
+    if previous_status == MonitorLog.STATUS_SLOW:
+        if response_time is not None and threshold is not None:
+            return f"Response time returned below the configured slow threshold of {threshold}ms."
+        return "Performance returned to the normal operating range."
+    if status_code is not None:
+        return f"Latest check returned HTTP {status_code} with a healthy response."
+    return "Monitoring recovered to a healthy state."
+
+
 def get_numeric_response_time(response_time, default=0):
     if response_time is None:
         return default
@@ -799,16 +905,27 @@ def send_alert_email(alert, recovery_time=None):
         subject = f"SiteGuard SSL Alert: {website.url} SSL validation failed"
 
     lines = [
+        "SiteGuard Monitoring Alert",
+        "",
         f"Website: {website.url}",
         f"Alert Type: {alert.alert_type}",
-        f"Status: {alert.alert_type}",
-        f"Response Time: {response_time}",
-        f"Incident Started: {incident_start:%Y-%m-%d %H:%M:%S}",
+        f"Delivery Status: {alert.status}",
+        f"Response Metric: {response_time}",
+        f"Incident Started: {_format_email_timestamp(incident_start)}",
+        f"Alert Generated: {_format_email_timestamp(alert.created_at)}",
     ]
     if recovery_time is not None:
-        lines.append(f"Recovery Time: {recovery_time:%Y-%m-%d %H:%M:%S}")
-    lines.append("")
-    lines.append(alert.message)
+        lines.append(f"Recovery Time: {_format_email_timestamp(recovery_time)}")
+    if incident is not None:
+        lines.append(f"Incident Reference: {incident.incident_code}")
+        lines.append(f"Incident Category: {incident.get_incident_type_display()}")
+    if alert.sent_to:
+        lines.append(f"Recipient: {alert.sent_to}")
+    lines.extend([
+        "",
+        "Alert Details:",
+        alert.message,
+    ])
 
     send_mail(
         subject,
@@ -848,7 +965,12 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
         create_notification_from_alert(alert)
         return alert
 
-    if alert is None or alert.status == Alert.STATUS_FAILED or alert.message != message:
+    if alert and alert.status in {Alert.STATUS_SENT, Alert.STATUS_PENDING} and alert.message != message:
+        alert.message = message
+        alert.sent_to = sent_to
+        alert.response_time = get_numeric_response_time(response_time, default=None)
+        alert.save(update_fields=['message', 'sent_to', 'response_time'])
+    elif alert is None or alert.status == Alert.STATUS_FAILED or alert.message != message:
         alert = Alert.objects.create(
             website=website,
             incident=incident,
@@ -940,21 +1062,22 @@ def cleanup_monitoring_state(user=None):
                 alert.is_read,
             )
             if (
-                alert.status in {Alert.STATUS_SENT, Alert.STATUS_PENDING}
+            alert.status in {Alert.STATUS_SENT, Alert.STATUS_PENDING}
                 and not alert.is_read
-                and alert_key in alert_seen
+                and (alert_key + (alert.message, alert.sent_to)) in alert_seen
             ):
                 alert.is_read = True
                 alert.read_at = alert.read_at or alert.created_at
                 update_fields.extend(['is_read', 'read_at'])
             else:
-                alert_seen.add(alert_key)
+                alert_seen.add(alert_key + (alert.message, alert.sent_to))
 
             if update_fields:
                 alert.save(update_fields=update_fields)
 
 
-def resolve_incident(incident, current_log, create_recovery_alert=False, message=None):
+def resolve_incident(incident, current_log, create_recovery_alert=False, message=None, status_code=None):
+    previous_status = incident.status
     incident.status = Incident.STATUS_RESOLVED
     incident.is_resolved = True
     incident.resolved_at = current_log.checked_at
@@ -965,21 +1088,41 @@ def resolve_incident(incident, current_log, create_recovery_alert=False, message
     create_incident_event(
         incident,
         IncidentEvent.TYPE_RESOLVED,
-        message or f"Automated monitoring confirmed recovery at {_format_response_time(current_log.response_time)}.",
+        message or build_monitoring_detail(
+            website=incident.website,
+            status=MonitorLog.STATUS_UP,
+            checked_at=current_log.checked_at,
+            response_time=current_log.response_time,
+            threshold=get_monitor_threshold(incident.website),
+            status_code=status_code,
+            previous_status=previous_status,
+            reason=build_recovery_context(previous_status, current_log.response_time, get_monitor_threshold(incident.website), status_code),
+            recovery=True,
+        ),
     )
 
     if create_recovery_alert:
         create_or_update_alert(
             incident.website,
             Alert.TYPE_RECOVERY,
-            f"{incident.website.url} recovered and is operational again.",
+            build_monitoring_detail(
+                website=incident.website,
+                status=MonitorLog.STATUS_UP,
+                checked_at=current_log.checked_at,
+                response_time=current_log.response_time,
+                threshold=get_monitor_threshold(incident.website),
+                status_code=status_code,
+                previous_status=previous_status,
+                reason=build_recovery_context(previous_status, current_log.response_time, get_monitor_threshold(incident.website), status_code),
+                recovery=True,
+            ),
             incident=incident,
             response_time=current_log.response_time,
             recovery_time=current_log.checked_at,
         )
 
 
-def sync_incident_state(website, previous_log, current_log):
+def sync_incident_state(website, previous_log, current_log, *, status_code=None, reason=''):
     previous_status = get_site_status(previous_log)
     current_status = get_site_status(current_log)
     active_incidents = Incident.objects.filter(
@@ -989,7 +1132,7 @@ def sync_incident_state(website, previous_log, current_log):
 
     if current_status == MonitorLog.STATUS_UP:
         for incident in active_incidents:
-            resolve_incident(incident, current_log, create_recovery_alert=True)
+            resolve_incident(incident, current_log, create_recovery_alert=True, status_code=status_code)
         return
 
     if current_status not in {MonitorLog.STATUS_DOWN, MonitorLog.STATUS_SLOW}:
@@ -1004,6 +1147,7 @@ def sync_incident_state(website, previous_log, current_log):
             current_log,
             create_recovery_alert=False,
             message=f"Incident automatically closed after status changed to {current_status}.",
+            status_code=status_code,
         )
 
     if active_incident is None:
@@ -1015,9 +1159,14 @@ def sync_incident_state(website, previous_log, current_log):
             started_at=current_log.checked_at,
             latest_response_time=current_log.response_time,
         )
-        detail = (
-            f"Automated monitoring detected {website.url} as {current_status} "
-            f"at {_format_response_time(current_log.response_time)}."
+        detail = build_monitoring_detail(
+            website=website,
+            status=current_status,
+            checked_at=current_log.checked_at,
+            response_time=current_log.response_time,
+            threshold=get_monitor_threshold(website),
+            status_code=status_code,
+            reason=reason,
         )
         create_incident_event(active_incident, IncidentEvent.TYPE_DETECTED, detail)
         if (
@@ -1043,11 +1192,19 @@ def sync_incident_state(website, previous_log, current_log):
         create_incident_event(
             active_incident,
             IncidentEvent.TYPE_MONITORING,
-            f"Status changed from {previous_status} to {current_status} at {_format_response_time(current_log.response_time)}.",
+            build_monitoring_detail(
+                website=website,
+                status=current_status,
+                checked_at=current_log.checked_at,
+                response_time=current_log.response_time,
+                threshold=get_monitor_threshold(website),
+                status_code=status_code,
+                reason=f"{reason} Previous state was {previous_status}." if reason else f"Previous state was {previous_status}.",
+            ),
         )
 
 
-def sync_ssl_state(website, current_log, ssl_status):
+def sync_ssl_state(website, current_log, ssl_status, *, status_code=None, reason=''):
     if ssl_status not in {"Valid", "Invalid"}:
         return
 
@@ -1063,7 +1220,18 @@ def sync_ssl_state(website, current_log, ssl_status):
                 active_ssl_incident,
                 current_log,
                 create_recovery_alert=True,
-                message="SSL validation recovered and certificate checks are passing again.",
+                message=build_monitoring_detail(
+                    website=website,
+                    status=MonitorLog.STATUS_UP,
+                    checked_at=current_log.checked_at,
+                    response_time=current_log.response_time,
+                    threshold=get_monitor_threshold(website),
+                    status_code=status_code,
+                    previous_status=MonitorLog.STATUS_SLOW,
+                    reason="TLS certificate checks are passing again.",
+                    recovery=True,
+                ),
+                status_code=status_code,
             )
         return
 
@@ -1079,12 +1247,26 @@ def sync_ssl_state(website, current_log, ssl_status):
         create_incident_event(
             active_ssl_incident,
             IncidentEvent.TYPE_DETECTED,
-            f"SSL validation failed for {website.url} during automated monitoring.",
+            build_monitoring_detail(
+                website=website,
+                status='SSL',
+                checked_at=current_log.checked_at,
+                response_time=current_log.response_time,
+                status_code=status_code,
+                reason=reason or "TLS handshake or certificate validation failed during monitoring.",
+            ),
         )
         create_or_update_alert(
             website,
             Alert.TYPE_SSL,
-            f"SSL validation failed for {website.url}.",
+            build_monitoring_detail(
+                website=website,
+                status='SSL',
+                checked_at=current_log.checked_at,
+                response_time=current_log.response_time,
+                status_code=status_code,
+                reason=reason or "TLS handshake or certificate validation failed during monitoring.",
+            ),
             incident=active_ssl_incident,
             response_time=current_log.response_time,
         )
@@ -1105,10 +1287,14 @@ def run_single_check(website, timeout=5):
 
     previous_log = MonitorLog.objects.filter(website=website).order_by('-checked_at').first()
     ssl_status = None
+    status_code = None
+    reason = ''
+    ssl_reason = ''
 
     try:
         response = requests.get(url, timeout=timeout)
         response_time_ms = response.elapsed.total_seconds() * 1000
+        status_code = response.status_code
         ssl_status = check_ssl_status(url)
 
         if 200 <= response.status_code < 400:
@@ -1117,24 +1303,31 @@ def run_single_check(website, timeout=5):
                 if response_time_ms > 2000
                 else MonitorLog.STATUS_UP
             )
+            if status == MonitorLog.STATUS_SLOW:
+                reason = f"Response time {_format_response_time(response_time_ms)} exceeded the configured slow threshold of {get_monitor_threshold(website)}ms."
         else:
             status = MonitorLog.STATUS_DOWN
+            reason = f"HTTP {response.status_code} returned by the monitored endpoint."
+
+        if ssl_status == "Invalid":
+            ssl_reason = "TLS handshake or certificate validation failed during certificate checks."
 
         log = MonitorLog.objects.create(
             website=website,
             status=status,
             response_time=round(response_time_ms, 2),
         )
-        sync_incident_state(website, previous_log, log)
-        sync_ssl_state(website, log, ssl_status)
+        sync_incident_state(website, previous_log, log, status_code=status_code, reason=reason)
+        sync_ssl_state(website, log, ssl_status, status_code=status_code, reason=ssl_reason)
         return log, response
-    except Exception:
+    except Exception as exc:
+        reason = _describe_exception_reason(exc, timeout)
         log = MonitorLog.objects.create(
             website=website,
             status=MonitorLog.STATUS_DOWN,
             response_time=0,
         )
-        sync_incident_state(website, previous_log, log)
+        sync_incident_state(website, previous_log, log, status_code=status_code, reason=reason)
         return log, None
 
 

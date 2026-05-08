@@ -1699,6 +1699,7 @@ body {
     box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.06), 0 12px 24px rgba(36, 24, 10, 0.25);
 }
 
+.utility-state-error,
 .utility-state-failure {
     border-color: rgba(239, 68, 68, 0.18);
     box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.06), 0 12px 24px rgba(35, 14, 20, 0.25);
@@ -3362,4 +3363,54 @@ body.sidebar-open {
     .global-search-shell {
         display: none !important;
     }
+}
+
+/* Production Readiness Micro Polish */
+.custom-dropdown {
+    padding: 8px;
+    background: rgba(19, 14, 29, 0.96);
+    border: 1px solid rgba(168, 85, 247, 0.14);
+    border-radius: 16px;
+    box-shadow: 0 22px 38px rgba(7, 5, 12, 0.28), inset 0 1px 0 rgba(255,255,255,0.04);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+}
+
+.custom-dropdown .dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 40px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    color: #e5e7eb;
+    font-size: 0.88rem;
+    font-weight: 600;
+    transition: background var(--sg-fast-motion), color var(--sg-fast-motion), transform var(--sg-fast-motion);
+}
+
+.custom-dropdown .dropdown-item:hover,
+.custom-dropdown .dropdown-item:focus {
+    background: rgba(116, 48, 232, 0.14);
+    color: #fff;
+    transform: translateX(2px);
+}
+
+.custom-dropdown .dropdown-item i {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.custom-dropdown .dropdown-divider {
+    margin: 6px 0;
+    border-color: rgba(255,255,255,0.06);
+}
+
+.utility-error-text {
+    line-height: 1.55;
+}
+
+.utility-state-banner {
+    align-items: flex-start;
 }

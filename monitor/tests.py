@@ -121,6 +121,9 @@ class MonitorEmailAlertTests(TestCase):
         self.assertIn("is DOWN", args[0])
         self.assertEqual(args[3], [self.user.email])
         self.assertEqual(Alert.objects.filter(website=self.website, alert_type=Alert.TYPE_DOWN).count(), 1)
+        self.assertIn("Alert Details:", args[1])
+        self.assertIn("HTTP 500", args[1])
+        self.assertIn("Incident Started:", args[1])
 
     @patch("monitor.utils.check_ssl_status", return_value="Valid")
     @patch("monitor.utils.send_mail")
@@ -476,6 +479,35 @@ class AlertSyncTests(TestCase):
         self.assertContains(response, "https://example.com")
         self.assertContains(response, alert.message)
         self.assertEqual(response.context["recent_alerts_count"], 1)
+
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    @patch("monitor.utils.send_mail")
+    @patch("monitor.utils.requests.get")
+    def test_down_alert_message_includes_http_reason_and_response_context(self, mock_get, _mock_send_mail, _mock_ssl):
+        MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=100)
+        mock_get.return_value = Mock(
+            status_code=503,
+            elapsed=Mock(total_seconds=Mock(return_value=0.321)),
+        )
+
+        run_single_check(self.website)
+
+        alert = Alert.objects.get(website=self.website, alert_type=Alert.TYPE_DOWN)
+        self.assertIn("HTTP 503", alert.message)
+        self.assertIn("Response metric", alert.message)
+        self.assertIn(self.website.url, alert.message)
+
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    @patch("monitor.utils.send_mail")
+    @patch("monitor.utils.requests.get", side_effect=requests.Timeout("timed out"))
+    def test_timeout_alert_message_includes_timeout_reason(self, _mock_get, _mock_send_mail, _mock_ssl):
+        MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=100)
+
+        run_single_check(self.website)
+
+        alert = Alert.objects.get(website=self.website, alert_type=Alert.TYPE_DOWN)
+        self.assertIn("timed out", alert.message.lower())
+        self.assertIn("No response", alert.message)
 
 
 class MonitoringIntegrityTests(TestCase):
@@ -1062,6 +1094,39 @@ class AccountManagementTests(TestCase):
         self.assertTrue(self.user.check_password("NewStrongPass123!"))
         follow_up = self.client.get(reverse("profile"))
         self.assertEqual(follow_up.status_code, 200)
+
+    def test_password_change_rejects_invalid_current_password_with_feedback(self):
+        response = self.client.post(
+            reverse("profile"),
+            {
+                "profile_action": "change_password",
+                "old_password": "WrongPass123!",
+                "new_password1": "NewStrongPass123!",
+                "new_password2": "NewStrongPass123!",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Password change failed")
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("StrongPass123!"))
+        self.assertEqual(self.client.get(reverse("profile")).status_code, 200)
+
+    def test_password_change_rejects_confirmation_mismatch(self):
+        response = self.client.post(
+            reverse("profile"),
+            {
+                "profile_action": "change_password",
+                "old_password": "StrongPass123!",
+                "new_password1": "NewStrongPass123!",
+                "new_password2": "MismatchPass123!",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Password change failed")
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("StrongPass123!"))
 
     def test_settings_persist_preferences_and_monitoring_frequency(self):
         response = self.client.post(

@@ -670,6 +670,7 @@ def profile(request):
                 profile_form.save()
                 messages.success(request, 'Profile updated successfully.')
                 return redirect('profile')
+            messages.error(request, 'Profile update could not be saved. Review the highlighted fields.')
         elif action == 'update_security':
             profile_form = ProfileUpdateForm(user=request.user, profile=profile_obj)
             security_form = AccountSecurityForm(request.POST, instance=profile_obj)
@@ -683,6 +684,7 @@ def profile(request):
                 else:
                     messages.success(request, 'Security preferences updated successfully.')
                 return redirect('profile')
+            messages.error(request, 'Security preferences could not be saved. Review the highlighted fields.')
         elif action == 'change_password':
             profile_form = ProfileUpdateForm(user=request.user, profile=profile_obj)
             security_form = AccountSecurityForm(instance=profile_obj)
@@ -693,6 +695,7 @@ def profile(request):
                 update_session_auth_hash(request, user)
                 messages.success(request, 'Password changed successfully.')
                 return redirect('profile')
+            messages.error(request, 'Password change failed. Check your current password and confirm the new password fields.')
         elif action == 'delete_account':
             profile_form = ProfileUpdateForm(user=request.user, profile=profile_obj)
             security_form = AccountSecurityForm(instance=profile_obj)
@@ -704,6 +707,7 @@ def profile(request):
                 user.delete()
                 messages.success(request, 'Your account has been deleted.')
                 return redirect('index')
+            messages.error(request, 'Account deletion was not confirmed. Review the highlighted fields.')
         else:
             profile_form = ProfileUpdateForm(user=request.user, profile=profile_obj)
             security_form = AccountSecurityForm(instance=profile_obj)
@@ -739,6 +743,7 @@ def settings(request):
             else:
                 messages.success(request, 'Settings saved successfully.')
             return redirect('settings')
+        messages.error(request, 'Settings could not be saved. Review the highlighted fields.')
     else:
         preferences_form = AccountPreferencesForm(instance=profile_obj)
 
