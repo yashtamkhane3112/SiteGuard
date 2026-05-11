@@ -115,6 +115,7 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 WHITENOISE_MAX_AGE = config("WHITENOISE_MAX_AGE", default=31536000, cast=int)
+WHITENOISE_USE_FINDERS = DEBUG
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
@@ -155,3 +156,33 @@ APPEND_SLASH = True
 BOOTSTRAP_ADMIN_ENABLED = config("BOOTSTRAP_ADMIN_ENABLED", default=DEBUG, cast=bool)
 CRON_SECRET = config("CRON_SECRET", default="")
 APP_BASE_URL = config("APP_BASE_URL", default="").rstrip("/")
+
+LOG_LEVEL = config("LOG_LEVEL", default="INFO")
+DJANGO_LOG_LEVEL = config("DJANGO_LOG_LEVEL", default="INFO")
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "standard": {
+            "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
+        },
+    },
+    "loggers": {
+        "": {
+            "handlers": ["console"],
+            "level": LOG_LEVEL,
+        },
+        "django": {
+            "handlers": ["console"],
+            "level": DJANGO_LOG_LEVEL,
+            "propagate": False,
+        },
+    },
+}

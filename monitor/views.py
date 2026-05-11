@@ -442,6 +442,28 @@ def custom_500(request):
 
 
 @require_GET
+def health_check(request):
+    db_ok = False
+    auth_user_present = False
+    try:
+        table_names = set(connection.introspection.table_names())
+        db_ok = True
+        auth_user_present = User._meta.db_table in table_names
+    except (OperationalError, ProgrammingError):
+        logger.exception("Health check database inspection failed.")
+
+    payload = {
+        'status': 'ok' if db_ok and auth_user_present else 'degraded',
+        'database': db_ok,
+        'auth_user_table': auth_user_present,
+        'settings_module': django_settings.SETTINGS_MODULE,
+        'debug': django_settings.DEBUG,
+    }
+    status_code = 200 if payload['status'] == 'ok' else 503
+    return JsonResponse(payload, status=status_code)
+
+
+@require_GET
 def internal_monitoring_trigger(request, token):
     secret = (django_settings.CRON_SECRET or '').strip()
     if not secret or not compare_digest(token, secret):

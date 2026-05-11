@@ -1,37 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-siteguard.settings.prod}"
+trap 'echo "Startup failed at line ${LINENO}" >&2' ERR
 
-echo "SiteGuard startup: using settings module ${DJANGO_SETTINGS_MODULE}"
-echo "Running database migrations..."
-python manage.py migrate --settings=siteguard.settings.prod --noinput
+export DJANGO_SETTINGS_MODULE="siteguard.settings.prod"
 
-echo "Verifying auth tables..."
-python - <<'PY'
-import os
-import sys
+echo "STARTUP SCRIPT RUNNING"
+echo "Working directory: $(pwd)"
+echo "Python: $(python --version)"
+echo "Using settings: ${DJANGO_SETTINGS_MODULE}"
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "siteguard.settings.prod")
+command -v python >/dev/null 2>&1
+command -v gunicorn >/dev/null 2>&1
 
-import django
-django.setup()
+echo "Running migrations..."
+python manage.py migrate --settings="${DJANGO_SETTINGS_MODULE}" --noinput
 
-from django.contrib.auth.models import User
+echo "Checking auth table..."
+python manage.py shell --settings="${DJANGO_SETTINGS_MODULE}" -c "
 from django.db import connection
+cursor = connection.cursor()
+cursor.execute(\"SELECT name FROM sqlite_master WHERE type='table' AND name='auth_user';\")
+result = cursor.fetchone()
+print(result)
+assert result is not None, 'auth_user table missing'
+"
 
-table_names = set(connection.introspection.table_names())
-required_table = User._meta.db_table
+echo "Collecting static..."
+python manage.py collectstatic --noinput --settings="${DJANGO_SETTINGS_MODULE}"
 
-if required_table not in table_names:
-    print(f"Missing required auth table: {required_table}", file=sys.stderr)
-    sys.exit(1)
-
-print(f"Verified required auth table: {required_table}")
-PY
-
-echo "Collecting static files..."
-python manage.py collectstatic --noinput --settings=siteguard.settings.prod
-
-echo "Starting Gunicorn..."
-exec gunicorn siteguard.wsgi:application
+echo "Starting gunicorn..."
+exec gunicorn siteguard.wsgi:application --bind 0.0.0.0:${PORT:-10000}

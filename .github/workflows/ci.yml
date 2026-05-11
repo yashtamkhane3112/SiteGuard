@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - status-sync-final
+  pull_request:
+
+jobs:
+  django-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          python - <<'PY'
+          from pathlib import Path
+          env_path = Path(".env")
+          text = env_path.read_text()
+          text = text.replace("SECRET_KEY=replace-me-for-production", "SECRET_KEY=test-secret-key")
+          text = text.replace("DEBUG=True", "DEBUG=False")
+          text = text.replace("ALLOWED_HOSTS=127.0.0.1,localhost", "ALLOWED_HOSTS=localhost,127.0.0.1,testserver")
+          text = text.replace("CSRF_TRUSTED_ORIGINS=http://127.0.0.1:8000,http://localhost:8000", "CSRF_TRUSTED_ORIGINS=http://127.0.0.1:8000,http://localhost:8000")
+          env_path.write_text(text)
+          PY
+
+      - name: Run migrations
+        run: python manage.py migrate --settings=siteguard.settings.prod --noinput
+
+      - name: Check deployment settings
+        run: python manage.py check --deploy --settings=siteguard.settings.prod
+
+      - name: Smoke test static pipeline
+        run: python manage.py collectstatic --noinput --settings=siteguard.settings.prod

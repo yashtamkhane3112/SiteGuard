@@ -11,6 +11,9 @@ import os
 
 from django.core.wsgi import get_wsgi_application
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'siteguard.settings.dev')
+default_settings = 'siteguard.settings.dev'
+if os.environ.get('RENDER') or os.environ.get('RENDER_EXTERNAL_HOSTNAME'):
+    default_settings = 'siteguard.settings.prod'
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', default_settings)
 
 application = get_wsgi_application()
