@@ -28,8 +28,10 @@ from .forms import (
     LoginForm,
     ProfileUpdateForm,
     SignUpForm,
+    UploadedLogForm,
 )
-from .models import Alert, Incident, MonitorLog, Website
+from .error_analyzer import process_uploaded_log
+from .models import Alert, Incident, MonitorLog, UploadedLog, Website
 from .utils import (
     analyze_domain,
     build_global_search_results,
@@ -404,6 +406,34 @@ def build_reports_context(user, range_key):
     }
 
 
+def build_error_analyzer_summary(uploaded_log):
+    parsed_errors = list(
+        uploaded_log.parsed_errors.all().order_by('-count', 'first_seen_line', 'id')
+    )
+    total_detected_errors = sum(item.count for item in parsed_errors)
+    recurring_errors = [item for item in parsed_errors if item.count > 1]
+    most_common_error = parsed_errors[0] if parsed_errors else None
+
+    grouped_results = []
+    grouped_totals = {}
+    for item in parsed_errors:
+        grouped_totals[item.error_type] = grouped_totals.get(item.error_type, 0) + item.count
+
+    for error_type, total_count in sorted(grouped_totals.items(), key=lambda pair: (-pair[1], pair[0].lower())):
+        grouped_results.append({
+            'error_type': error_type,
+            'total_count': total_count,
+        })
+
+    return {
+        'parsed_errors': parsed_errors,
+        'total_detected_errors': total_detected_errors,
+        'recurring_errors_count': len(recurring_errors),
+        'most_common_error': most_common_error,
+        'grouped_results': grouped_results,
+    }
+
+
 # ✅ STATUS HELPER
 def ensure_admin_user():
     if not django_settings.BOOTSTRAP_ADMIN_ENABLED:
@@ -675,6 +705,50 @@ def reports(request):
     ensure_weekly_report_notification(request.user)
     context = build_reports_context(request.user, range_key)
     return render(request, 'monitor/reports.html', context)
+
+
+@login_required
+def error_log_upload(request):
+    recent_uploads = UploadedLog.objects.filter(user=request.user).order_by('-uploaded_at', '-id')[:10]
+
+    if request.method == 'POST':
+        form = UploadedLogForm(request.POST, request.FILES)
+        if form.is_valid():
+            uploaded_log = form.save(commit=False)
+            uploaded_log.user = request.user
+            uploaded_log.filename = form.cleaned_data['file'].name
+            uploaded_log.processed = False
+            uploaded_log.save()
+            process_uploaded_log(uploaded_log)
+            messages.success(request, f'Processed {uploaded_log.filename} successfully.')
+            return redirect('error_log_results', upload_id=uploaded_log.id)
+        messages.error(request, 'Upload failed. Review the selected file and try again.')
+    else:
+        form = UploadedLogForm()
+
+    context = {
+        'form': form,
+        'recent_uploads': recent_uploads,
+    }
+    return render(request, 'monitor/error_log_upload.html', context)
+
+
+@login_required
+def error_log_results(request, upload_id):
+    uploaded_log = get_object_or_404(
+        UploadedLog.objects.prefetch_related('parsed_errors'),
+        id=upload_id,
+        user=request.user,
+    )
+    summary = build_error_analyzer_summary(uploaded_log)
+    recent_uploads = UploadedLog.objects.filter(user=request.user).exclude(id=uploaded_log.id).order_by('-uploaded_at', '-id')[:8]
+
+    context = {
+        'uploaded_log': uploaded_log,
+        'recent_uploads': recent_uploads,
+        **summary,
+    }
+    return render(request, 'monitor/error_log_results.html', context)
 
 
 @login_required

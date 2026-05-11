@@ -1,5 +1,15 @@
 from django.contrib import admin
-from .models import Alert, Incident, IncidentEvent, MonitorLog, Notification, UserProfile, Website
+from .models import (
+    Alert,
+    Incident,
+    IncidentEvent,
+    MonitorLog,
+    Notification,
+    ParsedError,
+    UploadedLog,
+    UserProfile,
+    Website,
+)
 
 
 @admin.register(Website)
@@ -56,3 +66,19 @@ class UserProfileAdmin(admin.ModelAdmin):
     list_filter = ['timezone', 'monitoring_frequency', 'email_alerts_enabled']
     search_fields = ['user__username', 'user__email']
     raw_id_fields = ['user']
+
+
+@admin.register(UploadedLog)
+class UploadedLogAdmin(admin.ModelAdmin):
+    list_display = ['filename', 'user', 'uploaded_at', 'processed']
+    list_filter = ['processed', 'uploaded_at']
+    search_fields = ['filename', 'user__username']
+    raw_id_fields = ['user']
+
+
+@admin.register(ParsedError)
+class ParsedErrorAdmin(admin.ModelAdmin):
+    list_display = ['error_type', 'uploaded_log', 'count', 'first_seen_line']
+    list_filter = ['error_type']
+    search_fields = ['error_type', 'raw_line', 'uploaded_log__filename']
+    raw_id_fields = ['uploaded_log']

@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth.forms import PasswordChangeForm, UserCreationForm
 from django.contrib.auth.models import User
-from .models import UserProfile
+from .models import UploadedLog, UserProfile
 
 
 class LoginForm(forms.Form):
@@ -241,3 +241,38 @@ class DeleteAccountForm(forms.Form):
         if phrase != 'DELETE':
             raise forms.ValidationError('Type DELETE to confirm account removal.')
         return phrase
+
+
+class UploadedLogForm(forms.ModelForm):
+    allowed_extensions = {'.txt', '.log'}
+    max_file_size = 5 * 1024 * 1024
+
+    class Meta:
+        model = UploadedLog
+        fields = ('file',)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['file'].widget.attrs.update({
+            'class': 'form-control custom-input',
+            'accept': '.txt,.log,text/plain',
+        })
+        self.fields['file'].help_text = 'Upload a .txt or .log file up to 5 MB.'
+
+    def clean_file(self):
+        uploaded_file = self.cleaned_data.get('file')
+        if not uploaded_file:
+            raise forms.ValidationError('Select a log file to upload.')
+
+        file_name = (uploaded_file.name or '').lower()
+        if not any(file_name.endswith(ext) for ext in self.allowed_extensions):
+            raise forms.ValidationError('Only .txt and .log files are supported.')
+
+        if uploaded_file.size > self.max_file_size:
+            raise forms.ValidationError('Log files must be 5 MB or smaller.')
+
+        content_type = getattr(uploaded_file, 'content_type', '')
+        if content_type and content_type not in {'text/plain', 'application/octet-stream'}:
+            raise forms.ValidationError('Unsupported file type.')
+
+        return uploaded_file

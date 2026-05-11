@@ -1,0 +1,157 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Error Analyzer | SiteGuard</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{% static 'css/style.css' %}" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <div class="overlay" id="mobileOverlay"></div>
+
+      <aside class="sidebar" id="sidebar">
+        <a href="{% url 'index' %}" style="text-decoration: none">
+          <div class="sidebar-brand">
+            <div class="logo-icon"><i data-lucide="activity"></i></div>
+            <span>Site Guard</span>
+          </div>
+        </a>
+        <nav class="sidebar-nav">
+          <a href="{% url 'dashboard' %}" class="nav-item"><i data-lucide="layout-dashboard"></i> Dashboard</a>
+          <a href="{% url 'status' %}" class="nav-item"><i data-lucide="globe"></i> Status Check</a>
+          <a href="{% url 'reports' %}" class="nav-item"><i data-lucide="bar-chart-2"></i> Reports</a>
+          <a href="{% url 'incidents' %}" class="nav-item"><i data-lucide="alert-triangle"></i> Incidents</a>
+          <a href="{% url 'logs' %}" class="nav-item"><i data-lucide="file-text"></i> Logs</a>
+          <a href="{% url 'error_log_upload' %}" class="nav-item active"><i data-lucide="bug"></i> Error Analyzer</a>
+          <a href="{% url 'utilities' %}" class="nav-item"><i data-lucide="wrench"></i> Utilities</a>
+          <a href="{% url 'alerts' %}" class="nav-item"><i data-lucide="bell"></i> Alerts</a>
+          <a href="{% url 'notifications' %}" class="nav-item"><i data-lucide="inbox"></i> Notifications</a>
+          <div style="flex-grow: 1"></div>
+          <a href="{% url 'logout' %}" class="nav-item"><i data-lucide="log-out"></i> Logout</a>
+        </nav>
+        <div class="pro-tip-card mt-4">
+          <h6>Upload Tip</h6>
+          <p>Use raw server logs or traceback dumps to surface recurring failures quickly.</p>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search error uploads, incidents, websites..." %}
+
+        <div class="content-wrapper" style="max-width: 1080px">
+          <div class="mb-4">
+            <h2 class="page-title text-white">Error Log Upload</h2>
+            <p class="page-subtitle text-slate-300">
+              Upload a `.txt` or `.log` file to detect recurring exceptions, operational failures, and HTTP error patterns.
+            </p>
+          </div>
+
+          {% if messages %}
+          <div class="mb-4">
+            {% for message in messages %}
+            <div class="alert {% if message.tags == 'success' %}alert-success{% else %}alert-danger{% endif %} alert-dismissible fade show" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          <div class="dash-panel mb-4">
+            <div class="d-flex align-items-center gap-3 mb-4">
+              <div class="incident-icon bg-panel-light text-white">
+                <i data-lucide="upload"></i>
+              </div>
+              <div>
+                <h5 class="m-0 text-white fw-bold">Upload Log File</h5>
+                <p class="m-0 text-slate-300 text-sm">
+                  Supported formats: `.txt`, `.log` up to 5 MB. Files are processed synchronously after upload.
+                </p>
+              </div>
+            </div>
+
+            <form method="post" enctype="multipart/form-data">
+              {% csrf_token %}
+              <div class="mb-3">
+                <label class="form-label text-slate-300 text-sm fw-medium" for="{{ form.file.id_for_label }}">Log file</label>
+                {{ form.file }}
+                {% if form.file.help_text %}
+                <div class="text-slate-300 text-sm mt-2">{{ form.file.help_text }}</div>
+                {% endif %}
+                {% if form.file.errors %}
+                <div class="text-danger text-sm mt-2">{{ form.file.errors|join:", " }}</div>
+                {% endif %}
+              </div>
+              <div class="utility-action-row">
+                <button type="submit" class="btn btn-primary-custom">
+                  <i data-lucide="play-circle" class="me-2 size-sm"></i>
+                  Upload and Analyze
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div class="dash-panel">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
+              <div>
+                <h5 class="panel-title m-0">Recent Uploads</h5>
+                <p class="panel-subtitle mt-1 m-0">Your last processed and pending log files.</p>
+              </div>
+            </div>
+
+            {% if recent_uploads %}
+            <div class="table-responsive">
+              <table class="table custom-table">
+                <thead>
+                  <tr>
+                    <th>Filename</th>
+                    <th>Status</th>
+                    <th>Uploaded</th>
+                    <th class="text-end">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for upload in recent_uploads %}
+                  <tr>
+                    <td class="font-mono text-light">{{ upload.filename }}</td>
+                    <td>
+                      <span class="status-badge {% if upload.processed %}badge-up{% else %}badge-slow{% endif %}">
+                        {% if upload.processed %}PROCESSED{% else %}PENDING{% endif %}
+                      </span>
+                    </td>
+                    <td class="text-light opacity-75">{{ upload.uploaded_at|date:"Y-m-d H:i" }}</td>
+                    <td class="text-end">
+                      <a href="{% url 'error_log_results' upload.id %}" class="btn btn-sm btn-outline-dark-custom">View Results</a>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+              <i data-lucide="file-search"></i>
+              <h6>No uploaded logs yet</h6>
+              <p class="text-sm mb-0">Upload your first `.txt` or `.log` file to start analyzing recurring errors.</p>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{% static 'js/script.js' %}"></script>
+  </body>
+</html>

@@ -1,0 +1,191 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Error Analyzer Results | SiteGuard</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{% static 'css/style.css' %}" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      <div class="overlay" id="mobileOverlay"></div>
+
+      <aside class="sidebar" id="sidebar">
+        <a href="{% url 'index' %}" style="text-decoration: none">
+          <div class="sidebar-brand">
+            <div class="logo-icon"><i data-lucide="activity"></i></div>
+            <span>Site Guard</span>
+          </div>
+        </a>
+        <nav class="sidebar-nav">
+          <a href="{% url 'dashboard' %}" class="nav-item"><i data-lucide="layout-dashboard"></i> Dashboard</a>
+          <a href="{% url 'status' %}" class="nav-item"><i data-lucide="globe"></i> Status Check</a>
+          <a href="{% url 'reports' %}" class="nav-item"><i data-lucide="bar-chart-2"></i> Reports</a>
+          <a href="{% url 'incidents' %}" class="nav-item"><i data-lucide="alert-triangle"></i> Incidents</a>
+          <a href="{% url 'logs' %}" class="nav-item"><i data-lucide="file-text"></i> Logs</a>
+          <a href="{% url 'error_log_upload' %}" class="nav-item active"><i data-lucide="bug"></i> Error Analyzer</a>
+          <a href="{% url 'utilities' %}" class="nav-item"><i data-lucide="wrench"></i> Utilities</a>
+          <a href="{% url 'alerts' %}" class="nav-item"><i data-lucide="bell"></i> Alerts</a>
+          <a href="{% url 'notifications' %}" class="nav-item"><i data-lucide="inbox"></i> Notifications</a>
+          <div style="flex-grow: 1"></div>
+          <a href="{% url 'logout' %}" class="nav-item"><i data-lucide="log-out"></i> Logout</a>
+        </nav>
+        <div class="pro-tip-card mt-4">
+          <h6>Parser Tip</h6>
+          <p>Recurring groups are counted from matched traceback endings and error-signature lines.</p>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search error signatures, uploads, incidents..." %}
+
+        <div class="content-wrapper" style="max-width: 1180px">
+          <div class="d-flex align-items-start justify-content-between flex-wrap gap-3 mb-4">
+            <div>
+              <h2 class="page-title text-white">Error Analyzer Results</h2>
+              <p class="page-subtitle text-slate-300">
+                Parsed results for <span class="font-mono text-white">{{ uploaded_log.filename }}</span> uploaded on {{ uploaded_log.uploaded_at|date:"Y-m-d H:i" }}.
+              </p>
+            </div>
+            <a href="{% url 'error_log_upload' %}" class="btn btn-outline-dark-custom">
+              <i data-lucide="upload" class="me-2 size-sm"></i>
+              Upload Another File
+            </a>
+          </div>
+
+          <div class="dash-panel mb-4">
+            <div class="stats-grid">
+              <div class="stat-card">
+                <span class="panel-label">Total Detected Errors</span>
+                <span class="stat-value">{{ total_detected_errors }}</span>
+                <span class="stat-subtext text-light opacity-75">All matched occurrences in this file</span>
+              </div>
+              <div class="stat-card">
+                <span class="panel-label">Recurring Errors</span>
+                <span class="stat-value">{{ recurring_errors_count }}</span>
+                <span class="stat-subtext text-light opacity-75">Unique groups with more than one hit</span>
+              </div>
+              <div class="stat-card">
+                <span class="panel-label">Most Common Error</span>
+                <span class="stat-value" style="font-size: 1.1rem">
+                  {% if most_common_error %}{{ most_common_error.error_type }}{% else %}None{% endif %}
+                </span>
+                <span class="stat-subtext text-light opacity-75">
+                  {% if most_common_error %}{{ most_common_error.count }} occurrence{{ most_common_error.count|pluralize }}{% else %}No patterns detected{% endif %}
+                </span>
+              </div>
+              <div class="stat-card">
+                <span class="panel-label">Groups Found</span>
+                <span class="stat-value">{{ parsed_errors|length }}</span>
+                <span class="stat-subtext text-light opacity-75">Distinct normalized signatures</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="dash-panel mb-4">
+            <div class="d-flex align-items-center gap-3 mb-4">
+              <div class="incident-icon bg-panel-light text-white">
+                <i data-lucide="layers-3"></i>
+              </div>
+              <div>
+                <h5 class="m-0 text-white fw-bold">Grouped Results</h5>
+                <p class="m-0 text-slate-300 text-sm">Top error families detected in the uploaded file.</p>
+              </div>
+            </div>
+
+            {% if grouped_results %}
+            <div class="utility-chip-wrap">
+              {% for group in grouped_results %}
+              <span class="utility-chip font-mono">{{ group.error_type }} · {{ group.total_count }}</span>
+              {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+              <i data-lucide="shield-check"></i>
+              <h6>No error patterns detected</h6>
+              <p class="text-sm mb-0">This file did not match the current MVP error signatures.</p>
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="dash-panel mb-4">
+            <div class="d-flex align-items-center gap-3 mb-4">
+              <div class="incident-icon bg-panel-light text-white">
+                <i data-lucide="list-tree"></i>
+              </div>
+              <div>
+                <h5 class="m-0 text-white fw-bold">Detected Error Lines</h5>
+                <p class="m-0 text-slate-300 text-sm">Grouped by normalized signature and sorted by recurrence count.</p>
+              </div>
+            </div>
+
+            {% if parsed_errors %}
+            <div class="table-responsive">
+              <table class="table custom-table">
+                <thead>
+                  <tr>
+                    <th>Error Type</th>
+                    <th>Count</th>
+                    <th>First Seen</th>
+                    <th>Raw Line</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for item in parsed_errors %}
+                  <tr>
+                    <td><span class="status-badge badge-slow">{{ item.error_type }}</span></td>
+                    <td class="text-light fw-semibold">{{ item.count }}</td>
+                    <td class="text-light opacity-75">Line {{ item.first_seen_line }}</td>
+                    <td class="font-mono text-light">{{ item.raw_line }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+              <i data-lucide="file-search"></i>
+              <h6>No matching entries found</h6>
+              <p class="text-sm mb-0">Try a file that contains traceback lines, exception names, or common error keywords.</p>
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="dash-panel">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
+              <div>
+                <h5 class="panel-title m-0">Other Uploads</h5>
+                <p class="panel-subtitle mt-1 m-0">Jump back to previous analyses.</p>
+              </div>
+            </div>
+
+            {% if recent_uploads %}
+            <div class="utility-chip-wrap">
+              {% for upload in recent_uploads %}
+              <a href="{% url 'error_log_results' upload.id %}" class="utility-chip font-mono text-decoration-none">
+                {{ upload.filename }}
+              </a>
+              {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-slate-300 text-sm">No other uploads yet.</div>
+            {% endif %}
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{% static 'js/script.js' %}"></script>
+  </body>
+</html>

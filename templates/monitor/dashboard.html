@@ -128,6 +128,21 @@
           </div>
 
           <div class="dash-panel mb-4">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+              <div>
+                <label class="panel-label">Error Analyzer</label>
+                <p class="panel-subtitle mb-0">
+                  Upload `.txt` or `.log` files to detect recurring exceptions, tracebacks, and HTTP error patterns.
+                </p>
+              </div>
+              <a href="{% url 'error_log_upload' %}" class="btn btn-outline-dark-custom">
+                <i data-lucide="bug" class="me-2" style="width: 16px; height: 16px"></i>
+                Open Analyzer
+              </a>
+            </div>
+          </div>
+
+          <div class="dash-panel mb-4">
             <div class="stats-grid">
               <!-- Card 1: Website Status -->
               <div class="stat-card">

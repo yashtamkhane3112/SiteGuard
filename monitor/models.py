@@ -1,12 +1,21 @@
-from django.core.exceptions import ValidationError
-from django.core.validators import URLValidator
+import os
+import re
+from urllib.parse import urlsplit
+
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
+from django.core.files.utils import validate_file_name
+from django.core.validators import URLValidator
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
-import re
-from urllib.parse import urlsplit
+
+
+def uploaded_log_file_path(instance, filename):
+    safe_name = validate_file_name(os.path.basename(filename or 'upload.log'))
+    timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
+    return f'error_logs/user_{instance.user_id}/{timestamp}_{safe_name}'
 
 
 class Website(models.Model):
@@ -531,6 +540,34 @@ class Notification(models.Model):
             self.SEVERITY_SUCCESS: 'text-good',
             self.SEVERITY_INFO: 'text-purple',
         }.get(self.severity, 'text-purple')
+
+
+class UploadedLog(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='uploaded_logs')
+    filename = models.CharField(max_length=255)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    file = models.FileField(upload_to=uploaded_log_file_path)
+    processed = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-uploaded_at', '-id']
+
+    def __str__(self):
+        return f"{self.filename} ({self.user.username})"
+
+
+class ParsedError(models.Model):
+    uploaded_log = models.ForeignKey(UploadedLog, on_delete=models.CASCADE, related_name='parsed_errors')
+    error_type = models.CharField(max_length=120)
+    raw_line = models.TextField()
+    count = models.PositiveIntegerField(default=1)
+    first_seen_line = models.PositiveIntegerField()
+
+    class Meta:
+        ordering = ['-count', 'first_seen_line', 'id']
+
+    def __str__(self):
+        return f"{self.error_type} x{self.count}"
 
 
 @receiver(post_save, sender=User)
