@@ -1,0 +1,34 @@
+{
+  "python.defaultInterpreterPath": "E:\\Testing django 2\\Testing\\siteguard\\.venv\\Scripts\\python.exe",
+  "python.terminal.activateEnvironment": true,
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}",
+    "${workspaceFolder}\\monitor",
+    "${workspaceFolder}\\siteguard"
+  ],
+  "python.envFile": "${workspaceFolder}\\.env",
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestEnabled": false,
+  "python.testing.autoTestDiscoverOnSaveEnabled": false,
+  "python.formatting.provider": "none",
+  "editor.formatOnSave": false,
+  "files.associations": {
+    "*.html": "django-html"
+  },
+  "terminal.integrated.env.windows": {
+    "VIRTUAL_ENV": "${workspaceFolder}\\.venv",
+    "PYTHONHOME": "",
+    "PIP_REQUIRE_VIRTUALENV": "1"
+  },
+  "terminal.integrated.profiles.windows": {
+    "SiteGuard PowerShell": {
+      "source": "PowerShell",
+      "args": [
+        "-NoExit",
+        "-Command",
+        "& \"${workspaceFolder}\\.venv\\Scripts\\Activate.ps1\""
+      ]
+    }
+  },
+  "terminal.integrated.defaultProfile.windows": "SiteGuard PowerShell"
+}

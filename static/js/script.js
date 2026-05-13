@@ -1,4 +1,9 @@
 document.addEventListener('DOMContentLoaded', function () {
+if (window.siteGuardAppInitialized) {
+    return;
+}
+window.siteGuardAppInitialized = true;
+
 // Initialize Icons globally
 if (typeof lucide !== 'undefined') {
     lucide.createIcons();

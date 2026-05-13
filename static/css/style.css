@@ -3742,10 +3742,17 @@ body.sidebar-open {
     gap: 10px;
     text-align: center;
     white-space: normal;
+    flex-wrap: wrap;
 }
 
 .btn-social i {
     flex-shrink: 0;
+}
+
+.auth-card,
+.auth-container {
+    width: 100%;
+    overflow-x: hidden;
 }
 
 @media (max-width: 992px) {
@@ -3858,5 +3865,40 @@ body.sidebar-open {
 
     .custom-table {
         min-width: 540px;
+    }
+}
+
+@media (max-width: 430px) {
+    .auth-card {
+        padding: 22px 16px;
+    }
+
+    .auth-container {
+        padding: 12px;
+    }
+
+    .btn-social,
+    .btn-auth-primary {
+        width: 100%;
+    }
+
+    .btn-social {
+        justify-content: center;
+        gap: 8px;
+        padding-inline: 12px;
+    }
+}
+
+@media (max-width: 375px) {
+    .auth-page-wrapper {
+        padding-top: 80px;
+    }
+
+    .auth-card {
+        padding: 20px 14px;
+    }
+
+    .btn-social {
+        font-size: 0.84rem;
     }
 }

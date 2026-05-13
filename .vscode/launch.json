@@ -1,0 +1,41 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "SiteGuard: Django Runserver",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "program": "${workspaceFolder}\\manage.py",
+      "args": [
+        "runserver"
+      ],
+      "django": true,
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}\\.env",
+      "env": {
+        "PYTHONHOME": "",
+        "PIP_REQUIRE_VIRTUALENV": "1"
+      }
+    },
+    {
+      "name": "SiteGuard: Django Tests",
+      "type": "debugpy",
+      "request": "launch",
+      "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "program": "${workspaceFolder}\\manage.py",
+      "args": [
+        "test"
+      ],
+      "django": true,
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}\\.env",
+      "env": {
+        "PYTHONHOME": "",
+        "PIP_REQUIRE_VIRTUALENV": "1"
+      }
+    }
+  ]
+}
