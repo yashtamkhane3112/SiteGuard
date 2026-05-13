@@ -3,6 +3,7 @@
 ## Render Settings
 
 - runtime: `Python`
+- Python version: `3.12.3`
 - `DJANGO_SETTINGS_MODULE=siteguard.settings.prod`
 - `DEBUG=False`
 - `BOOTSTRAP_ADMIN_ENABLED=False`
@@ -41,6 +42,12 @@
 4. add a website
 5. trigger cron endpoint
 6. confirm logs and monitoring data update
+
+## Local Environment Alignment
+
+- local Python must be `3.12.3`
+- recreate `.venv` if it was created on Python `3.14`
+- verify with `python --version` before testing admin pages
 
 ## Rollback Checklist
 

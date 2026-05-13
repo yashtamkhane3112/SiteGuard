@@ -34,13 +34,31 @@ Add production screenshots before publishing:
 
 ## Local Setup
 
+Use Python `3.12.3` locally to match Render production.
+
+Do not use Python `3.14` with this repository while it is pinned to Django `5.0.4`. Django `5.0` officially supports Python `3.10`, `3.11`, and `3.12`, not `3.14`.
+
 ```bash
-python -m venv .venv
-. .venv/Scripts/activate
+py -3.12 -m venv .venv
+.\.venv\Scripts\activate
+python --version
+pip install --upgrade pip
 pip install -r requirements.txt
 copy .env.example .env
 python manage.py migrate
 python manage.py runserver
+```
+
+If you already created a virtual environment with Python `3.14`, remove it and recreate it on Python `3.12.3`:
+
+```bash
+deactivate
+Remove-Item -Recurse -Force .venv
+py -3.12 -m venv .venv
+.\.venv\Scripts\activate
+python --version
+pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
 Local production checks:
@@ -103,3 +121,4 @@ The production startup sequence is:
 - migrations must run during startup
 - `/health/` provides a basic app and database check
 - keep `BOOTSTRAP_ADMIN_ENABLED=False` in production
+- Render production already uses Python `3.12.3`, which is the correct stable target for this Django version

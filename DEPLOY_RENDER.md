@@ -9,6 +9,7 @@ SiteGuard runs on Render free tier with:
 - SQLite
 - WhiteNoise
 - Gunicorn
+- Python 3.12.3
 
 ## Required Environment Variables
 
@@ -39,6 +40,12 @@ Optional email settings:
 - `SERVER_EMAIL`
 
 ## Render Service Configuration
+
+Python runtime alignment:
+
+- Render is pinned to Python `3.12.3`
+- Local development should also use Python `3.12.3`
+- Do not validate Django admin behavior on Python `3.14` while the project remains on Django `5.0.4`
 
 Web service:
 
@@ -110,6 +117,18 @@ Then verify:
 - `/health/`
 
 ## Local Production Checks
+
+Before running these checks locally, verify:
+
+```bash
+python --version
+```
+
+Expected:
+
+```text
+Python 3.12.3
+```
 
 ```bash
 python manage.py check --deploy --settings=siteguard.settings.prod
