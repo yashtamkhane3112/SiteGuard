@@ -111,7 +111,7 @@ class ProfileUpdateForm(forms.Form):
         })
         self.fields['avatar'].widget.attrs.update({
             'class': 'form-control custom-input',
-            'accept': 'image/*',
+            'accept': '.jpg,.jpeg,.png,.gif,.webp,image/*',
         })
 
     def clean_username(self):
@@ -227,7 +227,10 @@ class AccountPasswordChangeForm(PasswordChangeForm):
 
 class DeleteAccountForm(forms.Form):
     password = forms.CharField(strip=False, widget=forms.PasswordInput)
-    confirm_phrase = forms.CharField(max_length=32)
+    confirm_delete = forms.BooleanField(
+        required=True,
+        error_messages={'required': 'Confirm account deletion to continue.'},
+    )
 
     def __init__(self, *args, user=None, **kwargs):
         self.user = user
@@ -237,11 +240,10 @@ class DeleteAccountForm(forms.Form):
             'placeholder': 'Confirm your password',
             'autocomplete': 'current-password',
         })
-        self.fields['confirm_phrase'].widget.attrs.update({
-            'class': 'form-control custom-input',
-            'placeholder': 'Type DELETE',
-            'autocomplete': 'off',
+        self.fields['confirm_delete'].widget.attrs.update({
+            'class': 'form-check-input',
         })
+        self.fields['confirm_delete'].label = 'I understand this action cannot be undone.'
 
     def clean_password(self):
         password = self.cleaned_data.get('password') or ''
@@ -249,11 +251,11 @@ class DeleteAccountForm(forms.Form):
             raise forms.ValidationError('Password confirmation failed.')
         return password
 
-    def clean_confirm_phrase(self):
-        phrase = (self.cleaned_data.get('confirm_phrase') or '').strip().upper()
-        if phrase != 'DELETE':
-            raise forms.ValidationError('Type DELETE to confirm account removal.')
-        return phrase
+    def clean_confirm_delete(self):
+        confirmed = self.cleaned_data.get('confirm_delete')
+        if not confirmed:
+            raise forms.ValidationError('Confirm account deletion to continue.')
+        return confirmed
 
 
 class UploadedLogForm(forms.ModelForm):

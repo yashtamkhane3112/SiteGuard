@@ -3738,6 +3738,15 @@ body.sidebar-open {
     min-height: 48px;
 }
 
+.btn-auth-primary {
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    white-space: normal;
+}
+
 .btn-social {
     gap: 10px;
     text-align: center;
@@ -3746,6 +3755,23 @@ body.sidebar-open {
 }
 
 .btn-social i {
+    flex-shrink: 0;
+}
+
+.danger-confirm-box {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    background: rgba(239, 68, 68, 0.08);
+    color: #e2e8f0;
+    line-height: 1.5;
+}
+
+.danger-confirm-box input[type="checkbox"] {
+    margin-top: 3px;
     flex-shrink: 0;
 }
 

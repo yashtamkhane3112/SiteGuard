@@ -1286,7 +1286,7 @@ def run_single_check(website, timeout=5):
     if not url.startswith("http"):
         url = "https://" + url
 
-    previous_log = MonitorLog.objects.filter(website=website).order_by('-checked_at').first()
+    previous_log = MonitorLog.objects.filter(website=website).order_by('-checked_at', '-id').first()
     ssl_status = None
     status_code = None
     reason = ''

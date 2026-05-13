@@ -1,9 +1,4 @@
 document.addEventListener('DOMContentLoaded', function () {
-if (window.siteGuardAppInitialized) {
-    return;
-}
-window.siteGuardAppInitialized = true;
-
 // Initialize Icons globally
 if (typeof lucide !== 'undefined') {
     lucide.createIcons();
@@ -83,7 +78,8 @@ function bindToggle(toggleId, inputId) {
     const toggle = document.getElementById(toggleId);
     const input = document.getElementById(inputId);
 
-    if (!toggle || !input) return;
+    if (!toggle || !input || toggle.dataset.bound === 'true') return;
+    toggle.dataset.bound = 'true';
 
     toggle.addEventListener('click', function () {
         const type = input.type === 'password' ? 'text' : 'password';
@@ -305,6 +301,7 @@ const overlay = document.getElementById('mobileOverlay');
 
 if (mobileToggle && sidebar && overlay) {
     const mobileBreakpoint = 992;
+    const sidebarLinks = sidebar.querySelectorAll('a');
 
     const syncSidebarAccessibility = (isOpen) => {
         mobileToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
@@ -333,31 +330,43 @@ if (mobileToggle && sidebar && overlay) {
     mobileToggle.setAttribute('aria-label', 'Toggle navigation menu');
     syncSidebarAccessibility(false);
 
-    mobileToggle.addEventListener('click', () => {
-        if (sidebar.classList.contains('open')) {
-            closeSidebar();
-        } else {
-            openSidebar();
-        }
-    });
+    if (mobileToggle.dataset.sidebarBound !== 'true') {
+        mobileToggle.dataset.sidebarBound = 'true';
+        mobileToggle.addEventListener('click', () => {
+            if (sidebar.classList.contains('open')) {
+                closeSidebar();
+            } else {
+                openSidebar();
+            }
+        });
+    }
 
-    overlay.addEventListener('click', () => {
-        closeSidebar();
-    });
+    if (overlay.dataset.sidebarBound !== 'true') {
+        overlay.dataset.sidebarBound = 'true';
+        overlay.addEventListener('click', closeSidebar);
+    }
 
-    document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && sidebar.classList.contains('open')) {
-            closeSidebar();
-        }
-    });
+    if (!document.body.dataset.sidebarEscapeBound) {
+        document.body.dataset.sidebarEscapeBound = 'true';
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && sidebar.classList.contains('open')) {
+                closeSidebar();
+            }
+        });
+    }
 
-    window.addEventListener('resize', () => {
-        if (window.innerWidth > mobileBreakpoint && sidebar.classList.contains('open')) {
-            closeSidebar();
-        }
-    });
+    if (!document.body.dataset.sidebarResizeBound) {
+        document.body.dataset.sidebarResizeBound = 'true';
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > mobileBreakpoint && sidebar.classList.contains('open')) {
+                closeSidebar();
+            }
+        });
+    }
 
-    sidebar.querySelectorAll('a').forEach((link) => {
+    sidebarLinks.forEach((link) => {
+        if (link.dataset.sidebarBound === 'true') return;
+        link.dataset.sidebarBound = 'true';
         link.addEventListener('click', () => {
             if (window.innerWidth <= mobileBreakpoint) {
                 closeSidebar();
@@ -539,18 +548,22 @@ if (statusSearchInput && statusCards.length) {
         }
     };
 
-    statusSearchInput.addEventListener('input', () => filterStatusCards(false));
-    statusSearchInput.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') {
-            event.preventDefault();
-            filterStatusCards(true);
-        }
-    });
+    if (statusSearchInput.dataset.bound !== 'true') {
+        statusSearchInput.dataset.bound = 'true';
+        statusSearchInput.addEventListener('input', () => filterStatusCards(false));
+        statusSearchInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                filterStatusCards(true);
+            }
+        });
+    }
 }
 
 // 5. Table Live Search
 const searchInput = document.getElementById('globalSearch');
-if (searchInput) {
+if (searchInput && searchInput.dataset.tableSearchBound !== 'true') {
+    searchInput.dataset.tableSearchBound = 'true';
     searchInput.addEventListener('keyup', function(e) {
         const term = e.target.value.toLowerCase();
         let hasVisibleRows = false;
@@ -637,57 +650,63 @@ if (globalSearchInput && searchSuggestionsPanel) {
         searchSuggestionsPanel.classList.remove('d-none');
     };
 
-    globalSearchInput.addEventListener('input', () => {
-        const query = globalSearchInput.value.trim();
-        const endpoint = globalSearchInput.dataset.searchSuggestionsUrl;
+    if (globalSearchInput.dataset.searchSuggestionsBound !== 'true') {
+        globalSearchInput.dataset.searchSuggestionsBound = 'true';
 
-        clearTimeout(searchTimer);
-        if (!endpoint) return;
-
-        searchSuggestionsPanel.innerHTML = '<div class="search-suggestions-state">Loading...</div>';
-        searchSuggestionsPanel.classList.remove('d-none');
-
-        searchTimer = setTimeout(async () => {
-            try {
-                const response = await fetch(`${endpoint}?q=${encodeURIComponent(query)}`, {
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
-                });
-                const data = await response.json();
-                renderSuggestions(data.results, data.recent_searches);
-            } catch (error) {
-                searchSuggestionsPanel.innerHTML = '<div class="search-suggestions-state">Search is temporarily unavailable.</div>';
-                searchSuggestionsPanel.classList.remove('d-none');
-            }
-        }, 200);
-    });
-
-    globalSearchInput.addEventListener('focus', () => {
-        if (!globalSearchInput.value.trim()) {
+        globalSearchInput.addEventListener('input', () => {
+            const query = globalSearchInput.value.trim();
             const endpoint = globalSearchInput.dataset.searchSuggestionsUrl;
+
+            clearTimeout(searchTimer);
             if (!endpoint) return;
-            fetch(`${endpoint}?q=`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-                .then((response) => response.json())
-                .then((data) => renderSuggestions([], data.recent_searches))
-                .catch(() => {});
-        }
-    });
 
-    document.addEventListener('click', (event) => {
-        if (!searchSuggestionsPanel.contains(event.target) && event.target !== globalSearchInput) {
-            searchSuggestionsPanel.classList.add('d-none');
-        }
-    });
+            searchSuggestionsPanel.innerHTML = '<div class="search-suggestions-state">Loading...</div>';
+            searchSuggestionsPanel.classList.remove('d-none');
 
-    document.addEventListener('keydown', (event) => {
-        if (event.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
-            event.preventDefault();
-            globalSearchInput.focus();
-        }
-    });
+            searchTimer = setTimeout(async () => {
+                try {
+                    const response = await fetch(`${endpoint}?q=${encodeURIComponent(query)}`, {
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    });
+                    const data = await response.json();
+                    renderSuggestions(data.results, data.recent_searches);
+                } catch (error) {
+                    searchSuggestionsPanel.innerHTML = '<div class="search-suggestions-state">Search is temporarily unavailable.</div>';
+                    searchSuggestionsPanel.classList.remove('d-none');
+                }
+            }, 200);
+        });
+
+        globalSearchInput.addEventListener('focus', () => {
+            if (!globalSearchInput.value.trim()) {
+                const endpoint = globalSearchInput.dataset.searchSuggestionsUrl;
+                if (!endpoint) return;
+                fetch(`${endpoint}?q=`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then((response) => response.json())
+                    .then((data) => renderSuggestions([], data.recent_searches))
+                    .catch(() => {});
+            }
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!searchSuggestionsPanel.contains(event.target) && event.target !== globalSearchInput) {
+                searchSuggestionsPanel.classList.add('d-none');
+            }
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+                event.preventDefault();
+                globalSearchInput.focus();
+            }
+        });
+    }
 }
 
 // 8. Alert Read Collapse
 document.querySelectorAll('.alert-read-form').forEach((form) => {
+    if (form.dataset.bound === 'true') return;
+    form.dataset.bound = 'true';
     form.addEventListener('submit', (event) => {
         const card = form.closest('.alert-incident-card');
         if (!card) return;
@@ -707,6 +726,8 @@ if (skeletonItems.length > 0) {
 
 const loadingForms = document.querySelectorAll('[data-submit-loading]');
 loadingForms.forEach((form) => {
+    if (form.dataset.loadingBound === 'true') return;
+    form.dataset.loadingBound = 'true';
     form.addEventListener('submit', () => {
         const button = form.querySelector('[data-loading-button]');
         if (!button || button.disabled) return;

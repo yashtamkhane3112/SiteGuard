@@ -18,7 +18,7 @@
   </head>
   <body>
     <div class="dashboard-layout">
-      {% include "monitor/partials/app_sidebar.html" with sidebar_tip_title="Pro Tip" sidebar_tip_body="Enable alerts to get notified instantly when your sites go down." %}
+      {% include "monitor/partials/app_sidebar.html" with active_page="profile" sidebar_tip_title="Pro Tip" sidebar_tip_body="Enable alerts to get notified instantly when your sites go down." %}
 
       <main class="main-content">
         {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search your account, sites, alerts..." %}
@@ -104,6 +104,13 @@
 
               {% if profile_form.non_field_errors %}
               <div class="utility-error-text account-form-full">{{ profile_form.non_field_errors|join:", " }}</div>
+              {% endif %}
+
+              {% if profile_form.errors %}
+              <div class="account-form-full utility-state-banner utility-state-error">
+                <i data-lucide="alert-triangle"></i>
+                <span>Fix the highlighted profile fields below before saving.</span>
+              </div>
               {% endif %}
 
               <div>
@@ -265,7 +272,7 @@
               <div>
                 <h5 class="panel-title mb-1 text-white">Danger Zone</h5>
                 <p class="panel-subtitle mb-0 text-slate-300">
-                  Account deletion is irreversible. Confirm with your password and an explicit deletion phrase.
+                  Account deletion is irreversible. Confirm with your password and one final acknowledgement.
                 </p>
               </div>
             </div>
@@ -274,15 +281,23 @@
               {% csrf_token %}
               <input type="hidden" name="profile_action" value="delete_account" />
 
-              {% for field in delete_account_form %}
               <div>
-                <label class="form-label text-slate-300 text-sm fw-medium">{{ field.label }}</label>
-                {{ field }}
-                {% for error in field.errors %}
+                <label class="form-label text-slate-300 text-sm fw-medium">{{ delete_account_form.password.label }}</label>
+                {{ delete_account_form.password }}
+                {% for error in delete_account_form.password.errors %}
                 <div class="account-field-error">{{ error }}</div>
                 {% endfor %}
               </div>
-              {% endfor %}
+
+              <div class="account-form-full">
+                <label class="danger-confirm-box">
+                  {{ delete_account_form.confirm_delete }}
+                  <span>I understand this permanently removes my SiteGuard account and monitoring data.</span>
+                </label>
+                {% for error in delete_account_form.confirm_delete.errors %}
+                <div class="account-field-error">{{ error }}</div>
+                {% endfor %}
+              </div>
 
               {% if delete_account_form.non_field_errors %}
               <div class="utility-error-text">{{ delete_account_form.non_field_errors|join:", " }}</div>

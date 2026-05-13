@@ -1133,6 +1133,7 @@ class AccountManagementTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Fix the highlighted profile fields below before saving.")
         self.assertContains(response, "Upload a valid image")
 
     def test_profile_update_rejects_duplicate_email(self):
@@ -1253,18 +1254,31 @@ class AccountManagementTests(TestCase):
         self.assertIn("/login/", profile_response.url)
         self.assertIn("/login/", settings_response.url)
 
-    def test_delete_account_requires_password_and_phrase_then_logs_out(self):
+    def test_delete_account_requires_password_and_confirmation_then_logs_out(self):
         response = self.client.post(
             reverse("profile"),
             {
                 "profile_action": "delete_account",
                 "password": "StrongPass123!",
-                "confirm_phrase": "DELETE",
+                "confirm_delete": "on",
             },
         )
 
         self.assertRedirects(response, reverse("index"))
         self.assertFalse(User.objects.filter(username="account-user").exists())
+
+    def test_delete_account_requires_confirmation_checkbox(self):
+        response = self.client.post(
+            reverse("profile"),
+            {
+                "profile_action": "delete_account",
+                "password": "StrongPass123!",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Confirm account deletion to continue.")
+        self.assertTrue(User.objects.filter(username="account-user").exists())
 
 
 class ImmediateMonitoringTests(TestCase):
@@ -1455,3 +1469,4 @@ class NotificationAndSearchTests(TestCase):
             response = self.client.get(page)
             self.assertEqual(response.status_code, 200, page)
             self.assertContains(response, "Error Analyzer")
+            self.assertContains(response, "Profile")
