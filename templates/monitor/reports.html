@@ -24,53 +24,7 @@
   </head>
   <body>
     <div class="dashboard-layout">
-      <div class="overlay" id="mobileOverlay"></div>
-
-      <aside class="sidebar" id="sidebar">
-        <a href="{% url 'index' %}" style="text-decoration: none">
-          <div class="sidebar-brand">
-            <div class="logo-icon"><i data-lucide="activity"></i></div>
-            <span>Site Guard</span>
-          </div>
-        </a>
-
-        <nav class="sidebar-nav">
-          <a href="{% url 'dashboard' %}" class="nav-item"
-            ><i data-lucide="layout-dashboard"></i> Dashboard</a
-          >
-          <a href="{% url 'status' %}" class="nav-item"
-            ><i data-lucide="globe"></i> Status Check</a
-          >
-          <a href="{% url 'reports' %}" class="nav-item active"
-            ><i data-lucide="bar-chart-2"></i> Reports</a
-          >
-          <a href="{% url 'incidents' %}" class="nav-item"
-            ><i data-lucide="alert-triangle"></i> Incidents</a
-          >
-          <a href="{% url 'logs' %}" class="nav-item"
-            ><i data-lucide="file-text"></i> Logs</a
-          >
-          <a href="{% url 'utilities' %}" class="nav-item"
-            ><i data-lucide="wrench"></i> Utilities</a
-          >
-          <a href="{% url 'alerts' %}" class="nav-item"
-            ><i data-lucide="bell"></i> Alerts</a
-          >
-          <a href="{% url 'notifications' %}" class="nav-item"
-            ><i data-lucide="inbox"></i> Notifications</a
-          >
-          <div style="flex-grow: 1"></div>
-          <a href="{% url 'logout' %}" class="nav-item"
-            ><i data-lucide="log-out"></i> Logout</a
-          >
-        </nav>
-        <div class="pro-tip-card mt-4">
-          <h6>Pro Tip</h6>
-          <p>
-            Enable alerts to get notified instantly when your sites go down.
-          </p>
-        </div>
-      </aside>
+      {% include "monitor/partials/app_sidebar.html" with active_page="reports" %}
 
       <main class="main-content">
         {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search reports, incidents, websites..." %}
@@ -350,210 +304,260 @@
     <script src="{% static 'js/script.js' %}"></script>
 
     <script>
-      lucide.createIcons();
+      (() => {
+        if (typeof lucide !== "undefined") {
+          lucide.createIcons();
+        }
 
-      const reportCounters = document.querySelectorAll(".report-stat-card .counter");
-      const speed = 40;
-      reportCounters.forEach((counter) => {
-        const updateCount = () => {
-          const target = +counter.getAttribute("data-target");
-          const count = +counter.innerText.replace("%", "");
-          const suffix = counter.getAttribute("data-suffix");
-          const inc = target % 1 !== 0 ? target / (speed * 2) : target / speed;
+        const reportCharts = (window.siteGuardReportCharts ||= {});
+        const reportState = (window.siteGuardReportsPage ||= {});
 
-          if (count < target) {
-            counter.innerText =
-              target % 1 !== 0
-                ? (count + inc).toFixed(1) + suffix
-                : Math.ceil(count + inc) + suffix;
-            setTimeout(updateCount, 15);
-          } else {
-            counter.innerText = target + suffix;
+        const destroyChart = (chartKey, canvasId) => {
+          if (reportCharts[chartKey]) {
+            reportCharts[chartKey].destroy();
+            reportCharts[chartKey] = null;
+          }
+
+          if (typeof Chart !== "undefined") {
+            const canvas = document.getElementById(canvasId);
+            const existingChart = canvas ? Chart.getChart(canvas) : null;
+            if (existingChart) {
+              existingChart.destroy();
+            }
           }
         };
-        updateCount();
-      });
 
-      const rangeFilter = document.getElementById("dateRangeFilter");
-      if (rangeFilter) {
-        rangeFilter.addEventListener("change", () => {
-          const params = new URLSearchParams(window.location.search);
-          params.set("range", rangeFilter.value);
-          window.location.search = params.toString();
+        const createOrReplaceChart = (chartKey, canvasId, config) => {
+          const canvas = document.getElementById(canvasId);
+          if (!canvas || typeof Chart === "undefined") return null;
+
+          destroyChart(chartKey, canvasId);
+          reportCharts[chartKey] = new Chart(canvas, config);
+          return reportCharts[chartKey];
+        };
+
+        const reportCounters = document.querySelectorAll(".report-stat-card .counter");
+        const speed = 40;
+        reportCounters.forEach((counter) => {
+          const updateCount = () => {
+            const target = +counter.getAttribute("data-target");
+            const count = +counter.innerText.replace("%", "");
+            const suffix = counter.getAttribute("data-suffix");
+            const inc = target % 1 !== 0 ? target / (speed * 2) : target / speed;
+
+            if (count < target) {
+              counter.innerText =
+                target % 1 !== 0
+                  ? (count + inc).toFixed(1) + suffix
+                  : Math.ceil(count + inc) + suffix;
+              setTimeout(updateCount, 15);
+            } else {
+              counter.innerText = target + suffix;
+            }
+          };
+          updateCount();
         });
-      }
 
-      const exportBtnText = document.getElementById("exportBtnText");
-      const reportCanvasArea = document.getElementById("report-canvas-area");
-      const exportRows = JSON.parse(document.getElementById("report-export-rows").textContent);
+        const rangeFilter = document.getElementById("dateRangeFilter");
+        if (rangeFilter && !rangeFilter.dataset.bound) {
+          rangeFilter.dataset.bound = "true";
+          rangeFilter.addEventListener("change", () => {
+            const params = new URLSearchParams(window.location.search);
+            params.set("range", rangeFilter.value);
+            window.location.search = params.toString();
+          });
+        }
 
-      function simulateDownload(text, action) {
-        const originalHtml = exportBtnText.innerHTML;
-        exportBtnText.innerHTML =
-          '<span class="spinner-border spinner-border-sm me-2" style="width:14px; height:14px;"></span> ' +
-          text;
+        const exportBtnText = document.getElementById("exportBtnText");
+        const reportCanvasArea = document.getElementById("report-canvas-area");
+        const exportRows = JSON.parse(document.getElementById("report-export-rows").textContent);
 
-        setTimeout(() => {
-          action();
-          exportBtnText.innerHTML = '<i data-lucide="check" class="me-1 size-sm"></i> Done';
-          lucide.createIcons();
+        function simulateDownload(text, action) {
+          if (!exportBtnText) return;
+          const originalHtml = exportBtnText.innerHTML;
+          exportBtnText.innerHTML =
+            '<span class="spinner-border spinner-border-sm me-2" style="width:14px; height:14px;"></span> ' +
+            text;
+
           setTimeout(() => {
-            exportBtnText.innerHTML = originalHtml;
-          }, 2000);
-        }, 600);
-      }
+            action();
+            exportBtnText.innerHTML = '<i data-lucide="check" class="me-1 size-sm"></i> Done';
+            if (typeof lucide !== "undefined") {
+              lucide.createIcons();
+            }
+            setTimeout(() => {
+              exportBtnText.innerHTML = originalHtml;
+            }, 2000);
+          }, 600);
+        }
 
-      document.getElementById("exportPng").addEventListener("click", (e) => {
-        e.preventDefault();
-        simulateDownload("Generating...", () => {
-          html2canvas(reportCanvasArea, {
-            backgroundColor: "#0b0713",
-            scale: 2,
-          }).then((canvas) => {
-            const link = document.createElement("a");
-            link.download = "SiteGuard_Report.png";
-            link.href = canvas.toDataURL();
-            link.click();
+        const exportPng = document.getElementById("exportPng");
+        if (exportPng && !exportPng.dataset.bound) {
+          exportPng.dataset.bound = "true";
+          exportPng.addEventListener("click", (e) => {
+            e.preventDefault();
+            simulateDownload("Generating...", () => {
+              html2canvas(reportCanvasArea, {
+                backgroundColor: "#0b0713",
+                scale: 2,
+              }).then((canvas) => {
+                const link = document.createElement("a");
+                link.download = "SiteGuard_Report.png";
+                link.href = canvas.toDataURL();
+                link.click();
+              });
+            });
           });
-        });
-      });
+        }
 
-      document.getElementById("exportPdf").addEventListener("click", (e) => {
-        e.preventDefault();
-        simulateDownload("Building...", () => {
-          html2canvas(reportCanvasArea, {
-            backgroundColor: "#0b0713",
-            scale: 2,
-          }).then((canvas) => {
-            const imgData = canvas.toDataURL("image/png");
-            const { jsPDF } = window.jspdf;
-            const pdf = new jsPDF("p", "mm", "a4");
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-            pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
-            pdf.save("SiteGuard_Report.pdf");
+        const exportPdf = document.getElementById("exportPdf");
+        if (exportPdf && !exportPdf.dataset.bound) {
+          exportPdf.dataset.bound = "true";
+          exportPdf.addEventListener("click", (e) => {
+            e.preventDefault();
+            simulateDownload("Building...", () => {
+              html2canvas(reportCanvasArea, {
+                backgroundColor: "#0b0713",
+                scale: 2,
+              }).then((canvas) => {
+                const imgData = canvas.toDataURL("image/png");
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF("p", "mm", "a4");
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+                pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+                pdf.save("SiteGuard_Report.pdf");
+              });
+            });
           });
+        }
+
+        const exportCsv = document.getElementById("exportCsv");
+        if (exportCsv && !exportCsv.dataset.bound) {
+          exportCsv.dataset.bound = "true";
+          exportCsv.addEventListener("click", (e) => {
+            e.preventDefault();
+            simulateDownload("Compiling...", () => {
+              const header = "Date,Website,Status,ResponseTime_ms\n";
+              const csvBody = exportRows
+                .map((row) => `${row.date},${row.website},${row.status},${row.response_time}`)
+                .join("\n");
+              const csvContent = "data:text/csv;charset=utf-8," + header + csvBody;
+              const link = document.createElement("a");
+              link.setAttribute("href", encodeURI(csvContent));
+              link.setAttribute("download", "SiteGuard_Data.csv");
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+            });
+          });
+        }
+
+        const chartLabels = JSON.parse(document.getElementById("report-labels").textContent);
+        const p50Data = JSON.parse(document.getElementById("report-p50").textContent);
+        const p95Data = JSON.parse(document.getElementById("report-p95").textContent);
+        const p99Data = JSON.parse(document.getElementById("report-p99").textContent);
+        const errorData = JSON.parse(document.getElementById("report-errors").textContent);
+        const uptimeData = JSON.parse(document.getElementById("report-uptime").textContent);
+
+        if (!reportState.defaultsApplied && typeof Chart !== "undefined") {
+          Chart.defaults.color = "#94a3b8";
+          Chart.defaults.font.family = "'Inter', sans-serif";
+          Chart.defaults.plugins.tooltip.backgroundColor = "#2B2239";
+          Chart.defaults.plugins.tooltip.titleColor = "#fff";
+          Chart.defaults.plugins.tooltip.padding = 10;
+          Chart.defaults.plugins.tooltip.cornerRadius = 8;
+          Chart.defaults.plugins.tooltip.displayColors = false;
+          reportState.defaultsApplied = true;
+        }
+
+        createOrReplaceChart("percentileChart", "percentileChart", {
+          type: "line",
+          data: {
+            labels: chartLabels,
+            datasets: [
+              {
+                label: "p99",
+                data: p99Data,
+                borderColor: "#ef4444",
+                backgroundColor: "rgba(239, 68, 68, 0.1)",
+                fill: true,
+                tension: 0.4,
+                pointRadius: 0,
+              },
+              {
+                label: "p95",
+                data: p95Data,
+                borderColor: "#f59e0b",
+                backgroundColor: "rgba(245, 158, 11, 0.1)",
+                fill: true,
+                tension: 0.4,
+                pointRadius: 0,
+              },
+              {
+                label: "p50",
+                data: p50Data,
+                borderColor: "#10b981",
+                backgroundColor: "rgba(16, 185, 129, 0.2)",
+                fill: true,
+                tension: 0.4,
+                pointRadius: 0,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: "index", intersect: false },
+            plugins: { legend: { display: false } },
+            scales: { y: { min: 0 } },
+          },
         });
-      });
 
-      document.getElementById("exportCsv").addEventListener("click", (e) => {
-        e.preventDefault();
-        simulateDownload("Compiling...", () => {
-          const header = "Date,Website,Status,ResponseTime_ms\n";
-          const csvBody = exportRows
-            .map((row) => `${row.date},${row.website},${row.status},${row.response_time}`)
-            .join("\n");
-          const csvContent = "data:text/csv;charset=utf-8," + header + csvBody;
-          const link = document.createElement("a");
-          link.setAttribute("href", encodeURI(csvContent));
-          link.setAttribute("download", "SiteGuard_Data.csv");
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
+        createOrReplaceChart("errorChart", "errorChart", {
+          type: "bar",
+          data: {
+            labels: chartLabels,
+            datasets: [
+              {
+                label: "Errors",
+                data: errorData,
+                backgroundColor: "#ef4444",
+                borderRadius: 4,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { x: { grid: { display: false } }, y: { beginAtZero: true } },
+          },
         });
-      });
 
-      const chartLabels = JSON.parse(document.getElementById("report-labels").textContent);
-      const p50Data = JSON.parse(document.getElementById("report-p50").textContent);
-      const p95Data = JSON.parse(document.getElementById("report-p95").textContent);
-      const p99Data = JSON.parse(document.getElementById("report-p99").textContent);
-      const errorData = JSON.parse(document.getElementById("report-errors").textContent);
-      const uptimeData = JSON.parse(document.getElementById("report-uptime").textContent);
-
-      Chart.defaults.color = "#94a3b8";
-      Chart.defaults.font.family = "'Inter', sans-serif";
-      Chart.defaults.plugins.tooltip.backgroundColor = "#2B2239";
-      Chart.defaults.plugins.tooltip.titleColor = "#fff";
-      Chart.defaults.plugins.tooltip.padding = 10;
-      Chart.defaults.plugins.tooltip.cornerRadius = 8;
-      Chart.defaults.plugins.tooltip.displayColors = false;
-
-      new Chart(document.getElementById("percentileChart"), {
-        type: "line",
-        data: {
-          labels: chartLabels,
-          datasets: [
-            {
-              label: "p99",
-              data: p99Data,
-              borderColor: "#ef4444",
-              backgroundColor: "rgba(239, 68, 68, 0.1)",
-              fill: true,
-              tension: 0.4,
-              pointRadius: 0,
-            },
-            {
-              label: "p95",
-              data: p95Data,
-              borderColor: "#f59e0b",
-              backgroundColor: "rgba(245, 158, 11, 0.1)",
-              fill: true,
-              tension: 0.4,
-              pointRadius: 0,
-            },
-            {
-              label: "p50",
-              data: p50Data,
-              borderColor: "#10b981",
-              backgroundColor: "rgba(16, 185, 129, 0.2)",
-              fill: true,
-              tension: 0.4,
-              pointRadius: 0,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          interaction: { mode: "index", intersect: false },
-          plugins: { legend: { display: false } },
-          scales: { y: { min: 0 } },
-        },
-      });
-
-      new Chart(document.getElementById("errorChart"), {
-        type: "bar",
-        data: {
-          labels: chartLabels,
-          datasets: [
-            {
-              label: "Errors",
-              data: errorData,
-              backgroundColor: "#ef4444",
-              borderRadius: 4,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { x: { grid: { display: false } }, y: { beginAtZero: true } },
-        },
-      });
-
-      new Chart(document.getElementById("uptimeChart"), {
-        type: "line",
-        data: {
-          labels: chartLabels,
-          datasets: [
-            {
-              label: "Uptime %",
-              data: uptimeData,
-              borderColor: "#10b981",
-              tension: 0.4,
-              pointBackgroundColor: "#10b981",
-              pointRadius: 4,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { x: { grid: { display: false } }, y: { min: 0, max: 100 } },
-        },
-      });
+        createOrReplaceChart("uptimeChart", "uptimeChart", {
+          type: "line",
+          data: {
+            labels: chartLabels,
+            datasets: [
+              {
+                label: "Uptime %",
+                data: uptimeData,
+                borderColor: "#10b981",
+                tension: 0.4,
+                pointBackgroundColor: "#10b981",
+                pointRadius: 4,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { x: { grid: { display: false } }, y: { min: 0, max: 100 } },
+          },
+        });
+      })();
     </script>
   </body>
 </html>

@@ -1,0 +1,29 @@
+<div class="overlay" id="mobileOverlay" aria-hidden="true"></div>
+
+<aside class="sidebar" id="sidebar" aria-hidden="true">
+  <a href="{% url 'index' %}" style="text-decoration: none">
+    <div class="sidebar-brand">
+      <div class="logo-icon"><i data-lucide="activity"></i></div>
+      <span>Site Guard</span>
+    </div>
+  </a>
+
+  <nav class="sidebar-nav" aria-label="Primary">
+    <a href="{% url 'dashboard' %}" class="nav-item{% if active_page == 'dashboard' %} active{% endif %}"><i data-lucide="layout-dashboard"></i> Dashboard</a>
+    <a href="{% url 'status' %}" class="nav-item{% if active_page == 'status' %} active{% endif %}"><i data-lucide="globe"></i> Status Check</a>
+    <a href="{% url 'reports' %}" class="nav-item{% if active_page == 'reports' %} active{% endif %}"><i data-lucide="bar-chart-2"></i> Reports</a>
+    <a href="{% url 'incidents' %}" class="nav-item{% if active_page == 'incidents' %} active{% endif %}"><i data-lucide="alert-triangle"></i> Incidents</a>
+    <a href="{% url 'logs' %}" class="nav-item{% if active_page == 'logs' %} active{% endif %}"><i data-lucide="file-text"></i> Logs</a>
+    <a href="{% url 'error_log_upload' %}" class="nav-item{% if active_page == 'error_analyzer' %} active{% endif %}"><i data-lucide="bug"></i> Error Analyzer</a>
+    <a href="{% url 'utilities' %}" class="nav-item{% if active_page == 'utilities' %} active{% endif %}"><i data-lucide="wrench"></i> Utilities</a>
+    <a href="{% url 'alerts' %}" class="nav-item{% if active_page == 'alerts' %} active{% endif %}"><i data-lucide="bell"></i> Alerts</a>
+    <a href="{% url 'notifications' %}" class="nav-item{% if active_page == 'notifications' %} active{% endif %}"><i data-lucide="inbox"></i> Notifications</a>
+    <div style="flex-grow: 1"></div>
+    <a href="{% url 'logout' %}" class="nav-item"><i data-lucide="log-out"></i> Logout</a>
+  </nav>
+
+  <div class="pro-tip-card mt-4">
+    <h6>{{ sidebar_tip_title|default:"Pro Tip" }}</h6>
+    <p>{{ sidebar_tip_body|default:"Enable alerts to get notified instantly when your sites go down." }}</p>
+  </div>
+</aside>

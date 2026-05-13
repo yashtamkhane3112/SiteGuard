@@ -57,7 +57,7 @@
           </div>
           {% endif %}
 
-          <form method="POST">
+          <form method="POST" data-submit-loading>
             {% csrf_token %}
             <div class="mb-3">
               <label class="form-label auth-label" for="{{ form.username.id_for_label }}">Username</label>
@@ -118,6 +118,7 @@
             <button
               type="submit"
               class="btn-auth-primary w-100 mb-4"
+              data-loading-button
             >
               Sign In
             </button>

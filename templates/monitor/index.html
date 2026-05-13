@@ -30,8 +30,12 @@
         >
         <button
           class="navbar-toggler"
+          type="button"
           data-bs-toggle="collapse"
           data-bs-target="#nav"
+          aria-controls="nav"
+          aria-expanded="false"
+          aria-label="Toggle navigation"
         >
           <span class="navbar-toggler-icon"></span>
         </button>
@@ -44,8 +48,8 @@
               <a class="nav-link" href="{% url 'dashboard' %}">Dashboard</a>
             </li>
           </ul>
-          <div>
-            <a href="{% url 'login' %}" class="btn btn-outline-light me-2"
+          <div class="landing-nav-actions">
+            <a href="{% url 'login' %}" class="btn btn-outline-light"
               >Sign In</a
             >
             <a href="{% url 'signup' %}" class="btn btn-primary-custom"
@@ -218,7 +222,7 @@
             </div>
             <div class="site-row reveal" style="transition-delay: 0.4s">
               <span
-                ><i data-lucide="api" class="me-2 size-sm"></i>
+                ><i data-lucide="route" class="me-2 size-sm"></i>
                 api.example.com</span
               ><span class="status-checking">Checking...</span>
             </div>
@@ -230,7 +234,7 @@
             </div>
             <div class="site-row reveal" style="transition-delay: 0.8s">
               <span
-                ><i data-lucide="layout" class="me-2 size-sm"></i>
+                ><i data-lucide="layout-grid" class="me-2 size-sm"></i>
                 media.example.com</span
               ><span class="status-pending">Pending</span>
             </div>

@@ -18,33 +18,7 @@
   </head>
   <body>
     <div class="dashboard-layout">
-      <div class="overlay" id="mobileOverlay"></div>
-
-      <aside class="sidebar" id="sidebar">
-        <a href="{% url 'index' %}" style="text-decoration: none">
-          <div class="sidebar-brand">
-            <div class="logo-icon"><i data-lucide="activity"></i></div>
-            <span>Site Guard</span>
-          </div>
-        </a>
-        <nav class="sidebar-nav">
-          <a href="{% url 'dashboard' %}" class="nav-item"><i data-lucide="layout-dashboard"></i> Dashboard</a>
-          <a href="{% url 'status' %}" class="nav-item"><i data-lucide="globe"></i> Status Check</a>
-          <a href="{% url 'reports' %}" class="nav-item"><i data-lucide="bar-chart-2"></i> Reports</a>
-          <a href="{% url 'incidents' %}" class="nav-item"><i data-lucide="alert-triangle"></i> Incidents</a>
-          <a href="{% url 'logs' %}" class="nav-item"><i data-lucide="file-text"></i> Logs</a>
-          <a href="{% url 'error_log_upload' %}" class="nav-item active"><i data-lucide="bug"></i> Error Analyzer</a>
-          <a href="{% url 'utilities' %}" class="nav-item"><i data-lucide="wrench"></i> Utilities</a>
-          <a href="{% url 'alerts' %}" class="nav-item"><i data-lucide="bell"></i> Alerts</a>
-          <a href="{% url 'notifications' %}" class="nav-item"><i data-lucide="inbox"></i> Notifications</a>
-          <div style="flex-grow: 1"></div>
-          <a href="{% url 'logout' %}" class="nav-item"><i data-lucide="log-out"></i> Logout</a>
-        </nav>
-        <div class="pro-tip-card mt-4">
-          <h6>Upload Tip</h6>
-          <p>Use raw server logs or traceback dumps to surface recurring failures quickly.</p>
-        </div>
-      </aside>
+      {% include "monitor/partials/app_sidebar.html" with active_page="error_analyzer" sidebar_tip_title="Upload Tip" sidebar_tip_body="Use raw server logs or traceback dumps to surface recurring failures quickly." %}
 
       <main class="main-content">
         {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search error uploads, incidents, websites..." %}
@@ -81,9 +55,9 @@
               </div>
             </div>
 
-            <form method="post" enctype="multipart/form-data">
+            <form method="post" enctype="multipart/form-data" data-submit-loading>
               {% csrf_token %}
-              <div class="mb-3">
+              <div class="mb-3 analyzer-upload-shell">
                 <label class="form-label text-slate-300 text-sm fw-medium" for="{{ form.file.id_for_label }}">Log file</label>
                 {{ form.file }}
                 {% if form.file.help_text %}
@@ -94,7 +68,7 @@
                 {% endif %}
               </div>
               <div class="utility-action-row">
-                <button type="submit" class="btn btn-primary-custom">
+                <button type="submit" class="btn btn-primary-custom" data-loading-button>
                   <i data-lucide="play-circle" class="me-2 size-sm"></i>
                   Upload and Analyze
                 </button>

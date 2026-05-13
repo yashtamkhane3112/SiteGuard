@@ -4,3 +4,4 @@ whitenoise==6.9.0
 python-decouple==3.8
 requests==2.32.3
 dnspython==2.7.0
+Pillow==10.3.0

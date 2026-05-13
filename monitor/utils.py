@@ -55,7 +55,8 @@ def get_latest_logs_by_website(logs):
     latest_logs = {}
 
     for log in logs:
-        if log.website_id not in latest_logs:
+        existing = latest_logs.get(log.website_id)
+        if existing is None or (log.checked_at, log.id or 0) > (existing.checked_at, existing.id or 0):
             latest_logs[log.website_id] = log
 
     return latest_logs

@@ -3495,3 +3495,368 @@ body.sidebar-open {
         flex-direction: column;
     }
 }
+
+/* Final Mobile Shell + Analyzer Stability */
+html.sidebar-open,
+body.sidebar-open {
+    overflow: hidden;
+}
+
+.mobile-toggle {
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.03);
+    transition: background var(--sg-fast-motion), border-color var(--sg-fast-motion), transform var(--sg-fast-motion);
+}
+
+.mobile-toggle:hover,
+.mobile-toggle:focus-visible {
+    background: rgba(116, 48, 232, 0.12);
+    border-color: rgba(168, 85, 247, 0.28);
+    transform: translateY(-1px);
+}
+
+.mobile-toggle i {
+    width: 18px;
+    height: 18px;
+}
+
+.overlay {
+    z-index: 1040;
+}
+
+.sidebar {
+    z-index: 1050;
+}
+
+.top-header {
+    z-index: 1030;
+}
+
+.main-content,
+.content-wrapper,
+.dash-panel,
+.stats-grid,
+.account-stats-grid,
+.account-two-col,
+.account-form-grid,
+.utility-chip-wrap,
+.error-group-grid,
+.search-bar,
+.search-suggestions-panel,
+.notification-dropdown,
+.table-responsive {
+    min-width: 0;
+}
+
+.table-responsive {
+    -webkit-overflow-scrolling: touch;
+}
+
+.custom-table td,
+.custom-table th {
+    word-break: normal;
+}
+
+.analyzer-upload-shell {
+    padding: 18px;
+    border: 1px dashed rgba(168, 85, 247, 0.22);
+    border-radius: 18px;
+    background: rgba(255,255,255,0.02);
+}
+
+.error-group-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px;
+}
+
+.error-group-card {
+    padding: 18px;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,0.06);
+    background: linear-gradient(180deg, rgba(24, 18, 38, 0.92), rgba(15, 10, 24, 0.9));
+    box-shadow: 0 18px 30px rgba(7, 5, 12, 0.18);
+}
+
+.error-group-count {
+    font-size: 2rem;
+    line-height: 1;
+    color: #fff;
+}
+
+.analyzer-raw-line {
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-width: 480px;
+}
+
+@media (max-width: 992px) {
+    .dashboard-layout {
+        min-height: 100vh;
+        height: auto;
+    }
+
+    .sidebar {
+        width: min(280px, calc(100vw - 52px));
+        max-width: calc(100vw - 52px);
+        max-height: 100dvh;
+        overflow-y: auto;
+        padding-bottom: 28px;
+    }
+
+    .main-content {
+        min-height: 100vh;
+    }
+
+    .content-wrapper {
+        padding-bottom: 32px;
+    }
+}
+
+@media (max-width: 768px) {
+    .top-header {
+        gap: 12px;
+    }
+
+    .header-actions {
+        flex-shrink: 0;
+        margin-left: auto;
+    }
+
+    .stats-grid,
+    .account-stats-grid,
+    .error-group-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .account-inline-pill {
+        max-width: 100%;
+    }
+
+    .analyzer-raw-line {
+        max-width: 240px;
+    }
+}
+
+@media (max-width: 576px) {
+    .sidebar {
+        width: calc(100vw - 36px);
+        max-width: calc(100vw - 36px);
+        padding: 20px 16px 24px;
+    }
+
+    .top-header {
+        padding: 12px 14px !important;
+    }
+
+    .content-wrapper {
+        padding: 14px;
+    }
+
+    .dash-panel,
+    .account-hero-panel,
+    .error-group-card {
+        padding: 16px;
+    }
+
+    .profile-avatar-lg {
+        width: 88px;
+        height: 88px;
+    }
+
+    .utility-action-row .btn,
+    .account-form-grid .btn,
+    .account-two-col .btn,
+    .dash-panel .btn-primary-custom,
+    .dash-panel .btn-outline-dark-custom {
+        width: 100%;
+    }
+}
+
+/* Final Landing + Auth + Reports Responsive Pass */
+.landing-nav-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.landing-nav-actions .btn {
+    min-height: 44px;
+    padding-inline: 18px;
+}
+
+.hero-buttons {
+    align-items: center;
+}
+
+.hero-buttons .btn,
+.landing-nav-actions .btn {
+    white-space: nowrap;
+}
+
+.report-header-actions {
+    width: min(100%, 420px);
+    flex-wrap: wrap;
+}
+
+.report-header-actions > * {
+    min-width: 0;
+}
+
+.report-subsection-row,
+.website-card-primary,
+.website-card-metrics,
+.website-meta-inline,
+.product-flow,
+.account-inline-meta {
+    min-width: 0;
+}
+
+.page-title,
+.page-subtitle,
+.website-domain,
+.search-suggestion-meta,
+.notification-copy,
+.product-flow-link,
+.utility-chip {
+    overflow-wrap: anywhere;
+}
+
+.auth-card .alert,
+.utility-state-banner {
+    word-break: break-word;
+}
+
+.btn-social,
+.btn-auth-primary {
+    min-height: 48px;
+}
+
+.btn-social {
+    gap: 10px;
+    text-align: center;
+    white-space: normal;
+}
+
+.btn-social i {
+    flex-shrink: 0;
+}
+
+@media (max-width: 992px) {
+    .landing-nav-actions {
+        width: 100%;
+        margin-top: 8px;
+        justify-content: stretch;
+    }
+
+    .landing-nav-actions .btn {
+        flex: 1 1 180px;
+        text-align: center;
+    }
+
+    .report-header-actions {
+        width: 100%;
+    }
+}
+
+@media (max-width: 768px) {
+    .navbar > .container {
+        row-gap: 10px;
+    }
+
+    .navbar-collapse {
+        margin-top: 10px;
+    }
+
+    .landing-nav-actions {
+        gap: 10px;
+    }
+
+    .hero-buttons {
+        width: 100%;
+    }
+
+    .hero-buttons .btn {
+        min-height: 46px;
+    }
+
+    .report-header-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .report-header-actions .dropdown,
+    .report-header-actions .position-relative {
+        width: 100%;
+    }
+
+    .product-flow {
+        width: 100%;
+        overflow-x: auto;
+        padding-bottom: 4px;
+    }
+
+    .product-flow-link {
+        flex: 0 0 auto;
+    }
+
+    .custom-table {
+        min-width: 600px;
+    }
+}
+
+@media (max-width: 576px) {
+    .landing-nav-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .landing-nav-actions .btn,
+    .hero-buttons .btn {
+        width: 100%;
+    }
+
+    .hero-mini-stats {
+        justify-content: center;
+    }
+
+    .auth-card {
+        padding: 24px 18px;
+    }
+
+    .auth-container {
+        max-width: 100%;
+        padding: 14px;
+    }
+
+    .auth-page-wrapper {
+        padding-top: 84px;
+        padding-bottom: 20px;
+    }
+
+    .back-to-home {
+        top: 12px;
+        left: 12px;
+        right: 12px;
+        max-width: calc(100% - 24px);
+    }
+
+    .btn-social {
+        font-size: 0.88rem;
+        padding: 12px 14px;
+    }
+
+    .auth-card h4 {
+        font-size: 1.4rem;
+    }
+
+    .custom-table {
+        min-width: 540px;
+    }
+}

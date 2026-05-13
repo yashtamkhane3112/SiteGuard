@@ -2,6 +2,7 @@ from datetime import timedelta
 import os
 import shutil
 import tempfile
+import base64
 
 from unittest.mock import Mock, patch
 
@@ -12,7 +13,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from monitor.models import Alert, Incident, IncidentEvent, MonitorLog, Notification, UserProfile, Website
+from monitor.models import Alert, Incident, IncidentEvent, MonitorLog, Notification, ParsedError, UploadedLog, UserProfile, Website
 from monitor.utils import (
     analyze_domain,
     cleanup_monitoring_state,
@@ -22,6 +23,11 @@ from monitor.utils import (
     run_single_check,
     safe_url_decode,
     safe_url_encode,
+)
+
+
+TEST_PNG_BYTES = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="
 )
 
 
@@ -97,6 +103,49 @@ class AuthFlowTests(TestCase):
         dashboard_response = self.client.get(reverse("dashboard"))
         self.assertEqual(dashboard_response.status_code, 302)
         self.assertEqual(dashboard_response.url, "/login/?next=/dashboard/")
+
+
+class AdminStabilityTests(TestCase):
+    def setUp(self):
+        self.admin_user = User.objects.create_superuser(
+            username="admin-user",
+            email="admin@example.com",
+            password="StrongPass123!",
+        )
+        self.client.login(username="admin-user", password="StrongPass123!")
+        self.regular_user = User.objects.create_user(
+            username="staff-target",
+            password="StrongPass123!",
+        )
+        self.website = Website.objects.create(user=self.regular_user, url="https://example.com")
+        self.uploaded_log = UploadedLog.objects.create(
+            user=self.regular_user,
+            filename="server.log",
+            file=SimpleUploadedFile("server.log", b"line one", content_type="text/plain"),
+            processed=True,
+        )
+        ParsedError.objects.create(
+            uploaded_log=self.uploaded_log,
+            error_type="ValueError",
+            raw_line="ValueError: invalid payload",
+            count=2,
+            first_seen_line=14,
+        )
+        Alert.objects.create(
+            website=self.website,
+            alert_type=Alert.TYPE_DOWN,
+            status=Alert.STATUS_SENT,
+            message="example.com is DOWN",
+        )
+
+    def test_admin_alert_and_parsed_error_changelists_render(self):
+        alert_response = self.client.get(reverse("admin:monitor_alert_changelist"))
+        parsed_error_response = self.client.get(reverse("admin:monitor_parsederror_changelist"))
+
+        self.assertEqual(alert_response.status_code, 200)
+        self.assertEqual(parsed_error_response.status_code, 200)
+        self.assertContains(alert_response, "example.com")
+        self.assertContains(parsed_error_response, "ValueError")
 
 
 class MonitorEmailAlertTests(TestCase):
@@ -1052,7 +1101,7 @@ class AccountManagementTests(TestCase):
         self.assertNotContains(response, "John Doe")
 
     def test_profile_update_persists_username_email_and_avatar(self):
-        avatar = SimpleUploadedFile("avatar.png", b"fake-image-data", content_type="image/png")
+        avatar = SimpleUploadedFile("avatar.png", TEST_PNG_BYTES, content_type="image/png")
 
         response = self.client.post(
             reverse("profile"),
@@ -1069,6 +1118,22 @@ class AccountManagementTests(TestCase):
         self.assertEqual(self.user.username, "updated-user")
         self.assertEqual(self.user.email, "updated@example.com")
         self.assertTrue(bool(self.user.profile.avatar))
+
+    def test_profile_update_rejects_invalid_avatar_payload(self):
+        avatar = SimpleUploadedFile("avatar.png", b"not-an-image", content_type="image/png")
+
+        response = self.client.post(
+            reverse("profile"),
+            {
+                "profile_action": "update_profile",
+                "username": "account-user",
+                "email": "account@example.com",
+                "avatar": avatar,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Upload a valid image")
 
     def test_profile_update_rejects_duplicate_email(self):
         response = self.client.post(
@@ -1372,3 +1437,21 @@ class NotificationAndSearchTests(TestCase):
         self.assertContains(privacy_response, "Privacy Policy")
         self.assertEqual(terms_response.status_code, 200)
         self.assertContains(terms_response, "Terms")
+
+    def test_shared_sidebar_includes_error_analyzer_on_authenticated_pages(self):
+        pages = [
+            reverse("dashboard"),
+            reverse("reports"),
+            reverse("alerts"),
+            reverse("logs"),
+            reverse("incidents"),
+            reverse("utilities"),
+            reverse("profile"),
+            reverse("status"),
+            reverse("error_log_upload"),
+        ]
+
+        for page in pages:
+            response = self.client.get(page)
+            self.assertEqual(response.status_code, 200, page)
+            self.assertContains(response, "Error Analyzer")

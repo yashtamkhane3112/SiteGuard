@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib.auth.forms import PasswordChangeForm, UserCreationForm
 from django.contrib.auth.models import User
+from django.core.files.images import get_image_dimensions
 from .models import UploadedLog, UserProfile
 
 
@@ -83,10 +84,11 @@ TIMEZONE_CHOICES = [(tz, tz) for tz in COMMON_TIMEZONES]
 class ProfileUpdateForm(forms.Form):
     username = forms.CharField(max_length=150)
     email = forms.EmailField(required=False)
-    avatar = forms.FileField(required=False)
+    avatar = forms.ImageField(required=False)
 
     allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
     max_avatar_size = 2 * 1024 * 1024
+    max_avatar_dimensions = (2000, 2000)
 
     def __init__(self, *args, user=None, profile=None, **kwargs):
         self.user = user
@@ -140,6 +142,14 @@ class ProfileUpdateForm(forms.Form):
         if avatar.size > self.max_avatar_size:
             raise forms.ValidationError('Avatar must be 2 MB or smaller.')
 
+        width, height = get_image_dimensions(avatar)
+        max_width, max_height = self.max_avatar_dimensions
+        if width and height and (width > max_width or height > max_height):
+            raise forms.ValidationError(f'Avatar dimensions must not exceed {max_width}x{max_height}px.')
+
+        if hasattr(avatar, 'seek'):
+            avatar.seek(0)
+
         return avatar
 
     def save(self):
@@ -149,8 +159,11 @@ class ProfileUpdateForm(forms.Form):
 
         avatar = self.cleaned_data.get('avatar')
         if avatar:
+            previous_avatar_name = self.profile.avatar.name if self.profile.avatar else ''
             self.profile.avatar = avatar
             self.profile.save(update_fields=['avatar', 'updated_at'])
+            if previous_avatar_name and previous_avatar_name != self.profile.avatar.name:
+                self.profile.avatar.storage.delete(previous_avatar_name)
 
         return self.user, self.profile
 

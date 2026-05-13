@@ -84,8 +84,6 @@ function bindToggle(toggleId, inputId) {
         const type = input.type === 'password' ? 'text' : 'password';
         input.type = type;
 
-        console.log('toggle clicked:', toggleId);
-
         this.setAttribute(
             'data-lucide',
             type === 'password' ? 'eye' : 'eye-off'
@@ -195,7 +193,7 @@ if (checkAllBtn && resultsGrid) {
         resultsGrid.classList.add('loading-skeleton');
 
         setTimeout(() => {
-            this.innerHTML = `<i data-lucide="check-all" class="me-2" style="width: 16px; height: 16px;"></i> Complete`;
+            this.innerHTML = `<i data-lucide="check-check" class="me-2" style="width: 16px; height: 16px;"></i> Complete`;
             this.style.background = '#10b981';
             if (typeof lucide !== 'undefined') lucide.createIcons();
             
@@ -212,132 +210,6 @@ if (checkAllBtn && resultsGrid) {
         }, 2000);
     });
 }
-
-// ==========================================
-// REPORTS & ANALYTICS: CHART.JS INITIALIZATION
-// ==========================================
-
-// Global Chart Defaults for Dark Theme
-if (typeof Chart !== 'undefined') {
-    Chart.defaults.color = '#94a3b8';
-    Chart.defaults.font.family = "'Inter', sans-serif";
-    Chart.defaults.plugins.tooltip.backgroundColor = '#2B2239';
-    Chart.defaults.plugins.tooltip.titleColor = '#fff';
-    Chart.defaults.plugins.tooltip.padding = 10;
-    Chart.defaults.plugins.tooltip.cornerRadius = 8;
-    Chart.defaults.plugins.tooltip.displayColors = false;
-}
-
-// 1. Response Time Percentiles (Line Chart with Fills)
-const pChartCtx = document.getElementById('percentileChart');
-if (pChartCtx) {
-    new Chart(pChartCtx, {
-        type: 'line',
-        data: {
-            labels: ['00', '04', '08', '12', '16', '20', 'Now'],
-            datasets: [
-                {
-                    label: 'p99 (Spikes)',
-                    data: [400, 380, 500, 750, 680, 450, 420],
-                    borderColor: '#ef4444',
-                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.4,
-                    pointRadius: 0
-                },
-                {
-                    label: 'p95 (High)',
-                    data: [200, 190, 280, 350, 310, 220, 200],
-                    borderColor: '#f59e0b',
-                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.4,
-                    pointRadius: 0
-                },
-                {
-                    label: 'p50 (Median)',
-                    data: [100, 95, 110, 140, 130, 105, 100],
-                    borderColor: '#10b981',
-                    backgroundColor: 'rgba(16, 185, 129, 0.2)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.4,
-                    pointRadius: 0
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
-            scales: {
-                x: { grid: { color: 'rgba(255,255,255,0.05)' } },
-                y: { grid: { color: 'rgba(255,255,255,0.05)' }, min: 0, max: 800 }
-            },
-            plugins: { legend: { display: false } }
-        }
-    });
-}
-
-// 2. Error Frequency (Bar Chart)
-const eChartCtx = document.getElementById('errorChart');
-if (eChartCtx) {
-    new Chart(eChartCtx, {
-        type: 'bar',
-        data: {
-            labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-            datasets: [{
-                label: 'Errors',
-                data: [12, 8, 23, 15, 5, 3, 9],
-                backgroundColor: '#ef4444',
-                borderRadius: 4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                x: { grid: { display: false } },
-                y: { grid: { color: 'rgba(255,255,255,0.05)' }, beginAtZero: true, max: 24 }
-            },
-            plugins: { legend: { display: false } }
-        }
-    });
-}
-
-// 3. Uptime Trend (Line Chart with Points)
-const uChartCtx = document.getElementById('uptimeChart');
-if (uChartCtx) {
-    new Chart(uChartCtx, {
-        type: 'line',
-        data: {
-            labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-            datasets: [{
-                label: 'Uptime %',
-                data: [99.2, 99.9, 97.5, 99.1, 99.9, 100, 99.6],
-                borderColor: '#10b981',
-                borderWidth: 3,
-                tension: 0.4,
-                pointBackgroundColor: '#10b981',
-                pointBorderColor: '#1A1325',
-                pointBorderWidth: 2,
-                pointRadius: 4,
-                pointHoverRadius: 6
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                x: { grid: { display: false } },
-                y: { grid: { color: 'rgba(255,255,255,0.05)' }, min: 96, max: 100 }
-            },
-            plugins: { legend: { display: false } }
-        }
-    });
-}   
 
 // ==========================================
 // REPORTS PAGE: ADVANCED INTERACTIVITY
@@ -427,17 +299,34 @@ const sidebar = document.getElementById('sidebar');
 const overlay = document.getElementById('mobileOverlay');
 
 if (mobileToggle && sidebar && overlay) {
+    const mobileBreakpoint = 992;
+
+    const syncSidebarAccessibility = (isOpen) => {
+        mobileToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        sidebar.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+        overlay.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+    };
+
     const openSidebar = () => {
+        if (window.innerWidth > mobileBreakpoint) return;
         sidebar.classList.add('open');
         overlay.classList.add('open');
         document.body.classList.add('sidebar-open');
+        document.documentElement.classList.add('sidebar-open');
+        syncSidebarAccessibility(true);
     };
 
     const closeSidebar = () => {
         sidebar.classList.remove('open');
         overlay.classList.remove('open');
         document.body.classList.remove('sidebar-open');
+        document.documentElement.classList.remove('sidebar-open');
+        syncSidebarAccessibility(false);
     };
+
+    mobileToggle.setAttribute('aria-controls', 'sidebar');
+    mobileToggle.setAttribute('aria-label', 'Toggle navigation menu');
+    syncSidebarAccessibility(false);
 
     mobileToggle.addEventListener('click', () => {
         if (sidebar.classList.contains('open')) {
@@ -458,9 +347,17 @@ if (mobileToggle && sidebar && overlay) {
     });
 
     window.addEventListener('resize', () => {
-        if (window.innerWidth > 992 && sidebar.classList.contains('open')) {
+        if (window.innerWidth > mobileBreakpoint && sidebar.classList.contains('open')) {
             closeSidebar();
         }
+    });
+
+    sidebar.querySelectorAll('a').forEach((link) => {
+        link.addEventListener('click', () => {
+            if (window.innerWidth <= mobileBreakpoint) {
+                closeSidebar();
+            }
+        });
     });
 }
 // 1. Interactive Filters
@@ -802,4 +699,15 @@ if (skeletonItems.length > 0) {
         skeletonItems.forEach((item) => item.classList.remove('ui-skeleton-loading'));
     }, 320);
 }
+
+const loadingForms = document.querySelectorAll('[data-submit-loading]');
+loadingForms.forEach((form) => {
+    form.addEventListener('submit', () => {
+        const button = form.querySelector('[data-loading-button]');
+        if (!button || button.disabled) return;
+        button.dataset.originalText = button.innerHTML;
+        button.disabled = true;
+        button.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Processing...';
+    });
+});
 });

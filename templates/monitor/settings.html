@@ -18,32 +18,7 @@
   </head>
   <body>
     <div class="dashboard-layout">
-      <div class="overlay" id="mobileOverlay"></div>
-
-      <aside class="sidebar" id="sidebar">
-        <a href="{% url 'index' %}" style="text-decoration: none">
-          <div class="sidebar-brand">
-            <div class="logo-icon"><i data-lucide="activity"></i></div>
-            <span>Site Guard</span>
-          </div>
-        </a>
-        <nav class="sidebar-nav">
-          <a href="{% url 'dashboard' %}" class="nav-item"><i data-lucide="layout-dashboard"></i> Dashboard</a>
-          <a href="{% url 'status' %}" class="nav-item"><i data-lucide="globe"></i> Status Check</a>
-          <a href="{% url 'reports' %}" class="nav-item"><i data-lucide="bar-chart-2"></i> Reports</a>
-          <a href="{% url 'incidents' %}" class="nav-item"><i data-lucide="shield-alert"></i> Incidents</a>
-          <a href="{% url 'logs' %}" class="nav-item"><i data-lucide="file-text"></i> Logs</a>
-          <a href="{% url 'utilities' %}" class="nav-item"><i data-lucide="wrench"></i> Utilities</a>
-          <a href="{% url 'alerts' %}" class="nav-item"><i data-lucide="bell"></i> Alerts</a>
-          <a href="{% url 'notifications' %}" class="nav-item"><i data-lucide="inbox"></i> Notifications</a>
-          <div style="flex-grow: 1"></div>
-          <a href="{% url 'logout' %}" class="nav-item"><i data-lucide="log-out"></i> Logout</a>
-        </nav>
-        <div class="pro-tip-card mt-4">
-          <h6>Pro Tip</h6>
-          <p>Enable alerts to get notified instantly when your sites go down.</p>
-        </div>
-      </aside>
+      {% include "monitor/partials/app_sidebar.html" %}
 
       <main class="main-content">
         {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search settings, preferences, alerts..." %}

@@ -49,6 +49,15 @@ python manage.py migrate
 python manage.py runserver
 ```
 
+If `python --version` still prints `Python 3.14.x`, you are not using the project virtual environment. In that case run commands explicitly through the venv:
+
+```bash
+.\.venv\Scripts\python.exe --version
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe manage.py check
+.\.venv\Scripts\python.exe manage.py runserver
+```
+
 If you already created a virtual environment with Python `3.14`, remove it and recreate it on Python `3.12.3`:
 
 ```bash
@@ -60,6 +69,8 @@ python --version
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
+
+`Pillow` is required because profile avatar uploads use Django image validation. Do not remove it from `requirements.txt`, and do not rely on a global Python installation for image support.
 
 Local production checks:
 

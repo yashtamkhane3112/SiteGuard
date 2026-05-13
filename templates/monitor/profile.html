@@ -18,32 +18,7 @@
   </head>
   <body>
     <div class="dashboard-layout">
-      <div class="overlay" id="mobileOverlay"></div>
-
-      <aside class="sidebar" id="sidebar">
-        <a href="{% url 'index' %}" style="text-decoration: none">
-          <div class="sidebar-brand">
-            <div class="logo-icon"><i data-lucide="activity"></i></div>
-            <span>Site Guard</span>
-          </div>
-        </a>
-        <nav class="sidebar-nav">
-          <a href="{% url 'dashboard' %}" class="nav-item"><i data-lucide="layout-dashboard"></i> Dashboard</a>
-          <a href="{% url 'status' %}" class="nav-item"><i data-lucide="globe"></i> Status Check</a>
-          <a href="{% url 'reports' %}" class="nav-item"><i data-lucide="bar-chart-2"></i> Reports</a>
-          <a href="{% url 'incidents' %}" class="nav-item"><i data-lucide="shield-alert"></i> Incidents</a>
-          <a href="{% url 'logs' %}" class="nav-item"><i data-lucide="file-text"></i> Logs</a>
-          <a href="{% url 'utilities' %}" class="nav-item"><i data-lucide="wrench"></i> Utilities</a>
-          <a href="{% url 'alerts' %}" class="nav-item"><i data-lucide="bell"></i> Alerts</a>
-          <a href="{% url 'notifications' %}" class="nav-item"><i data-lucide="inbox"></i> Notifications</a>
-          <div style="flex-grow: 1"></div>
-          <a href="{% url 'logout' %}" class="nav-item"><i data-lucide="log-out"></i> Logout</a>
-        </nav>
-        <div class="pro-tip-card mt-4">
-          <h6>Pro Tip</h6>
-          <p>Enable alerts to get notified instantly when your sites go down.</p>
-        </div>
-      </aside>
+      {% include "monitor/partials/app_sidebar.html" with sidebar_tip_title="Pro Tip" sidebar_tip_body="Enable alerts to get notified instantly when your sites go down." %}
 
       <main class="main-content">
         {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search your account, sites, alerts..." %}
@@ -123,7 +98,7 @@
               Update your username, email address, and avatar.
             </p>
 
-            <form method="post" enctype="multipart/form-data" class="account-form-grid">
+            <form method="post" enctype="multipart/form-data" class="account-form-grid" data-submit-loading>
               {% csrf_token %}
               <input type="hidden" name="profile_action" value="update_profile" />
 
@@ -160,7 +135,7 @@
               </div>
 
               <div class="account-form-full">
-                <button class="btn btn-primary-custom" type="submit">Save Changes</button>
+                <button class="btn btn-primary-custom" type="submit" data-loading-button>Save Changes</button>
               </div>
             </form>
           </div>
@@ -330,13 +305,28 @@
       const avatarPreview = document.getElementById("avatarPreview");
       const avatarFallback = document.getElementById("avatarPreviewFallback");
 
+      let avatarPreviewUrl = null;
+
       if (avatarInput && avatarPreview) {
         avatarInput.addEventListener("change", (event) => {
           const file = event.target.files && event.target.files[0];
-          if (!file) return;
+          if (avatarPreviewUrl) {
+            URL.revokeObjectURL(avatarPreviewUrl);
+            avatarPreviewUrl = null;
+          }
 
-          const objectUrl = URL.createObjectURL(file);
-          avatarPreview.src = objectUrl;
+          if (!file) {
+            if (!avatarPreview.getAttribute("src")) {
+              avatarPreview.classList.add("d-none");
+            }
+            if (avatarFallback) {
+              avatarFallback.classList.remove("d-none");
+            }
+            return;
+          }
+
+          avatarPreviewUrl = URL.createObjectURL(file);
+          avatarPreview.src = avatarPreviewUrl;
           avatarPreview.classList.remove("d-none");
           if (avatarFallback) {
             avatarFallback.classList.add("d-none");
