@@ -538,7 +538,7 @@ body { font-family: 'Inter', sans-serif; background-color: var(--bg-dark); color
 .heatmap-row { display: flex; align-items: center; margin-bottom: 6px; }
 .heatmap-label { width: 120px; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--text-main); flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px;}
 .heatmap-blocks { display: flex; flex-grow: 1; gap: 4px; justify-content: space-between;}
-.heatmap-blocks .block { flex: 1; height: 24px; border-radius: 4px; transition: opacity 0.2s;}
+.heatmap-blocks .block { flex: 1; height: 24px; border-radius: 4px; transition: opacity 0.2s; cursor: pointer; touch-action: manipulation;}
 .heatmap-blocks .block:hover { opacity: 0.7; }
 .heatmap-legend { display: flex; align-items: center; justify-content: flex-end; gap: 4px;}
 
@@ -1339,6 +1339,45 @@ body {
 }
 .segment:hover .custom-tooltip { opacity: 1; transform: translateX(-50%) translateY(0); }
 .custom-tooltip::after { content: ''; position: absolute; top: 100%; left: 50%; margin-left: -5px; border-width: 5px; border-style: solid; border-color: rgba(18, 13, 29, 0.96) transparent transparent transparent; }
+.heatmap-tooltip {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: auto;
+    width: max-content;
+    min-width: 0;
+    max-width: min(240px, calc(100vw - 24px));
+    padding: 10px 12px;
+    white-space: normal;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+    transform: none;
+}
+
+.heatmap-tooltip strong {
+    display: block;
+    margin-bottom: 2px;
+}
+
+.heatmap-tooltip span {
+    display: block;
+    color: #94a3b8;
+    font-size: 0.8rem;
+}
+
+.heatmap-tooltip::after {
+    top: 100%;
+    bottom: auto;
+    left: 50%;
+    margin-left: -5px;
+    border-color: rgba(18, 13, 29, 0.96) transparent transparent transparent;
+}
+
+.heatmap-tooltip[data-placement="bottom"]::after {
+    top: auto;
+    bottom: 100%;
+    border-color: transparent transparent rgba(18, 13, 29, 0.96) transparent;
+}
 .uptime-link { color: #fff; text-decoration: none; transition: 0.2s; cursor: pointer; }
 .uptime-link:hover { color: var(--purple-light); }
 
@@ -3687,8 +3726,13 @@ body.sidebar-open {
 }
 
 .landing-nav-actions .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     min-height: 44px;
     padding-inline: 18px;
+    text-align: center;
+    flex: 0 0 auto;
 }
 
 .hero-buttons {
@@ -3785,12 +3829,11 @@ body.sidebar-open {
     .landing-nav-actions {
         width: 100%;
         margin-top: 8px;
-        justify-content: stretch;
+        justify-content: flex-start;
     }
 
     .landing-nav-actions .btn {
         flex: 1 1 180px;
-        text-align: center;
     }
 
     .report-header-actions {
@@ -3845,12 +3888,49 @@ body.sidebar-open {
 }
 
 @media (max-width: 576px) {
+    .heatmap-tooltip {
+        max-width: min(220px, calc(100vw - 20px));
+        padding: 9px 11px;
+        font-size: 0.72rem;
+    }
+
+    .heatmap-tooltip span {
+        font-size: 0.76rem;
+    }
+
+    .heatmap-legend {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        row-gap: 6px;
+    }
+
+    .alert-incident-card .incident-header {
+        flex-direction: column;
+        align-items: stretch !important;
+    }
+
+    .alert-incident-card .incident-header > .d-flex:last-child {
+        width: 100%;
+        margin-left: 0 !important;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+    }
+
+    .alert-incident-card .incident-header > .d-flex:last-child form,
+    .alert-incident-card .incident-header > .d-flex:last-child .alert-action-btn {
+        width: 100%;
+    }
+
     .landing-nav-actions {
         flex-direction: column;
         align-items: stretch;
     }
 
-    .landing-nav-actions .btn,
+    .landing-nav-actions .btn {
+        flex: 0 0 auto;
+        width: 100%;
+    }
+
     .hero-buttons .btn {
         width: 100%;
     }

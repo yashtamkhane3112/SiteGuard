@@ -222,16 +222,59 @@ const heatmapBlocks = document.querySelectorAll('.heatmap-blocks .block');
 if (heatmapBlocks.length > 0) {
     // Create a single floating tooltip div for the heatmap
     const heatTooltip = document.createElement('div');
-    heatTooltip.className = 'custom-tooltip';
-    heatTooltip.style.position = 'fixed'; // Use fixed for cursor tracking
+    heatTooltip.className = 'custom-tooltip heatmap-tooltip';
     heatTooltip.style.pointerEvents = 'none';
     heatTooltip.style.zIndex = '9999';
+    heatTooltip.setAttribute('aria-hidden', 'true');
     document.body.appendChild(heatTooltip);
+
+    const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+    const hideHeatTooltip = () => {
+        heatTooltip.style.opacity = '0';
+        heatTooltip.setAttribute('aria-hidden', 'true');
+        heatTooltip.dataset.pinned = 'false';
+        heatTooltip.dataset.blockIndex = '';
+        heatTooltip.removeAttribute('data-placement');
+    };
+
+    const positionHeatTooltip = (anchorRect, pointerX, pointerY) => {
+        const viewportPadding = 12;
+        const tooltipRect = heatTooltip.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        const anchorCenterX = pointerX ?? (anchorRect.left + (anchorRect.width / 2));
+        const preferredTop = (pointerY ?? anchorRect.top) - tooltipRect.height - 12;
+        const fallbackTop = anchorRect.bottom + 12;
+        const placement = preferredTop >= viewportPadding ? 'top' : 'bottom';
+        const resolvedTop = placement === 'top'
+            ? preferredTop
+            : clamp(fallbackTop, viewportPadding, viewportHeight - tooltipRect.height - viewportPadding);
+        const resolvedLeft = clamp(
+            anchorCenterX - (tooltipRect.width / 2),
+            viewportPadding,
+            viewportWidth - tooltipRect.width - viewportPadding
+        );
+
+        heatTooltip.dataset.placement = placement;
+        heatTooltip.style.left = `${resolvedLeft}px`;
+        heatTooltip.style.top = `${resolvedTop}px`;
+    };
+
+    const showHeatTooltip = (block, hourLabel, status, timeStr, pointerX, pointerY, pinned = false) => {
+        heatTooltip.innerHTML = `<strong>${hourLabel}</strong><span>Status: ${status} (${timeStr})</span>`;
+        heatTooltip.style.opacity = '1';
+        heatTooltip.setAttribute('aria-hidden', 'false');
+        heatTooltip.dataset.pinned = pinned ? 'true' : 'false';
+        positionHeatTooltip(block.getBoundingClientRect(), pointerX, pointerY);
+    };
 
     // Array of times to simulate the labels (00:00, 02:00, etc.)
     const hours = ['00:00', '02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'];
 
     heatmapBlocks.forEach((block, index) => {
+        if (block.dataset.heatmapTooltipBound === 'true') return;
+        block.dataset.heatmapTooltipBound = 'true';
+
         // Assign a simulated time based on its position in the row (12 blocks per row)
         const hourLabel = hours[index % 12];
         
@@ -243,24 +286,42 @@ if (heatmapBlocks.length > 0) {
         if (block.classList.contains('bg-warn')) { status = "Slow"; timeStr = "~850ms"; }
         if (block.classList.contains('bg-critical')) { status = "Timeout"; timeStr = "5000ms+"; }
 
-        // When mouse enters the block
         block.addEventListener('mouseenter', (e) => {
-            heatTooltip.innerHTML = `<strong>${hourLabel}</strong><br><span style="color:#94a3b8; font-size:0.8rem;">Status: ${status} (${timeStr})</span>`;
-            heatTooltip.style.opacity = '1';
+            if (heatTooltip.dataset.pinned === 'true') return;
+            showHeatTooltip(block, hourLabel, status, timeStr, e.clientX, e.clientY, false);
         });
 
-        // When mouse moves, make tooltip follow the cursor smoothly
         block.addEventListener('mousemove', (e) => {
-            heatTooltip.style.left = (e.clientX) + 'px';
-            // Offset it up so it doesn't cover the cursor
-            heatTooltip.style.top = (e.clientY - 50) + 'px'; 
+            if (heatTooltip.dataset.pinned === 'true') return;
+            showHeatTooltip(block, hourLabel, status, timeStr, e.clientX, e.clientY, false);
         });
 
-        // When mouse leaves
         block.addEventListener('mouseleave', () => {
-            heatTooltip.style.opacity = '0';
+            if (heatTooltip.dataset.pinned === 'true') return;
+            hideHeatTooltip();
+        });
+
+        block.addEventListener('click', (e) => {
+            e.preventDefault();
+            const isPinnedToBlock = heatTooltip.dataset.pinned === 'true' && heatTooltip.dataset.blockIndex === String(index);
+            if (isPinnedToBlock) {
+                hideHeatTooltip();
+                return;
+            }
+
+            heatTooltip.dataset.blockIndex = String(index);
+            showHeatTooltip(block, hourLabel, status, timeStr, null, null, true);
         });
     });
+
+    document.addEventListener('click', (event) => {
+        if (!event.target.closest('.heatmap-blocks .block')) {
+            hideHeatTooltip();
+        }
+    });
+
+    window.addEventListener('resize', hideHeatTooltip);
+    window.addEventListener('scroll', hideHeatTooltip, { passive: true });
 }
 
 // 2. Simulate Export Button Download
