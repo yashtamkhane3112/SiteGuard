@@ -557,17 +557,89 @@ class UploadedLog(models.Model):
 
 
 class ParsedError(models.Model):
+    CATEGORY_DATABASE = 'database'
+    CATEGORY_AUTHENTICATION = 'authentication'
+    CATEGORY_TIMEOUT = 'timeout'
+    CATEGORY_HTTP = 'http'
+    CATEGORY_NETWORK = 'network'
+    CATEGORY_DJANGO = 'django'
+    CATEGORY_FRONTEND = 'frontend'
+    CATEGORY_SECURITY = 'security'
+    CATEGORY_UNKNOWN = 'unknown'
+    CATEGORY_CHOICES = [
+        (CATEGORY_DATABASE, 'Database'),
+        (CATEGORY_AUTHENTICATION, 'Authentication'),
+        (CATEGORY_TIMEOUT, 'Timeout'),
+        (CATEGORY_HTTP, 'HTTP'),
+        (CATEGORY_NETWORK, 'Network'),
+        (CATEGORY_DJANGO, 'Django'),
+        (CATEGORY_FRONTEND, 'Frontend'),
+        (CATEGORY_SECURITY, 'Security'),
+        (CATEGORY_UNKNOWN, 'Unknown'),
+    ]
+
+    SEVERITY_CRITICAL = 'critical'
+    SEVERITY_HIGH = 'high'
+    SEVERITY_MEDIUM = 'medium'
+    SEVERITY_LOW = 'low'
+    SEVERITY_CHOICES = [
+        (SEVERITY_CRITICAL, 'Critical'),
+        (SEVERITY_HIGH, 'High'),
+        (SEVERITY_MEDIUM, 'Medium'),
+        (SEVERITY_LOW, 'Low'),
+    ]
+
     uploaded_log = models.ForeignKey(UploadedLog, on_delete=models.CASCADE, related_name='parsed_errors')
     error_type = models.CharField(max_length=120)
     raw_line = models.TextField()
     count = models.PositiveIntegerField(default=1)
     first_seen_line = models.PositiveIntegerField()
+    last_seen_line = models.PositiveIntegerField(default=1)
+    category = models.CharField(max_length=32, choices=CATEGORY_CHOICES, default=CATEGORY_UNKNOWN)
+    severity = models.CharField(max_length=16, choices=SEVERITY_CHOICES, default=SEVERITY_LOW)
 
     class Meta:
         ordering = ['-count', 'first_seen_line', 'id']
 
     def __str__(self):
         return f"{self.error_type} x{self.count}"
+
+    @property
+    def line_range_display(self):
+        if self.last_seen_line and self.last_seen_line != self.first_seen_line:
+            return f"Lines {self.first_seen_line}-{self.last_seen_line}"
+        return f"Line {self.first_seen_line}"
+
+    @property
+    def category_label(self):
+        return self.get_category_display()
+
+    @property
+    def severity_label(self):
+        return self.get_severity_display()
+
+    @property
+    def category_badge_class(self):
+        return {
+            self.CATEGORY_DATABASE: 'badge-purple',
+            self.CATEGORY_AUTHENTICATION: 'badge-slow',
+            self.CATEGORY_TIMEOUT: 'badge-slow',
+            self.CATEGORY_HTTP: 'badge-up',
+            self.CATEGORY_NETWORK: 'badge-down',
+            self.CATEGORY_DJANGO: 'badge-purple',
+            self.CATEGORY_FRONTEND: 'badge-up',
+            self.CATEGORY_SECURITY: 'badge-down',
+            self.CATEGORY_UNKNOWN: 'badge-up',
+        }.get(self.category, 'badge-up')
+
+    @property
+    def severity_badge_class(self):
+        return {
+            self.SEVERITY_CRITICAL: 'badge-down',
+            self.SEVERITY_HIGH: 'badge-slow',
+            self.SEVERITY_MEDIUM: 'badge-purple',
+            self.SEVERITY_LOW: 'badge-up',
+        }.get(self.severity, 'badge-up')
 
 
 @receiver(post_save, sender=User)

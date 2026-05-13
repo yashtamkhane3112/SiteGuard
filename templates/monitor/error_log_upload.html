@@ -23,11 +23,11 @@
       <main class="main-content">
         {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search error uploads, incidents, websites..." %}
 
-        <div class="content-wrapper" style="max-width: 1080px">
+        <div class="content-wrapper" style="max-width: 1180px">
           <div class="mb-4">
-            <h2 class="page-title text-white">Error Log Upload</h2>
+            <h2 class="page-title text-white">Error Analyzer</h2>
             <p class="page-subtitle text-slate-300">
-              Upload a `.txt` or `.log` file to detect recurring exceptions, operational failures, and HTTP error patterns.
+              Upload a `.txt` or `.log` file to classify recurring exceptions, persistence failures, timeout patterns, and deployment regressions.
             </p>
           </div>
 
@@ -42,45 +42,191 @@
           </div>
           {% endif %}
 
-          <div class="dash-panel mb-4">
-            <div class="d-flex align-items-center gap-3 mb-4">
-              <div class="incident-icon bg-panel-light text-white">
-                <i data-lucide="upload"></i>
-              </div>
-              <div>
-                <h5 class="m-0 text-white fw-bold">Upload Log File</h5>
-                <p class="m-0 text-slate-300 text-sm">
-                  Supported formats: `.txt`, `.log` up to 5 MB. Files are processed synchronously after upload.
-                </p>
+          <div class="stats-grid mb-4">
+            <div class="stat-card analyzer-stat-card">
+              <span class="panel-label">Total Uploads</span>
+              <span class="stat-value">{{ workspace_upload_count }}</span>
+              <span class="stat-subtext text-light opacity-75">Analyzer files captured for this workspace</span>
+            </div>
+            <div class="stat-card analyzer-stat-card">
+              <span class="panel-label">Processed Uploads</span>
+              <span class="stat-value">{{ workspace_processed_count }}</span>
+              <span class="stat-subtext text-light opacity-75">Synchronous parses completed successfully</span>
+            </div>
+            <div class="stat-card analyzer-stat-card">
+              <span class="panel-label">Detected Occurrences</span>
+              <span class="stat-value">{{ workspace_total_occurrences }}</span>
+              <span class="stat-subtext text-light opacity-75">All grouped matches across analyzed logs</span>
+            </div>
+            <div class="stat-card analyzer-stat-card">
+              <span class="panel-label">Distinct Signatures</span>
+              <span class="stat-value">{{ workspace_error_groups }}</span>
+              <span class="stat-subtext text-light opacity-75">Normalized error groups stored for diagnostics</span>
+            </div>
+          </div>
+
+          <div class="row g-4 mb-4">
+            <div class="col-xl-7">
+              <div class="dash-panel h-100">
+                <div class="d-flex align-items-center gap-3 mb-4">
+                  <div class="incident-icon bg-panel-light text-white">
+                    <i data-lucide="upload"></i>
+                  </div>
+                  <div>
+                    <h5 class="m-0 text-white fw-bold">Upload Log File</h5>
+                    <p class="m-0 text-slate-300 text-sm">
+                      Supported formats: `.txt`, `.log` up to 5 MB. Files are classified immediately after upload.
+                    </p>
+                  </div>
+                </div>
+
+                <form method="post" enctype="multipart/form-data" data-submit-loading>
+                  {% csrf_token %}
+                  <div class="mb-3 analyzer-upload-shell">
+                    <label class="form-label text-slate-300 text-sm fw-medium" for="{{ form.file.id_for_label }}">Log file</label>
+                    {{ form.file }}
+                    {% if form.file.help_text %}
+                    <div class="text-slate-300 text-sm mt-2">{{ form.file.help_text }}</div>
+                    {% endif %}
+                    {% if form.file.errors %}
+                    <div class="text-danger text-sm mt-2">{{ form.file.errors|join:", " }}</div>
+                    {% endif %}
+                  </div>
+                  <div class="utility-action-row">
+                    <button type="submit" class="btn btn-primary-custom" data-loading-button>
+                      <i data-lucide="play-circle" class="me-2 size-sm"></i>
+                      Upload and Analyze
+                    </button>
+                  </div>
+                </form>
+
+                <div class="analyzer-processing-card mt-4">
+                  <div class="d-flex align-items-center gap-2 mb-2">
+                    <i data-lucide="sparkles" class="text-purple size-sm"></i>
+                    <span class="text-white fw-semibold">What happens next</span>
+                  </div>
+                  <p class="text-slate-300 text-sm mb-0">
+                    SiteGuard extracts recurring signatures, assigns a category and severity, and generates deterministic remediation notes ready for reports integration.
+                  </p>
+                </div>
               </div>
             </div>
 
-            <form method="post" enctype="multipart/form-data" data-submit-loading>
-              {% csrf_token %}
-              <div class="mb-3 analyzer-upload-shell">
-                <label class="form-label text-slate-300 text-sm fw-medium" for="{{ form.file.id_for_label }}">Log file</label>
-                {{ form.file }}
-                {% if form.file.help_text %}
-                <div class="text-slate-300 text-sm mt-2">{{ form.file.help_text }}</div>
-                {% endif %}
-                {% if form.file.errors %}
-                <div class="text-danger text-sm mt-2">{{ form.file.errors|join:", " }}</div>
+            <div class="col-xl-5">
+              <div class="dash-panel h-100">
+                <div class="d-flex align-items-center gap-3 mb-4">
+                  <div class="incident-icon bg-panel-light text-white">
+                    <i data-lucide="sparkles"></i>
+                  </div>
+                  <div>
+                    <h5 class="m-0 text-white fw-bold">Operational Insights</h5>
+                    <p class="m-0 text-slate-300 text-sm">Deterministic diagnostics generated from recent analyzer history.</p>
+                  </div>
+                </div>
+
+                <div class="analyzer-insights-list">
+                  {% for insight in workspace_insights %}
+                  <div class="analyzer-insight-card">
+                    <span class="panel-label">{{ insight.title }}</span>
+                    <p class="text-slate-300 text-sm mb-0">{{ insight.body }}</p>
+                  </div>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="row g-4 mb-4">
+            <div class="col-lg-6">
+              <div class="dash-panel h-100">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
+                  <div>
+                    <h5 class="panel-title m-0">Severity Mix</h5>
+                    <p class="panel-subtitle mt-1 m-0">Current analyzer backlog by operational urgency.</p>
+                  </div>
+                </div>
+                {% if workspace_severity_rows %}
+                <div class="utility-chip-wrap">
+                  {% for row in workspace_severity_rows %}
+                  {% if row.count %}
+                  <span class="utility-chip font-mono">{{ row.label }} · {{ row.count }}</span>
+                  {% endif %}
+                  {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state">
+                  <i data-lucide="shield-check"></i>
+                  <h6>No severity data yet</h6>
+                  <p class="text-sm mb-0">Upload a log file to generate error severity analytics.</p>
+                </div>
                 {% endif %}
               </div>
-              <div class="utility-action-row">
-                <button type="submit" class="btn btn-primary-custom" data-loading-button>
-                  <i data-lucide="play-circle" class="me-2 size-sm"></i>
-                  Upload and Analyze
-                </button>
+            </div>
+
+            <div class="col-lg-6">
+              <div class="dash-panel h-100">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
+                  <div>
+                    <h5 class="panel-title m-0">Category Coverage</h5>
+                    <p class="panel-subtitle mt-1 m-0">Subsystems touched by recent analyzer findings.</p>
+                  </div>
+                </div>
+                {% if workspace_category_rows %}
+                <div class="utility-chip-wrap">
+                  {% for row in workspace_category_rows %}
+                  <span class="utility-chip font-mono">{{ row.label }} · {{ row.count }}</span>
+                  {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state">
+                  <i data-lucide="layers-3"></i>
+                  <h6>No category data yet</h6>
+                  <p class="text-sm mb-0">Analyzer categories will appear once parsed errors are stored.</p>
+                </div>
+                {% endif %}
               </div>
-            </form>
+            </div>
+          </div>
+
+          <div class="dash-panel mb-4">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
+              <div>
+                <h5 class="panel-title m-0">Top Recurring Errors</h5>
+                <p class="panel-subtitle mt-1 m-0">Most frequent grouped signatures across your uploaded logs.</p>
+              </div>
+            </div>
+
+            {% if workspace_top_errors %}
+            <div class="analyzer-top-errors-grid">
+              {% for item in workspace_top_errors %}
+              <div class="error-group-card">
+                <div class="d-flex justify-content-between align-items-start gap-2 mb-3 flex-wrap">
+                  <span class="status-badge {{ item.severity_badge_class }}">{{ item.severity_label }}</span>
+                  <span class="status-badge {{ item.category_badge_class }}">{{ item.category_label }}</span>
+                </div>
+                <h6 class="text-white fw-bold mb-2">{{ item.error_type }}</h6>
+                <p class="text-slate-300 text-sm mb-3 analyzer-raw-line">{{ item.raw_line }}</p>
+                <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                  <span class="panel-label">{{ item.line_range_display }}</span>
+                  <span class="utility-chip font-mono">{{ item.count }} occurrences</span>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+              <i data-lucide="file-search"></i>
+              <h6>No recurring errors yet</h6>
+              <p class="text-sm mb-0">Your most common analyzer signatures will appear here after uploads are processed.</p>
+            </div>
+            {% endif %}
           </div>
 
           <div class="dash-panel">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
               <div>
-                <h5 class="panel-title m-0">Recent Uploads</h5>
-                <p class="panel-subtitle mt-1 m-0">Your last processed and pending log files.</p>
+                <h5 class="panel-title m-0">Upload History</h5>
+                <p class="panel-subtitle mt-1 m-0">Processed and pending analyzer files with timestamps and result links.</p>
               </div>
             </div>
 

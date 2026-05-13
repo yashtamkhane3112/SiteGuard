@@ -1,6 +1,6 @@
 import logging
 from datetime import timedelta
-from collections import defaultdict
+from collections import Counter, defaultdict
 from hmac import compare_digest
 from io import StringIO
 
@@ -15,7 +15,7 @@ from django.core.management import call_command
 from django.core.paginator import Paginator
 from django.db import connection
 from django.db.utils import OperationalError, ProgrammingError
-from django.db.models import Avg, Count
+from django.db.models import Avg, Count, Sum
 from django.views.decorators.http import require_GET
 from django.views.decorators.http import require_POST
 from django.utils import timezone
@@ -30,8 +30,8 @@ from .forms import (
     SignUpForm,
     UploadedLogForm,
 )
-from .error_analyzer import process_uploaded_log
-from .models import Alert, Incident, MonitorLog, UploadedLog, Website
+from .error_analyzer import build_upload_analytics, get_error_diagnostics, process_uploaded_log
+from .models import Alert, Incident, MonitorLog, ParsedError, UploadedLog, Website
 from .utils import (
     analyze_domain,
     build_global_search_results,
@@ -384,6 +384,8 @@ def build_reports_context(user, range_key):
         for log in logs[:100]
     ]
 
+    error_analytics = build_error_report_analytics(user, range_start, range_key)
+
     return {
         'selected_range': range_key,
         'range_start': range_start,
@@ -403,34 +405,216 @@ def build_reports_context(user, range_key):
         'distribution_rows': distribution_rows,
         'export_rows': export_rows,
         'has_monitoring_data': bool(logs),
+        'error_analytics': error_analytics,
+    }
+
+
+def _build_upload_timeline(uploaded_logs, range_key):
+    now = timezone.now()
+    if range_key == '24h':
+        labels = [
+            (now - timedelta(hours=offset)).replace(minute=0, second=0, microsecond=0)
+            for offset in range(23, -1, -2)
+        ]
+        counts = {label: 0 for label in labels}
+        for upload in uploaded_logs:
+            bucket = upload.uploaded_at.replace(minute=0, second=0, microsecond=0)
+            aligned_bucket = bucket.replace(hour=bucket.hour - (bucket.hour % 2))
+            if aligned_bucket in counts:
+                counts[aligned_bucket] += 1
+        return {
+            'labels': [label.strftime('%H:%M') for label in labels],
+            'counts': [counts[label] for label in labels],
+        }
+
+    days = 30 if range_key == '30d' else 7
+    start_day = (now - timedelta(days=days - 1)).date()
+    labels = [start_day + timedelta(days=index) for index in range(days)]
+    counts = {label: 0 for label in labels}
+    for upload in uploaded_logs:
+        bucket = upload.uploaded_at.date()
+        if bucket in counts:
+            counts[bucket] += 1
+    return {
+        'labels': [label.strftime('%b %d') for label in labels],
+        'counts': [counts[label] for label in labels],
+    }
+
+
+def _build_error_insights(parsed_errors, uploads, previous_error_total=0):
+    insights = []
+    total_occurrences = sum(item.count for item in parsed_errors)
+    if not parsed_errors:
+        return [{
+            'title': 'No recent analyzer issues',
+            'body': 'Recent uploads did not produce classified error patterns in the selected range.',
+        }]
+
+    most_common_error = max(parsed_errors, key=lambda item: item.count)
+    insights.append({
+        'title': 'Most recurring issue',
+        'body': f"{most_common_error.error_type} is the dominant pattern with {most_common_error.count} occurrence{'s' if most_common_error.count != 1 else ''}.",
+    })
+
+    dominant_category = Counter(item.category for item in parsed_errors).most_common(1)[0][0]
+    dominant_category_label = dict(ParsedError.CATEGORY_CHOICES).get(dominant_category, 'Unknown')
+    insights.append({
+        'title': 'Primary failure domain',
+        'body': f"{dominant_category_label}-related errors account for most of the recent analyzer activity.",
+    })
+
+    critical_count = sum(item.count for item in parsed_errors if item.severity == ParsedError.SEVERITY_CRITICAL)
+    if critical_count:
+        insights.append({
+            'title': 'Critical issue pressure',
+            'body': f"{critical_count} critical-severity occurrence{'s were' if critical_count != 1 else ' was'} detected across the analyzed uploads.",
+        })
+
+    if previous_error_total:
+        delta = total_occurrences - previous_error_total
+        if delta != 0:
+            direction = 'increased' if delta > 0 else 'decreased'
+            pct = round((abs(delta) / previous_error_total) * 100) if previous_error_total else 0
+            insights.append({
+                'title': 'Trend against previous window',
+                'body': f"Detected error volume {direction} by {pct}% compared with the previous matching period.",
+            })
+
+    if uploads:
+        busiest_upload = max(uploads, key=lambda upload: upload.parsed_errors.count())
+        if busiest_upload.parsed_errors.exists():
+            insights.append({
+                'title': 'Noisiest upload',
+                'body': f"{busiest_upload.filename} contributed the highest error volume in the current range.",
+            })
+
+    return insights[:4]
+
+
+def build_error_report_analytics(user, range_start, range_key):
+    uploads = list(
+        UploadedLog.objects.filter(user=user, uploaded_at__gte=range_start)
+        .prefetch_related('parsed_errors')
+        .order_by('-uploaded_at', '-id')
+    )
+    parsed_errors = list(
+        ParsedError.objects.filter(uploaded_log__user=user, uploaded_log__uploaded_at__gte=range_start)
+        .select_related('uploaded_log')
+        .order_by('-count', 'first_seen_line', 'id')
+    )
+
+    previous_window_start = range_start - (timezone.now() - range_start)
+    previous_error_total = ParsedError.objects.filter(
+        uploaded_log__user=user,
+        uploaded_log__uploaded_at__gte=previous_window_start,
+        uploaded_log__uploaded_at__lt=range_start,
+    ).aggregate(total=Sum('count'))['total'] or 0
+
+    severity_rows = [
+        {
+            'key': severity_key,
+            'label': severity_label,
+            'count': sum(item.count for item in parsed_errors if item.severity == severity_key),
+        }
+        for severity_key, severity_label in ParsedError.SEVERITY_CHOICES
+    ]
+    category_rows = [
+        {
+            'key': category_key,
+            'label': category_label,
+            'count': sum(item.count for item in parsed_errors if item.category == category_key),
+        }
+        for category_key, category_label in ParsedError.CATEGORY_CHOICES
+    ]
+    recurring_rows = []
+    aggregated_recurring = defaultdict(int)
+    for item in parsed_errors:
+        aggregated_recurring[item.error_type] += item.count
+    for error_type, total_count in sorted(aggregated_recurring.items(), key=lambda pair: (-pair[1], pair[0].lower()))[:5]:
+        recurring_rows.append({'label': error_type, 'count': total_count})
+
+    top_errors = parsed_errors[:5]
+    upload_timeline = _build_upload_timeline(uploads, range_key)
+    total_occurrences = sum(item.count for item in parsed_errors)
+
+    return {
+        'has_data': bool(parsed_errors),
+        'uploads_count': len(uploads),
+        'error_groups_count': len(parsed_errors),
+        'total_occurrences': total_occurrences,
+        'severity_rows': severity_rows,
+        'category_rows': [row for row in category_rows if row['count']],
+        'recurring_rows': recurring_rows,
+        'top_errors': top_errors,
+        'upload_timeline': upload_timeline,
+        'insights': _build_error_insights(parsed_errors, uploads, previous_error_total=previous_error_total),
     }
 
 
 def build_error_analyzer_summary(uploaded_log):
-    parsed_errors = list(
-        uploaded_log.parsed_errors.all().order_by('-count', 'first_seen_line', 'id')
-    )
-    total_detected_errors = sum(item.count for item in parsed_errors)
-    recurring_errors = [item for item in parsed_errors if item.count > 1]
-    most_common_error = parsed_errors[0] if parsed_errors else None
-
-    grouped_results = []
-    grouped_totals = {}
+    analytics = build_upload_analytics(uploaded_log)
+    parsed_errors = analytics['parsed_errors']
+    severity_counts = Counter(item.severity for item in parsed_errors)
+    category_counts = Counter(item.category for item in parsed_errors)
+    severity_rows = [
+        {
+            'key': severity_key,
+            'label': severity_label,
+            'count': severity_counts.get(severity_key, 0),
+        }
+        for severity_key, severity_label in ParsedError.SEVERITY_CHOICES
+    ]
+    category_rows = [
+        {
+            'key': category_key,
+            'label': category_label,
+            'count': category_counts.get(category_key, 0),
+        }
+        for category_key, category_label in ParsedError.CATEGORY_CHOICES
+        if category_counts.get(category_key, 0)
+    ]
     for item in parsed_errors:
-        grouped_totals[item.error_type] = grouped_totals.get(item.error_type, 0) + item.count
+        diagnostics = get_error_diagnostics(item)
+        item.probable_cause = diagnostics['probable_cause']
+        item.suggested_checks = diagnostics['suggested_checks']
+        item.remediation_tips = diagnostics['remediation_tips']
 
-    for error_type, total_count in sorted(grouped_totals.items(), key=lambda pair: (-pair[1], pair[0].lower())):
-        grouped_results.append({
-            'error_type': error_type,
-            'total_count': total_count,
-        })
+    analytics['severity_rows'] = severity_rows
+    analytics['category_rows'] = category_rows
+    analytics['insights'] = _build_error_insights(parsed_errors, [uploaded_log])
+    return analytics
+
+
+def build_error_analyzer_workspace_summary(user):
+    uploads_qs = UploadedLog.objects.filter(user=user).prefetch_related('parsed_errors').order_by('-uploaded_at', '-id')
+    recent_uploads = list(uploads_qs[:10])
+    all_parsed_errors = list(
+        ParsedError.objects.filter(uploaded_log__user=user).select_related('uploaded_log').order_by('-count', 'first_seen_line', 'id')
+    )
+    total_uploads = uploads_qs.count()
+    processed_uploads = uploads_qs.filter(processed=True).count()
+    total_occurrences = sum(item.count for item in all_parsed_errors)
+    top_errors = sorted(all_parsed_errors, key=lambda item: (-item.count, item.error_type))[:5]
+    severity_counter = Counter(item.severity for item in all_parsed_errors)
+    category_counter = Counter(item.category for item in all_parsed_errors)
 
     return {
-        'parsed_errors': parsed_errors,
-        'total_detected_errors': total_detected_errors,
-        'recurring_errors_count': len(recurring_errors),
-        'most_common_error': most_common_error,
-        'grouped_results': grouped_results,
+        'recent_uploads': recent_uploads,
+        'workspace_upload_count': UploadedLog.objects.filter(user=user).count(),
+        'workspace_processed_count': processed_uploads,
+        'workspace_total_occurrences': total_occurrences,
+        'workspace_error_groups': ParsedError.objects.filter(uploaded_log__user=user).count(),
+        'workspace_top_errors': top_errors,
+        'workspace_severity_rows': [
+            {'key': key, 'label': label, 'count': severity_counter.get(key, 0)}
+            for key, label in ParsedError.SEVERITY_CHOICES
+        ],
+        'workspace_category_rows': [
+            {'key': key, 'label': label, 'count': category_counter.get(key, 0)}
+            for key, label in ParsedError.CATEGORY_CHOICES
+            if category_counter.get(key, 0)
+        ],
+        'workspace_insights': _build_error_insights(all_parsed_errors, recent_uploads),
     }
 
 
@@ -709,8 +893,6 @@ def reports(request):
 
 @login_required
 def error_log_upload(request):
-    recent_uploads = UploadedLog.objects.filter(user=request.user).order_by('-uploaded_at', '-id')[:10]
-
     if request.method == 'POST':
         form = UploadedLogForm(request.POST, request.FILES)
         if form.is_valid():
@@ -726,9 +908,10 @@ def error_log_upload(request):
     else:
         form = UploadedLogForm()
 
+    workspace_summary = build_error_analyzer_workspace_summary(request.user)
     context = {
         'form': form,
-        'recent_uploads': recent_uploads,
+        **workspace_summary,
     }
     return render(request, 'monitor/error_log_upload.html', context)
 
@@ -742,10 +925,12 @@ def error_log_results(request, upload_id):
     )
     summary = build_error_analyzer_summary(uploaded_log)
     recent_uploads = UploadedLog.objects.filter(user=request.user).exclude(id=uploaded_log.id).order_by('-uploaded_at', '-id')[:8]
+    workspace_summary = build_error_analyzer_workspace_summary(request.user)
 
     context = {
         'uploaded_log': uploaded_log,
         'recent_uploads': recent_uploads,
+        'workspace_insights': workspace_summary['workspace_insights'],
         **summary,
     }
     return render(request, 'monitor/error_log_results.html', context)

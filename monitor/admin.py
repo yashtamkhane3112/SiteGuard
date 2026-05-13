@@ -78,7 +78,7 @@ class UploadedLogAdmin(admin.ModelAdmin):
 
 @admin.register(ParsedError)
 class ParsedErrorAdmin(admin.ModelAdmin):
-    list_display = ['error_type', 'uploaded_log', 'count', 'first_seen_line']
-    list_filter = ['error_type']
+    list_display = ['error_type', 'category', 'severity', 'uploaded_log', 'count', 'first_seen_line', 'last_seen_line']
+    list_filter = ['category', 'severity', 'error_type']
     search_fields = ['error_type', 'raw_line', 'uploaded_log__filename']
     raw_id_fields = ['uploaded_log']

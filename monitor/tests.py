@@ -13,6 +13,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from monitor.error_analyzer import parse_log_content
 from monitor.models import Alert, Incident, IncidentEvent, MonitorLog, Notification, ParsedError, UploadedLog, UserProfile, Website
 from monitor.utils import (
     analyze_domain,
@@ -146,6 +147,89 @@ class AdminStabilityTests(TestCase):
         self.assertEqual(parsed_error_response.status_code, 200)
         self.assertContains(alert_response, "example.com")
         self.assertContains(parsed_error_response, "ValueError")
+
+
+class ErrorAnalyzerTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="analyzer-user",
+            password="StrongPass123!",
+        )
+        self.client.login(username="analyzer-user", password="StrongPass123!")
+
+    def test_parse_log_content_classifies_category_severity_and_line_ranges(self):
+        parsed = parse_log_content(
+            "\n".join([
+                "Traceback (most recent call last):",
+                '  File "app.py", line 10, in <module>',
+                "django.db.utils.OperationalError: database is locked",
+                "GET /missing 404",
+                "Request timeout reached while calling upstream service",
+            ])
+        )
+
+        first_error = parsed["parsed_errors"][0]
+        self.assertEqual(first_error["category"], ParsedError.CATEGORY_DATABASE)
+        self.assertEqual(first_error["severity"], ParsedError.SEVERITY_CRITICAL)
+        self.assertEqual(first_error["first_seen_line"], 1)
+        self.assertEqual(first_error["last_seen_line"], 3)
+        self.assertTrue(any(item["category"] == ParsedError.CATEGORY_HTTP for item in parsed["parsed_errors"]))
+        self.assertTrue(any(item["category"] == ParsedError.CATEGORY_TIMEOUT for item in parsed["parsed_errors"]))
+
+    def test_error_analyzer_results_show_classification_and_guidance(self):
+        uploaded_log = UploadedLog.objects.create(
+            user=self.user,
+            filename="server.log",
+            file=SimpleUploadedFile(
+                "server.log",
+                b"Traceback (most recent call last):\ndjango.db.utils.OperationalError: database is locked\n",
+                content_type="text/plain",
+            ),
+            processed=True,
+        )
+        ParsedError.objects.create(
+            uploaded_log=uploaded_log,
+            error_type="OperationalError",
+            raw_line="django.db.utils.OperationalError: database is locked",
+            count=3,
+            first_seen_line=1,
+            last_seen_line=2,
+            category=ParsedError.CATEGORY_DATABASE,
+            severity=ParsedError.SEVERITY_CRITICAL,
+        )
+
+        response = self.client.get(reverse("error_log_results", args=[uploaded_log.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Database")
+        self.assertContains(response, "Critical")
+        self.assertContains(response, "Probable Cause")
+        self.assertContains(response, "Run pending migrations")
+
+    def test_reports_view_includes_error_analytics_section(self):
+        uploaded_log = UploadedLog.objects.create(
+            user=self.user,
+            filename="nginx.log",
+            file=SimpleUploadedFile("nginx.log", b"404 route missing", content_type="text/plain"),
+            processed=True,
+        )
+        ParsedError.objects.create(
+            uploaded_log=uploaded_log,
+            error_type="HTTP 404",
+            raw_line="404 route missing",
+            count=2,
+            first_seen_line=5,
+            last_seen_line=5,
+            category=ParsedError.CATEGORY_HTTP,
+            severity=ParsedError.SEVERITY_LOW,
+        )
+
+        response = self.client.get(reverse("reports"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["error_analytics"]["has_data"])
+        self.assertContains(response, "Error Analytics")
+        self.assertContains(response, "HTTP 404")
 
 
 class MonitorEmailAlertTests(TestCase):

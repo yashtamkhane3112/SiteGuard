@@ -23,45 +23,106 @@
       <main class="main-content">
         {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search error signatures, uploads, incidents..." %}
 
-        <div class="content-wrapper" style="max-width: 1180px">
+        <div class="content-wrapper" style="max-width: 1240px">
           <div class="d-flex align-items-start justify-content-between flex-wrap gap-3 mb-4">
             <div>
               <h2 class="page-title text-white">Error Analyzer Results</h2>
               <p class="page-subtitle text-slate-300">
-                Parsed results for <span class="font-mono text-white">{{ uploaded_log.filename }}</span> uploaded on {{ uploaded_log.uploaded_at|date:"Y-m-d H:i" }}.
+                Parsed results for <span class="font-mono text-white">{{ uploaded_log.filename }}</span>.
+                Uploaded {{ uploaded_log.uploaded_at|date:"Y-m-d H:i" }} and processed synchronously for grouped diagnostics.
               </p>
             </div>
-            <a href="{% url 'error_log_upload' %}" class="btn btn-outline-dark-custom">
-              <i data-lucide="upload" class="me-2 size-sm"></i>
-              Upload Another File
-            </a>
+            <div class="utility-action-row">
+              <a href="{% url 'error_log_upload' %}" class="btn btn-outline-dark-custom">
+                <i data-lucide="upload" class="me-2 size-sm"></i>
+                Upload Another File
+              </a>
+            </div>
           </div>
 
-          <div class="dash-panel mb-4">
-            <div class="stats-grid">
-              <div class="stat-card">
-                <span class="panel-label">Total Detected Errors</span>
-                <span class="stat-value">{{ total_detected_errors }}</span>
-                <span class="stat-subtext text-light opacity-75">All matched occurrences in this file</span>
+          <div class="stats-grid mb-4">
+            <div class="stat-card analyzer-stat-card">
+              <span class="panel-label">Detected Occurrences</span>
+              <span class="stat-value">{{ total_detected_errors }}</span>
+              <span class="stat-subtext text-light opacity-75">All grouped matches found in this upload</span>
+            </div>
+            <div class="stat-card analyzer-stat-card">
+              <span class="panel-label">Recurring Error Groups</span>
+              <span class="stat-value">{{ recurring_errors_count }}</span>
+              <span class="stat-subtext text-light opacity-75">Signatures seen more than once</span>
+            </div>
+            <div class="stat-card analyzer-stat-card">
+              <span class="panel-label">Most Common Error</span>
+              <span class="stat-value analyzer-stat-text">{% if most_common_error %}{{ most_common_error.error_type }}{% else %}None{% endif %}</span>
+              <span class="stat-subtext text-light opacity-75">
+                {% if most_common_error %}{{ most_common_error.count }} occurrence{{ most_common_error.count|pluralize }}{% else %}No patterns detected{% endif %}
+              </span>
+            </div>
+            <div class="stat-card analyzer-stat-card">
+              <span class="panel-label">Affected Line Spans</span>
+              <span class="stat-value">{{ line_span_count }}</span>
+              <span class="stat-subtext text-light opacity-75">Distinct file ranges tied to grouped errors</span>
+            </div>
+          </div>
+
+          <div class="row g-4 mb-4">
+            <div class="col-xl-8">
+              <div class="dash-panel h-100">
+                <div class="d-flex align-items-center gap-3 mb-4">
+                  <div class="incident-icon bg-panel-light text-white">
+                    <i data-lucide="bar-chart-3"></i>
+                  </div>
+                  <div>
+                    <h5 class="m-0 text-white fw-bold">Parsing Summary</h5>
+                    <p class="m-0 text-slate-300 text-sm">Severity and category breakdown for this upload.</p>
+                  </div>
+                </div>
+                <div class="row g-3">
+                  <div class="col-lg-6">
+                    <div class="analyzer-mini-panel h-100">
+                      <span class="panel-label d-block mb-3">Severity</span>
+                      <div class="utility-chip-wrap">
+                        {% for row in severity_rows %}
+                        {% if row.count %}
+                        <span class="utility-chip font-mono">{{ row.label }} · {{ row.count }}</span>
+                        {% endif %}
+                        {% endfor %}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-lg-6">
+                    <div class="analyzer-mini-panel h-100">
+                      <span class="panel-label d-block mb-3">Categories</span>
+                      <div class="utility-chip-wrap">
+                        {% for row in category_rows %}
+                        <span class="utility-chip font-mono">{{ row.label }} · {{ row.count }}</span>
+                        {% endfor %}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div class="stat-card">
-                <span class="panel-label">Recurring Errors</span>
-                <span class="stat-value">{{ recurring_errors_count }}</span>
-                <span class="stat-subtext text-light opacity-75">Unique groups with more than one hit</span>
-              </div>
-              <div class="stat-card">
-                <span class="panel-label">Most Common Error</span>
-                <span class="stat-value" style="font-size: 1.1rem">
-                  {% if most_common_error %}{{ most_common_error.error_type }}{% else %}None{% endif %}
-                </span>
-                <span class="stat-subtext text-light opacity-75">
-                  {% if most_common_error %}{{ most_common_error.count }} occurrence{{ most_common_error.count|pluralize }}{% else %}No patterns detected{% endif %}
-                </span>
-              </div>
-              <div class="stat-card">
-                <span class="panel-label">Groups Found</span>
-                <span class="stat-value">{{ parsed_errors|length }}</span>
-                <span class="stat-subtext text-light opacity-75">Distinct normalized signatures</span>
+            </div>
+
+            <div class="col-xl-4">
+              <div class="dash-panel h-100">
+                <div class="d-flex align-items-center gap-3 mb-4">
+                  <div class="incident-icon bg-panel-light text-white">
+                    <i data-lucide="sparkles"></i>
+                  </div>
+                  <div>
+                    <h5 class="m-0 text-white fw-bold">Diagnostics Insights</h5>
+                    <p class="m-0 text-slate-300 text-sm">Deterministic observations generated from this analyzer run.</p>
+                  </div>
+                </div>
+                <div class="analyzer-insights-list">
+                  {% for insight in insights %}
+                  <div class="analyzer-insight-card">
+                    <span class="panel-label">{{ insight.title }}</span>
+                    <p class="text-slate-300 text-sm mb-0">{{ insight.body }}</p>
+                  </div>
+                  {% endfor %}
+                </div>
               </div>
             </div>
           </div>
@@ -72,8 +133,8 @@
                 <i data-lucide="layers-3"></i>
               </div>
               <div>
-                <h5 class="m-0 text-white fw-bold">Grouped Results</h5>
-                <p class="m-0 text-slate-300 text-sm">Top error families detected in the uploaded file.</p>
+                <h5 class="m-0 text-white fw-bold">Grouped Recurring Errors</h5>
+                <p class="m-0 text-slate-300 text-sm">Grouped by normalized error type with dominant category and severity.</p>
               </div>
             </div>
 
@@ -81,24 +142,74 @@
             <div class="error-group-grid">
               {% for group in grouped_results %}
               <div class="error-group-card">
-                <span class="panel-label">{{ group.error_type }}</span>
+                <div class="d-flex justify-content-between align-items-start gap-2 mb-3 flex-wrap">
+                  <span class="status-badge {% if group.severity == 'critical' %}badge-down{% elif group.severity == 'high' %}badge-slow{% elif group.severity == 'medium' %}badge-purple{% else %}badge-up{% endif %}">
+                    {{ group.severity|upper }}
+                  </span>
+                  <span class="status-badge {% if group.category == 'database' or group.category == 'django' %}badge-purple{% elif group.category == 'network' or group.category == 'security' %}badge-down{% elif group.category == 'authentication' or group.category == 'timeout' %}badge-slow{% else %}badge-up{% endif %}">
+                    {{ group.category|title }}
+                  </span>
+                </div>
+                <span class="panel-label d-block mb-2">{{ group.error_type }}</span>
                 <div class="d-flex align-items-end justify-content-between gap-3">
                   <strong class="error-group-count">{{ group.total_count }}</strong>
-                  <span class="status-badge badge-slow">Occurrences</span>
+                  <span class="utility-chip font-mono">Occurrences</span>
                 </div>
               </div>
-              {% endfor %}
-            </div>
-            <div class="utility-chip-wrap mt-3">
-              {% for group in grouped_results %}
-              <span class="utility-chip font-mono">{{ group.error_type }} · {{ group.total_count }}</span>
               {% endfor %}
             </div>
             {% else %}
             <div class="empty-state">
               <i data-lucide="shield-check"></i>
               <h6>No error patterns detected</h6>
-              <p class="text-sm mb-0">This file did not match the current MVP error signatures.</p>
+              <p class="text-sm mb-0">This file did not match the current analyzer signatures.</p>
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="dash-panel mb-4">
+            <div class="d-flex align-items-center gap-3 mb-4">
+              <div class="incident-icon bg-panel-light text-white">
+                <i data-lucide="flame"></i>
+              </div>
+              <div>
+                <h5 class="m-0 text-white fw-bold">Top Recurring Errors</h5>
+                <p class="m-0 text-slate-300 text-sm">Highest-frequency signatures with probable causes and suggested checks.</p>
+              </div>
+            </div>
+
+            {% if top_recurring_errors %}
+            <div class="analyzer-top-errors-grid">
+              {% for item in top_recurring_errors %}
+              <div class="error-group-card">
+                <div class="d-flex justify-content-between align-items-start gap-2 mb-3 flex-wrap">
+                  <span class="status-badge {{ item.severity_badge_class }}">{{ item.severity_label }}</span>
+                  <span class="status-badge {{ item.category_badge_class }}">{{ item.category_label }}</span>
+                </div>
+                <h6 class="text-white fw-bold mb-2">{{ item.error_type }}</h6>
+                <p class="text-slate-300 text-sm mb-3 analyzer-raw-line">{{ item.raw_line }}</p>
+                <div class="utility-kv-list analyzer-kv-tight">
+                  <div class="utility-kv-row">
+                    <span>Line Range</span>
+                    <span class="font-mono">{{ item.line_range_display }}</span>
+                  </div>
+                  <div class="utility-kv-row">
+                    <span>Occurrences</span>
+                    <span>{{ item.count }}</span>
+                  </div>
+                  <div class="utility-kv-row utility-kv-row-full">
+                    <span>Probable Cause</span>
+                    <span>{{ item.probable_cause }}</span>
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+              <i data-lucide="flame"></i>
+              <h6>No recurring errors yet</h6>
+              <p class="text-sm mb-0">Recurring signatures will appear here when the same failure pattern repeats.</p>
             </div>
             {% endif %}
           </div>
@@ -110,32 +221,60 @@
               </div>
               <div>
                 <h5 class="m-0 text-white fw-bold">Detected Error Lines</h5>
-                <p class="m-0 text-slate-300 text-sm">Grouped by normalized signature and sorted by recurrence count.</p>
+                <p class="m-0 text-slate-300 text-sm">Each grouped signature with line spans, classification, and deterministic remediation notes.</p>
               </div>
             </div>
 
             {% if parsed_errors %}
-            <div class="table-responsive">
-              <table class="table custom-table">
-                <thead>
-                  <tr>
-                    <th>Error Type</th>
-                    <th>Count</th>
-                    <th>First Seen</th>
-                    <th>Raw Line</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for item in parsed_errors %}
-                  <tr>
-                    <td><span class="status-badge badge-slow">{{ item.error_type }}</span></td>
-                    <td class="text-light fw-semibold">{{ item.count }}</td>
-                    <td class="text-light opacity-75">Line {{ item.first_seen_line }}</td>
-                    <td class="font-mono text-light analyzer-raw-line">{{ item.raw_line }}</td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
+            <div class="analyzer-results-list">
+              {% for item in parsed_errors %}
+              <div class="analyzer-result-card">
+                <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+                  <div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+                      <span class="status-badge {{ item.severity_badge_class }}">{{ item.severity_label }}</span>
+                      <span class="status-badge {{ item.category_badge_class }}">{{ item.category_label }}</span>
+                      <span class="utility-chip font-mono">{{ item.line_range_display }}</span>
+                    </div>
+                    <h6 class="text-white fw-bold mb-1">{{ item.error_type }}</h6>
+                    <p class="text-slate-300 text-sm mb-0 analyzer-raw-line">{{ item.raw_line }}</p>
+                  </div>
+                  <div class="text-end analyzer-result-meta">
+                    <div class="error-group-count analyzer-count-sm">{{ item.count }}</div>
+                    <div class="panel-label">Occurrences</div>
+                  </div>
+                </div>
+
+                <div class="row g-3">
+                  <div class="col-lg-4">
+                    <div class="analyzer-mini-panel h-100">
+                      <span class="panel-label d-block mb-2">Probable Cause</span>
+                      <p class="text-slate-300 text-sm mb-0">{{ item.probable_cause }}</p>
+                    </div>
+                  </div>
+                  <div class="col-lg-4">
+                    <div class="analyzer-mini-panel h-100">
+                      <span class="panel-label d-block mb-2">Suggested Checks</span>
+                      <ul class="analyzer-list mb-0">
+                        {% for tip in item.suggested_checks %}
+                        <li>{{ tip }}</li>
+                        {% endfor %}
+                      </ul>
+                    </div>
+                  </div>
+                  <div class="col-lg-4">
+                    <div class="analyzer-mini-panel h-100">
+                      <span class="panel-label d-block mb-2">Remediation Tips</span>
+                      <ul class="analyzer-list mb-0">
+                        {% for tip in item.remediation_tips %}
+                        <li>{{ tip }}</li>
+                        {% endfor %}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
             </div>
             {% else %}
             <div class="empty-state">
@@ -149,22 +288,36 @@
           <div class="dash-panel">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
               <div>
-                <h5 class="panel-title m-0">Other Uploads</h5>
-                <p class="panel-subtitle mt-1 m-0">Jump back to previous analyses.</p>
+                <h5 class="panel-title m-0">Upload History</h5>
+                <p class="panel-subtitle mt-1 m-0">Jump back to previous analyses and compare recurring signatures.</p>
               </div>
             </div>
 
-            {% if recent_uploads %}
-            <div class="utility-chip-wrap">
-              {% for upload in recent_uploads %}
-              <a href="{% url 'error_log_results' upload.id %}" class="utility-chip font-mono text-decoration-none">
-                {{ upload.filename }}
-              </a>
-              {% endfor %}
+            <div class="row g-3">
+              <div class="col-xl-8">
+                {% if recent_uploads %}
+                <div class="utility-chip-wrap">
+                  {% for upload in recent_uploads %}
+                  <a href="{% url 'error_log_results' upload.id %}" class="utility-chip font-mono text-decoration-none">
+                    {{ upload.filename }} · {{ upload.uploaded_at|date:"M d H:i" }}
+                  </a>
+                  {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-slate-300 text-sm">No other uploads yet.</div>
+                {% endif %}
+              </div>
+              <div class="col-xl-4">
+                <div class="analyzer-mini-panel h-100">
+                  <span class="panel-label d-block mb-2">Workspace Insight</span>
+                  {% if workspace_insights %}
+                  <p class="text-slate-300 text-sm mb-0">{{ workspace_insights.0.body }}</p>
+                  {% else %}
+                  <p class="text-slate-300 text-sm mb-0">Workspace-level analyzer insights will appear as more logs are uploaded.</p>
+                  {% endif %}
+                </div>
+              </div>
             </div>
-            {% else %}
-            <div class="text-slate-300 text-sm">No other uploads yet.</div>
-            {% endif %}
           </div>
         </div>
       </main>
