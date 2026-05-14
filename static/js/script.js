@@ -514,12 +514,20 @@ document.querySelectorAll('.incident-header[role="button"]').forEach((header) =>
     if (header.dataset.incidentBound !== 'true') {
         header.dataset.incidentBound = 'true';
         header.addEventListener('click', () => toggleIncident(header));
+        header.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                toggleIncident(header);
+            }
+        });
     }
-    header.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            toggleIncident(header);
-        }
+});
+
+document.querySelectorAll('[data-stop-propagation]').forEach((element) => {
+    if (element.dataset.stopPropagationBound === 'true') return;
+    element.dataset.stopPropagationBound = 'true';
+    element.addEventListener('click', (event) => {
+        event.stopPropagation();
     });
 });
 

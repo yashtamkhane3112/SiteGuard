@@ -134,7 +134,7 @@
                   <div class="utility-chip-wrap">
                     {% for row in severity_rows %}
                     {% if row.count %}
-                    <span class="utility-chip font-mono analyzer-chip analyzer-chip-{{ row.key }}">{{ row.label }} · {{ row.count }}</span>
+                    <span class="utility-chip font-mono analyzer-chip analyzer-chip-{{ row.key }}">{{ row.label }} - {{ row.count }}</span>
                     {% endif %}
                     {% endfor %}
                   </div>
@@ -145,7 +145,7 @@
                   <span class="panel-label d-block mb-3">Categories</span>
                   <div class="utility-chip-wrap">
                     {% for row in category_rows %}
-                    <span class="utility-chip font-mono analyzer-chip">{{ row.label }} · {{ row.count }}</span>
+                    <span class="utility-chip font-mono analyzer-chip">{{ row.label }} - {{ row.count }}</span>
                     {% endfor %}
                   </div>
                 </div>
@@ -311,6 +311,11 @@
                     <div>
                       <h6 class="text-white fw-bold mb-1">{{ group.item.error_type }}</h6>
                       <p class="text-slate-300 text-sm mb-0 analyzer-raw-line">{{ group.item.raw_line }}</p>
+                      <div class="analyzer-investigation-meta">
+                        <span>First seen {{ group.first_seen_label }}</span>
+                        <span>Last seen {{ group.last_seen_label }}</span>
+                        <span>{{ group.related_occurrence_count }} related occurrence{{ group.related_occurrence_count|pluralize }}</span>
+                      </div>
                     </div>
                     <i data-lucide="chevron-down" class="analyzer-chevron"></i>
                   </div>
@@ -355,6 +360,12 @@
                         </div>
                       </div>
                     </div>
+                  </div>
+
+                  <div class="analyzer-investigation-strip">
+                    <span class="utility-chip font-mono">First seen {{ group.first_seen_label }}</span>
+                    <span class="utility-chip font-mono">Last seen {{ group.last_seen_label }}</span>
+                    <span class="utility-chip font-mono">Impact {{ group.operational_impact }}</span>
                   </div>
 
                   <div class="row g-3 mb-3">
@@ -502,7 +513,7 @@
                 <div class="utility-chip-wrap">
                   {% for upload in recent_uploads %}
                   <a href="{% url 'error_log_results' upload.id %}" class="utility-chip font-mono text-decoration-none">
-                    {{ upload.filename }} · {{ upload.uploaded_at|date:"M d H:i" }}
+                    {{ upload.filename }} - {{ upload.uploaded_at|date:"M d H:i" }}
                   </a>
                   {% endfor %}
                 </div>

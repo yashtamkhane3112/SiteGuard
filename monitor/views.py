@@ -1037,6 +1037,8 @@ def _build_investigation_workspace(uploaded_log, parsed_errors):
                 affected_services.append(service)
         all_next_actions.extend(diagnostics['suggested_checks'][:2])
         confidence_key = _confidence_for_error(item)
+        first_seen_label = occurrences[0]['timestamp'] if occurrences else f"Line {item.first_seen_line}"
+        last_seen_label = occurrences[-1]['timestamp'] if occurrences else f"Line {item.last_seen_line}"
         investigation_groups.append({
             'id': f"error-group-{index}",
             'item': item,
@@ -1046,6 +1048,8 @@ def _build_investigation_workspace(uploaded_log, parsed_errors):
             'confidence_key': confidence_key,
             'confidence_label': CONFIDENCE_COPY[confidence_key],
             'operational_impact': _operational_impact_for_error(item),
+            'first_seen_label': first_seen_label,
+            'last_seen_label': last_seen_label,
             'traceback_text': traceback_text or item.raw_line,
             'traceback_preview': traceback_text.splitlines()[:4],
             'default_open': index == 0,

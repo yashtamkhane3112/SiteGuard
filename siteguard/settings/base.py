@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 from decouple import Csv, config
 
@@ -32,6 +33,12 @@ if render_hostname:
     render_origin = f"https://{render_hostname}"
     if render_origin not in csrf_trusted_origins:
         csrf_trusted_origins.append(render_origin)
+app_base_url = config("APP_BASE_URL", default="").rstrip("/")
+if app_base_url:
+    parsed_app_base = urlparse(app_base_url)
+    app_origin = f"{parsed_app_base.scheme}://{parsed_app_base.netloc}" if parsed_app_base.scheme and parsed_app_base.netloc else ""
+    if app_origin and app_origin not in csrf_trusted_origins:
+        csrf_trusted_origins.append(app_origin)
 CSRF_TRUSTED_ORIGINS = csrf_trusted_origins
 
 INSTALLED_APPS = [
@@ -156,7 +163,7 @@ APPEND_SLASH = True
 
 BOOTSTRAP_ADMIN_ENABLED = config("BOOTSTRAP_ADMIN_ENABLED", default=DEBUG, cast=bool)
 CRON_SECRET = config("CRON_SECRET", default="")
-APP_BASE_URL = config("APP_BASE_URL", default="").rstrip("/")
+APP_BASE_URL = app_base_url
 
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")
 DJANGO_LOG_LEVEL = config("DJANGO_LOG_LEVEL", default="INFO")

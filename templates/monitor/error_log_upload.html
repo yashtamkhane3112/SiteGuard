@@ -149,7 +149,7 @@
                 <div class="utility-chip-wrap">
                   {% for row in workspace_severity_rows %}
                   {% if row.count %}
-                  <span class="utility-chip font-mono">{{ row.label }} · {{ row.count }}</span>
+                  <span class="utility-chip font-mono">{{ row.label }} - {{ row.count }}</span>
                   {% endif %}
                   {% endfor %}
                 </div>
@@ -174,7 +174,7 @@
                 {% if workspace_category_rows %}
                 <div class="utility-chip-wrap">
                   {% for row in workspace_category_rows %}
-                  <span class="utility-chip font-mono">{{ row.label }} · {{ row.count }}</span>
+                  <span class="utility-chip font-mono">{{ row.label }} - {{ row.count }}</span>
                   {% endfor %}
                 </div>
                 {% else %}

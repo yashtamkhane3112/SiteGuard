@@ -104,7 +104,7 @@
           </section>
 
           <section class="dash-panel alert-ops-panel alert-stream-panel p-0 overflow-hidden">
-                <div class="alert-panel-head">
+                <div class="alert-panel-head alert-panel-head-collapsible">
                   <div class="d-flex align-items-center gap-3">
                     <div class="incident-icon bg-active-light text-active">
                       <i data-lucide="bell-ring"></i>
@@ -116,9 +116,22 @@
                       </p>
                     </div>
                   </div>
+                  <div class="alert-stream-head-actions">
+                    <span class="utility-chip font-mono">{{ active_alerts }} active / {{ failed_alerts }} failed</span>
+                    <button
+                      type="button"
+                      class="btn btn-outline-dark-custom btn-sm"
+                      id="alertStreamToggle"
+                      aria-expanded="true"
+                      aria-controls="alertStreamBody"
+                    >
+                      <i data-lucide="panel-top-close" class="me-2 size-sm"></i>
+                      Collapse Stream
+                    </button>
+                  </div>
                 </div>
 
-                <div class="alert-stream-body">
+                <div class="alert-stream-body" id="alertStreamBody">
                   <div class="alert-stream-list incidents-container">
                     {% for alert in alerts %}
                     <article class="incident-card alert-incident-card alert-incident-card-ops {% if not alert.is_read %}alert-incident-card-unread{% else %}alert-incident-card-read{% endif %}" data-status="{{ alert.filter_key }}" data-skeleton-item>
@@ -166,7 +179,7 @@
                         </div>
                         <div class="d-flex align-items-center gap-2 ms-3 alert-card-actions">
                           {% if not alert.is_read %}
-                          <form method="post" action="{% url 'mark_alert_read' alert.id %}" class="m-0 alert-read-form" onclick="event.stopPropagation()">
+                          <form method="post" action="{% url 'mark_alert_read' alert.id %}" class="m-0 alert-read-form" data-stop-propagation>
                             {% csrf_token %}
                             <button type="submit" class="alert-action-btn">Acknowledge Alert</button>
                           </form>
@@ -174,7 +187,7 @@
                           <span class="alert-action-chip">Reviewed</span>
                           {% endif %}
                           {% if alert.status == 'FAILED' %}
-                          <form method="post" action="{% url 'retry_alert' alert.id %}" class="m-0" onclick="event.stopPropagation()">
+                          <form method="post" action="{% url 'retry_alert' alert.id %}" class="m-0" data-stop-propagation>
                             {% csrf_token %}
                             <button type="submit" class="alert-action-btn alert-action-btn-danger">Retry Delivery</button>
                           </form>
@@ -341,7 +354,7 @@
                       </div>
                       <div class="alert-preference-metric alert-preference-metric-wide">
                         <span class="panel-label">Last Alert Generated</span>
-                        <strong>{% if website.last_alert_generated_at %}{{ website.last_alert_generated_at|date:"Y-m-d H:i" }} · {{ website.last_alert_generated_label }}{% else %}No recent alert generated{% endif %}</strong>
+                        <strong>{% if website.last_alert_generated_at %}{{ website.last_alert_generated_at|date:"Y-m-d H:i" }} - {{ website.last_alert_generated_label }}{% else %}No recent alert generated{% endif %}</strong>
                       </div>
                       <div class="alert-preference-metric alert-preference-metric-wide">
                         <span class="panel-label">Cooldown Impact</span>
@@ -390,5 +403,52 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{% static 'js/script.js' %}"></script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const alertStreamPanel = document.querySelector(".alert-stream-panel");
+        const alertStreamBody = document.getElementById("alertStreamBody");
+        const alertStreamToggle = document.getElementById("alertStreamToggle");
+        const storageKey = "siteguard-alert-stream-collapsed";
+
+        if (!alertStreamPanel || !alertStreamBody || !alertStreamToggle) {
+          return;
+        }
+
+        const setCollapsedState = (collapsed) => {
+          alertStreamPanel.classList.toggle("is-collapsed", collapsed);
+          alertStreamToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+          alertStreamToggle.innerHTML = collapsed
+            ? '<i data-lucide="panel-top-open" class="me-2 size-sm"></i>Expand Stream'
+            : '<i data-lucide="panel-top-close" class="me-2 size-sm"></i>Collapse Stream';
+
+          if (collapsed) {
+            alertStreamBody.style.maxHeight = "0px";
+            alertStreamBody.setAttribute("aria-hidden", "true");
+          } else {
+            alertStreamBody.style.maxHeight = alertStreamBody.scrollHeight + 24 + "px";
+            alertStreamBody.setAttribute("aria-hidden", "false");
+          }
+
+          if (window.lucide) {
+            window.lucide.createIcons();
+          }
+        };
+
+        const initialCollapsed = window.localStorage.getItem(storageKey) === "true";
+        setCollapsedState(initialCollapsed);
+
+        alertStreamToggle.addEventListener("click", () => {
+          const nextCollapsed = alertStreamToggle.getAttribute("aria-expanded") === "true";
+          window.localStorage.setItem(storageKey, nextCollapsed ? "true" : "false");
+          setCollapsedState(nextCollapsed);
+        });
+
+        window.addEventListener("resize", () => {
+          if (alertStreamToggle.getAttribute("aria-expanded") === "true") {
+            alertStreamBody.style.maxHeight = alertStreamBody.scrollHeight + 24 + "px";
+          }
+        });
+      });
+    </script>
   </body>
 </html>
