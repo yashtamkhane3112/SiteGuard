@@ -46,6 +46,10 @@
             </div>
 
             <div class="report-header-actions d-flex gap-3">
+              <a href="{% url 'weekly_reports' %}" class="btn btn-outline-dark-custom d-flex justify-content-center align-items-center">
+                <i data-lucide="calendar-range" class="me-2 size-sm"></i>
+                Weekly Reports
+              </a>
               <div class="position-relative flex-grow-1">
                 <select
                   class="form-select custom-select-dark w-100"
@@ -101,7 +105,7 @@
           </div>
 
           <div id="report-canvas-area">
-            <div class="row g-4 mb-4 report-metrics-row">
+            <div class="row g-4 mb-4 report-metrics-row export-block">
               <div class="col-md-4">
                 <div class="report-stat-shell">
                   <div class="report-stat-card stat-issues" data-skeleton-item>
@@ -143,7 +147,7 @@
               </div>
             </div>
 
-            <div class="dash-panel mb-4">
+            <div class="dash-panel mb-4 export-block">
               <h5 class="panel-title">Response Time Heatmap</h5>
               <p class="panel-subtitle mb-4">
                 Response time by site and hour of day.
@@ -189,7 +193,7 @@
               {% endif %}
             </div>
 
-            <div class="dash-panel mb-4">
+            <div class="dash-panel mb-4 export-block">
               <h5 class="panel-title">Response Time Percentiles</h5>
               <p class="panel-subtitle mb-4">
                 p50, p95, and p99 response times over the selected range
@@ -199,7 +203,7 @@
               </div>
             </div>
 
-            <div class="row g-4 mb-4">
+            <div class="row g-4 mb-4 export-block">
               <div class="col-lg-6">
                 <div class="dash-panel h-100">
                   <h5 class="panel-title">Error Frequency</h5>
@@ -218,7 +222,7 @@
               </div>
             </div>
 
-            <div class="dash-panel mb-5">
+            <div class="dash-panel mb-5 export-block">
               <h5 class="panel-title">Monitoring Distribution</h5>
               <p class="panel-subtitle mb-4">
                 Real issue and alert breakdown for the selected range
@@ -288,7 +292,7 @@
               </div>
             </div>
 
-            <div class="dash-panel mb-4">
+            <div class="dash-panel mb-4 export-block">
               <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
                 <div>
                   <h5 class="panel-title m-0">Error Analytics</h5>
@@ -532,8 +536,8 @@
             '<span class="spinner-border spinner-border-sm me-2" style="width:14px; height:14px;"></span> ' +
             text;
 
-          setTimeout(() => {
-            action();
+          setTimeout(async () => {
+            await action();
             exportBtnText.innerHTML = '<i data-lucide="check" class="me-1 size-sm"></i> Done';
             if (typeof lucide !== "undefined") {
               lucide.createIcons();
@@ -542,6 +546,63 @@
               exportBtnText.innerHTML = originalHtml;
             }, 2000);
           }, 600);
+        }
+
+        async function buildPagedPdf(rootElement, filename) {
+          const { jsPDF } = window.jspdf;
+          const pdf = new jsPDF("p", "mm", "a4");
+          const pageWidth = pdf.internal.pageSize.getWidth();
+          const pageHeight = pdf.internal.pageSize.getHeight();
+          const margin = 10;
+          const printableWidth = pageWidth - margin * 2;
+          const printableHeight = pageHeight - margin * 2;
+          const exportBlocks = Array.from(rootElement.querySelectorAll(".export-block"));
+          let cursorY = margin;
+
+          for (let index = 0; index < exportBlocks.length; index += 1) {
+            const block = exportBlocks[index];
+            const canvas = await html2canvas(block, {
+              backgroundColor: "#0b0713",
+              scale: 2,
+              useCORS: true,
+              windowWidth: 1440,
+            });
+            const sliceHeightPx = Math.floor((printableHeight * canvas.width) / printableWidth);
+            let sourceY = 0;
+            let sliceIndex = 0;
+
+            while (sourceY < canvas.height) {
+              const currentSliceHeight = Math.min(sliceHeightPx, canvas.height - sourceY);
+              const sliceCanvas = document.createElement("canvas");
+              sliceCanvas.width = canvas.width;
+              sliceCanvas.height = currentSliceHeight;
+              const sliceContext = sliceCanvas.getContext("2d");
+              sliceContext.drawImage(
+                canvas,
+                0,
+                sourceY,
+                canvas.width,
+                currentSliceHeight,
+                0,
+                0,
+                canvas.width,
+                currentSliceHeight
+              );
+
+              const sliceRenderedHeight = (currentSliceHeight * printableWidth) / canvas.width;
+              if ((cursorY + sliceRenderedHeight > pageHeight - margin && cursorY > margin) || sliceIndex > 0) {
+                pdf.addPage();
+                cursorY = margin;
+              }
+
+              pdf.addImage(sliceCanvas.toDataURL("image/png"), "PNG", margin, cursorY, printableWidth, sliceRenderedHeight);
+              sourceY += currentSliceHeight;
+              cursorY += sliceRenderedHeight + 6;
+              sliceIndex += 1;
+            }
+          }
+
+          pdf.save(filename);
         }
 
         const exportPng = document.getElementById("exportPng");
@@ -569,18 +630,7 @@
           exportPdf.addEventListener("click", (e) => {
             e.preventDefault();
             simulateDownload("Building...", () => {
-              html2canvas(reportCanvasArea, {
-                backgroundColor: "#0b0713",
-                scale: 2,
-              }).then((canvas) => {
-                const imgData = canvas.toDataURL("image/png");
-                const { jsPDF } = window.jspdf;
-                const pdf = new jsPDF("p", "mm", "a4");
-                const pdfWidth = pdf.internal.pageSize.getWidth();
-                const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-                pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
-                pdf.save("SiteGuard_Report.pdf");
-              });
+              buildPagedPdf(reportCanvasArea, "SiteGuard_Report.pdf");
             });
           });
         }
@@ -745,7 +795,7 @@
               datasets: [
                 {
                   data: analyzerCategoryRows.map((row) => row.count),
-                  backgroundColor: ["#7c3aed", "#f59e0b", "#14b8a6", "#3b82f6", "#ef4444", "#a855f7", "#10b981", "#f97316", "#64748b"],
+                  backgroundColor: ["#7c3aed", "#f59e0b", "#c084fc", "#818cf8", "#ef4444", "#a855f7", "#10b981", "#f97316", "#fbbf24"],
                   borderWidth: 0,
                 },
               ],

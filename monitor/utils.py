@@ -3,7 +3,7 @@ import re
 import socket
 import ssl
 from email.utils import format_datetime
-from datetime import datetime, timezone as dt_timezone
+from datetime import datetime, timedelta, timezone as dt_timezone
 from time import perf_counter
 from urllib.parse import quote, unquote, urlparse
 
@@ -13,9 +13,10 @@ from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.db.models import Q
 from django.db import transaction
+from django.urls import reverse
 from django.utils import timezone
 
-from .models import Alert, Incident, IncidentEvent, MonitorLog, Notification, UserProfile, Website
+from .models import Alert, Incident, IncidentEvent, MonitorLog, Notification, UploadedLog, UserProfile, Website
 
 try:
     import dns.resolver as dns_resolver
@@ -33,6 +34,10 @@ SECURITY_HEADERS = {
     'referrer-policy': 'Missing referrer policy',
 }
 RECENT_SEARCHES_SESSION_KEY = 'siteguard_recent_searches'
+ALERT_DEDUP_WINDOW = timedelta(minutes=20)
+NOTIFICATION_DEDUP_WINDOW = timedelta(minutes=30)
+NOTIFICATION_RETENTION_DAYS = 45
+WEEKLY_REPORT_TITLE_RE = re.compile(r"Weekly report ready for (?P<week>\d{4}-W\d{2})")
 
 
 def get_site_status(log):
@@ -472,7 +477,25 @@ def get_notification_queryset(user):
 def get_recent_notifications(user, limit=6):
     if not getattr(user, 'is_authenticated', False):
         return []
-    return list(get_notification_queryset(user)[:limit])
+    recent_notifications = list(get_notification_queryset(user)[: max(limit * 3, limit)])
+    recent_notifications.sort(key=notification_priority, reverse=True)
+    return recent_notifications[:limit]
+
+
+def notification_priority(notification):
+    severity_rank = {
+        Notification.SEVERITY_CRITICAL: 4,
+        Notification.SEVERITY_WARNING: 3,
+        Notification.SEVERITY_SUCCESS: 2,
+        Notification.SEVERITY_INFO: 1,
+    }
+    unread_rank = 1 if not notification.is_read else 0
+    return (
+        unread_rank,
+        severity_rank.get(notification.severity, 0),
+        notification.created_at,
+        notification.id or 0,
+    )
 
 
 def get_unread_notification_count(user):
@@ -491,16 +514,18 @@ def create_notification(
     related_incident=None,
     related_website=None,
 ):
+    recent_cutoff = timezone.now() - NOTIFICATION_DEDUP_WINDOW
     existing = Notification.objects.filter(
         user=user,
-        title=title,
-        message=message,
         notification_type=notification_type,
         severity=severity,
         related_incident=related_incident,
         related_website=related_website,
-        is_read=False,
-    ).first()
+        created_at__gte=recent_cutoff,
+    ).filter(
+        Q(title=title, message=message)
+        | Q(is_read=False)
+    ).order_by('-created_at', '-id').first()
     if existing:
         return existing
 
@@ -513,6 +538,148 @@ def create_notification(
         related_incident=related_incident,
         related_website=related_website,
     )
+
+
+def extract_week_key_from_notification(notification):
+    match = WEEKLY_REPORT_TITLE_RE.search(getattr(notification, 'title', '') or '')
+    if match:
+        return match.group('week')
+    return timezone.now().strftime('%G-W%V')
+
+
+def get_notification_destination(notification):
+    if notification.notification_type == Notification.TYPE_REPORT:
+        return reverse('weekly_report_detail', args=[extract_week_key_from_notification(notification)])
+    if notification.related_incident_id:
+        return reverse('incidents')
+    if notification.notification_type in {Notification.TYPE_OUTAGE, Notification.TYPE_RECOVERY, Notification.TYPE_SSL, Notification.TYPE_WARNING}:
+        return reverse('alerts')
+    return reverse('notifications')
+
+
+def serialize_notification_activity_item(notification):
+    return {
+        'title': notification.title,
+        'message': notification.message,
+        'is_read': notification.is_read,
+        'created_at': notification.created_at,
+        'badge_class': notification.badge_class,
+        'severity_label': notification.severity.upper(),
+        'icon_bg_class': notification.icon_bg_class,
+        'icon_text_class': notification.icon_text_class,
+        'icon_name': notification.icon_name,
+        'action_url': get_notification_destination(notification),
+        'action_label': 'Open Report' if notification.notification_type == Notification.TYPE_REPORT else 'Open',
+        'mark_read_url': reverse('mark_notification_read', args=[notification.id]),
+        'kind': 'notification',
+    }
+
+
+def build_notification_activity_center(user, limit=8):
+    if not getattr(user, 'is_authenticated', False):
+        return {
+            'summary': {'unread': 0, 'critical': 0, 'reports': 0, 'analyzer_uploads': 0},
+            'sections': [],
+            'quick_links': [],
+        }
+
+    now = timezone.now()
+    notifications = list(get_notification_queryset(user)[: max(limit * 4, limit)])
+    notifications.sort(key=notification_priority, reverse=True)
+
+    critical_open = [
+        notification for notification in notifications
+        if (
+            not notification.is_read
+            and notification.severity in {Notification.SEVERITY_CRITICAL, Notification.SEVERITY_WARNING}
+        )
+    ]
+    recoveries_and_reports = [
+        notification for notification in notifications
+        if notification.notification_type in {Notification.TYPE_RECOVERY, Notification.TYPE_REPORT}
+    ]
+    remaining = [
+        notification for notification in notifications
+        if notification not in critical_open and notification not in recoveries_and_reports
+    ]
+
+    recent_uploads = list(
+        UploadedLog.objects.filter(
+            user=user,
+            uploaded_at__gte=now - timedelta(days=7),
+        ).prefetch_related('parsed_errors').order_by('-uploaded_at', '-id')[:3]
+    )
+    analyzer_occurrences = sum(
+        parsed_error.count
+        for upload in recent_uploads
+        for parsed_error in upload.parsed_errors.all()
+    )
+
+    sections = []
+    if critical_open:
+        sections.append({
+            'title': 'Critical Signals',
+            'subtitle': 'Unread outages and warning states needing review.',
+            'items': [serialize_notification_activity_item(item) for item in critical_open[: min(4, limit)]],
+        })
+    if recoveries_and_reports:
+        sections.append({
+            'title': 'Recovery + Reports',
+            'subtitle': 'Closures, recoveries, and report-ready updates.',
+            'items': [serialize_notification_activity_item(item) for item in recoveries_and_reports[:3]],
+        })
+    if recent_uploads:
+        sections.append({
+            'title': 'Analyzer Activity',
+            'subtitle': 'Recent deterministic analyzer processing.',
+            'items': [
+                {
+                    'title': 'Analyzer workspace updated',
+                    'message': f"{len(recent_uploads)} upload{'s' if len(recent_uploads) != 1 else ''} processed with {analyzer_occurrences} grouped occurrence{'s' if analyzer_occurrences != 1 else ''} in the last 7 days.",
+                    'is_read': True,
+                    'created_at': recent_uploads[0].uploaded_at,
+                    'badge_class': 'badge-active',
+                    'severity_label': 'ANALYZER',
+                    'icon_bg_class': 'bg-active-light',
+                    'icon_text_class': 'text-active',
+                    'icon_name': 'bug',
+                    'action_url': reverse('error_log_upload'),
+                    'action_label': 'Open Analyzer',
+                    'mark_read_url': '',
+                    'kind': 'analyzer',
+                }
+            ],
+        })
+    if remaining:
+        sections.append({
+            'title': 'Recent Activity',
+            'subtitle': 'Remaining monitoring and workflow events.',
+            'items': [serialize_notification_activity_item(item) for item in remaining[: max(limit - 4, 2)]],
+        })
+
+    return {
+        'summary': {
+            'unread': get_unread_notification_count(user),
+            'critical': len(critical_open),
+            'reports': sum(1 for notification in notifications if notification.notification_type == Notification.TYPE_REPORT),
+            'analyzer_uploads': len(recent_uploads),
+        },
+        'sections': sections,
+        'quick_links': [
+            {'label': 'Alerts', 'url': reverse('alerts')},
+            {'label': 'Weekly Reports', 'url': reverse('weekly_reports')},
+            {'label': 'Analyzer', 'url': reverse('error_log_upload')},
+            {'label': 'Notifications', 'url': reverse('notifications')},
+        ],
+    }
+
+
+def cleanup_old_notifications(user=None, *, retention_days=NOTIFICATION_RETENTION_DAYS):
+    cutoff = timezone.now() - timedelta(days=retention_days)
+    queryset = Notification.objects.filter(is_read=True, created_at__lt=cutoff)
+    if user is not None:
+        queryset = queryset.filter(user=user)
+    queryset.delete()
 
 
 def create_notification_from_alert(alert):
@@ -718,6 +885,74 @@ def _format_email_timestamp(value):
     return format_datetime(timezone.localtime(value))
 
 
+def _format_duration_seconds(total_seconds):
+    if total_seconds <= 0:
+        return '0m'
+    hours, remainder = divmod(int(total_seconds), 3600)
+    minutes, _ = divmod(remainder, 60)
+    return f"{hours}h {minutes}m" if hours else f"{minutes}m"
+
+
+def _infer_operational_cause(detail):
+    text = (detail or '').lower()
+    if 'dns' in text or 'resolve' in text:
+        return 'DNS resolution is preventing the monitor from reaching the host.'
+    if 'tls' in text or 'ssl' in text or 'certificate' in text:
+        return 'TLS certificate validation or handshake checks are failing.'
+    if 'timed out' in text or 'timeout' in text:
+        return 'The endpoint is exceeding the monitoring timeout window.'
+    if 'connection refused' in text or 'connection could not be established' in text or 'connection to the monitored host failed' in text:
+        return 'The origin is refusing or dropping network connections.'
+    if 'http 5' in text or 'http status code: 5' in text:
+        return 'The application is returning server-side failures during the outage window.'
+    if 'response time' in text and 'slow threshold' in text:
+        return 'Latency has exceeded the configured slow threshold and indicates degraded performance.'
+    return 'Monitoring detected a sustained operational failure that still needs investigation.'
+
+
+def _get_last_successful_check(website, before_time=None):
+    logs = MonitorLog.objects.filter(
+        website=website,
+        status=MonitorLog.STATUS_UP,
+        response_time__gt=0,
+    )
+    if before_time is not None:
+        logs = logs.filter(checked_at__lt=before_time)
+    return logs.order_by('-checked_at', '-id').first()
+
+
+def _get_outage_peak_latency(incident):
+    if incident is None:
+        return None
+    end_time = incident.resolved_at or timezone.now()
+    logs = MonitorLog.objects.filter(
+        website=incident.website,
+        checked_at__gte=incident.started_at,
+        checked_at__lte=end_time,
+        response_time__isnull=False,
+    ).order_by('-response_time')
+    peak_log = logs.first()
+    if peak_log is None:
+        return None
+    return peak_log.response_time
+
+
+def _build_alert_email_context(alert, recovery_time=None):
+    incident = alert.incident
+    incident_start = incident.started_at if incident else alert.created_at
+    last_successful_log = _get_last_successful_check(alert.website, before_time=incident_start)
+    outage_duration = None
+    if recovery_time is not None and incident_start is not None:
+        outage_duration = recovery_time - incident_start
+    peak_latency = _get_outage_peak_latency(incident)
+    return {
+        'probable_cause': _infer_operational_cause(alert.message),
+        'last_successful_log': last_successful_log,
+        'outage_duration': outage_duration,
+        'peak_latency': peak_latency,
+    }
+
+
 def _describe_exception_reason(exc, timeout):
     if isinstance(exc, requests.Timeout):
         return f"Request timed out after {timeout}s."
@@ -895,6 +1130,7 @@ def send_alert_email(alert, recovery_time=None):
     incident = alert.incident
     incident_start = incident.started_at if incident else alert.created_at
     response_time = _format_response_time(alert.response_time)
+    email_context = _build_alert_email_context(alert, recovery_time=recovery_time)
 
     if alert.alert_type == Alert.TYPE_DOWN:
         subject = f"SiteGuard Alert: {website.url} is DOWN"
@@ -915,18 +1151,59 @@ def send_alert_email(alert, recovery_time=None):
         f"Incident Started: {_format_email_timestamp(incident_start)}",
         f"Alert Generated: {_format_email_timestamp(alert.created_at)}",
     ]
+    if email_context['last_successful_log'] is not None:
+        lines.append(f"Last Successful Check: {_format_email_timestamp(email_context['last_successful_log'].checked_at)}")
+    lines.append(f"Operational Assessment: {email_context['probable_cause']}")
     if recovery_time is not None:
         lines.append(f"Recovery Time: {_format_email_timestamp(recovery_time)}")
+        if email_context['outage_duration'] is not None:
+            lines.append(f"Downtime Duration: {_format_duration_seconds(email_context['outage_duration'].total_seconds())}")
     if incident is not None:
         lines.append(f"Incident Reference: {incident.incident_code}")
         lines.append(f"Incident Category: {incident.get_incident_type_display()}")
+        if incident.status == Incident.STATUS_RESOLVED:
+            lines.append("Current Outage State: Recovered and monitoring stabilized.")
+        else:
+            lines.append(f"Current Outage State: {incident.status}")
+        if incident.latest_response_time is not None:
+            lines.append(f"Latest Incident Latency: {_format_response_time(incident.latest_response_time)}")
+    if email_context['peak_latency'] is not None:
+        lines.append(f"Peak Latency During Window: {_format_response_time(email_context['peak_latency'])}")
     if alert.sent_to:
         lines.append(f"Recipient: {alert.sent_to}")
+
+    detail_notes = []
+    lowered_message = alert.message.lower()
+    if 'timed out' in lowered_message or 'timeout' in lowered_message:
+        detail_notes.append('Timeout indicator: monitor requests exceeded the configured timeout window.')
+    if 'tls' in lowered_message or 'ssl' in lowered_message or 'certificate' in lowered_message:
+        detail_notes.append('SSL indicator: certificate validation or TLS handshake checks reported a failure.')
+    if 'dns' in lowered_message or 'resolve' in lowered_message:
+        detail_notes.append('DNS indicator: host resolution failed before the request could complete.')
+    if 'connection refused' in lowered_message or 'connection to the monitored host failed' in lowered_message:
+        detail_notes.append('Connection indicator: the origin refused or failed to accept network connections.')
+    if 'response time' in lowered_message and 'slow threshold' in lowered_message:
+        detail_notes.append('Escalation context: latency crossed the configured slow threshold and triggered degraded-state handling.')
+
     lines.extend([
         "",
         "Alert Details:",
         alert.message,
     ])
+    if detail_notes:
+        lines.extend([
+            "",
+            "Operational Hints:",
+            *detail_notes,
+        ])
+
+    if alert.alert_type == Alert.TYPE_RECOVERY:
+        lines.extend([
+            "",
+            "Recovery Summary:",
+            "Recovery confirmation: the monitor returned a healthy result and closed the active outage window.",
+            f"Operational recovery status: {'Recovered' if incident and incident.is_resolved else 'Healthy check confirmed'}.",
+        ])
 
     send_mail(
         subject,
@@ -952,26 +1229,40 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
         and account_allows_email_alert(website.user, alert_type)
         else ''
     )
-    alert = Alert.objects.filter(
-        website=website,
-        incident=incident,
-        alert_type=alert_type,
-        is_read=False,
-    ).order_by('-created_at', '-id').first()
+    recent_cutoff = timezone.now() - ALERT_DEDUP_WINDOW
+    active_alert_filters = {
+        'website': website,
+        'alert_type': alert_type,
+    }
+    if incident is not None:
+        active_alert_filters['incident'] = incident
+    else:
+        active_alert_filters['created_at__gte'] = recent_cutoff
 
-    if alert and alert.status in {Alert.STATUS_SENT, Alert.STATUS_PENDING} and alert.message == message:
+    alert = Alert.objects.filter(**active_alert_filters).order_by('-created_at', '-id').first()
+    reused_existing_alert = alert is not None
+
+    if (
+        alert
+        and alert.status in {Alert.STATUS_SENT, Alert.STATUS_PENDING}
+        and alert.message == message
+    ):
         if response_time is not None and alert.response_time != response_time:
             alert.response_time = response_time
             alert.save(update_fields=['response_time'])
         create_notification_from_alert(alert)
         return alert
 
-    if alert and alert.status in {Alert.STATUS_SENT, Alert.STATUS_PENDING} and alert.message != message:
+    if alert and alert.status in {Alert.STATUS_SENT, Alert.STATUS_PENDING, Alert.STATUS_FAILED}:
         alert.message = message
         alert.sent_to = sent_to
         alert.response_time = get_numeric_response_time(response_time, default=None)
-        alert.save(update_fields=['message', 'sent_to', 'response_time'])
-    elif alert is None or alert.status == Alert.STATUS_FAILED or alert.message != message:
+        update_fields = ['message', 'sent_to', 'response_time']
+        if alert.status == Alert.STATUS_FAILED and not sent_to:
+            alert.status = Alert.STATUS_SENT
+            update_fields.append('status')
+        alert.save(update_fields=update_fields)
+    else:
         alert = Alert.objects.create(
             website=website,
             incident=incident,
@@ -985,6 +1276,10 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
     if not sent_to:
         alert.status = Alert.STATUS_SENT
         alert.save(update_fields=['status'])
+        create_notification_from_alert(alert)
+        return alert
+
+    if reused_existing_alert and alert.status in {Alert.STATUS_SENT, Alert.STATUS_PENDING}:
         create_notification_from_alert(alert)
         return alert
 

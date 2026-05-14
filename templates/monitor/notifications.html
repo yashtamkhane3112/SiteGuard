@@ -10,97 +10,141 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="{% static 'css/style.css' %}" />
   </head>
-  <body>
+  <body class="notifications-page">
     <div class="dashboard-layout">
       {% include "monitor/partials/app_sidebar.html" with active_page="notifications" %}
       <main class="main-content">
         {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search notifications, incidents, websites..." %}
-        <div class="content-wrapper">
-          <div class="d-flex flex-column flex-md-row justify-content-between gap-3 mb-4">
-            <div>
-              <h2 class="page-title">Notifications</h2>
-              <p class="page-subtitle">Real monitoring events, recoveries, SSL changes, and report notices.</p>
+        <div class="content-wrapper notification-ops-shell">
+          <section class="dash-panel notification-hero-panel">
+            <div class="d-flex flex-column flex-lg-row justify-content-between align-items-start gap-3">
+              <div>
+                <span class="analyzer-eyebrow">Monitoring Feed</span>
+                <h2 class="page-title text-white mb-2">Notifications</h2>
+                <p class="page-subtitle text-slate-300 mb-0">Real monitoring events, recoveries, SSL changes, and report notices.</p>
+              </div>
+              <div class="notification-hero-badges">
+                <span class="status-badge badge-info">{{ page_obj.paginator.count }} total</span>
+                <span class="status-badge badge-active">{{ unread_count }} unread</span>
+              </div>
             </div>
-            <form method="get" class="notification-filter-row">
-              <select name="severity" class="form-select custom-input custom-select-dark notification-filter-select">
-                <option value="">All Severities</option>
-                <option value="critical" {% if selected_severity == 'critical' %}selected{% endif %}>Critical</option>
-                <option value="warning" {% if selected_severity == 'warning' %}selected{% endif %}>Warning</option>
-                <option value="success" {% if selected_severity == 'success' %}selected{% endif %}>Success</option>
-                <option value="info" {% if selected_severity == 'info' %}selected{% endif %}>Info</option>
-              </select>
-              <label class="notification-toggle-chip">
-                <span class="text-white font-mono text-sm fw-medium">Unread Only</span>
-                <input type="checkbox" name="unread" value="1" {% if unread_only %}checked{% endif %} />
-              </label>
-              <button type="submit" class="btn btn-primary-custom">Filter</button>
-            </form>
-          </div>
+          </section>
 
           {% if messages %}
-            {% for message in messages %}
-            <div class="utility-state-banner utility-state-success mb-3"><i data-lucide="check-circle"></i><span>{{ message }}</span></div>
-            {% endfor %}
+          {% for message in messages %}
+          <div class="utility-state-banner utility-state-success mb-3"><i data-lucide="check-circle"></i><span>{{ message }}</span></div>
+          {% endfor %}
           {% endif %}
 
-          <div class="dash-panel mb-4">
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
-              <div class="d-flex gap-3 flex-wrap">
-                <span class="status-badge badge-purple">{{ page_obj.paginator.count }} total</span>
-                <span class="status-badge badge-slow">{{ unread_count }} unread</span>
-              </div>
+          <section class="dash-panel notification-filter-panel">
+            <div class="notification-filter-toolbar">
+              <form method="get" class="notification-filter-form">
+                <div class="notification-search-shell">
+                  <i data-lucide="search" class="notification-search-icon"></i>
+                  <input
+                    type="search"
+                    name="q"
+                    value="{{ selected_query }}"
+                    class="form-control custom-input notification-search-input"
+                    placeholder="Search titles, messages, websites"
+                  />
+                </div>
+                <select name="severity" class="form-select custom-input custom-select-dark notification-filter-select">
+                  <option value="">All Severities</option>
+                  <option value="critical" {% if selected_severity == 'critical' %}selected{% endif %}>Critical</option>
+                  <option value="warning" {% if selected_severity == 'warning' %}selected{% endif %}>Warning</option>
+                  <option value="success" {% if selected_severity == 'success' %}selected{% endif %}>Success</option>
+                  <option value="info" {% if selected_severity == 'info' %}selected{% endif %}>Info</option>
+                </select>
+                <label class="notification-toggle-chip">
+                  <span class="text-white font-mono text-sm fw-medium">Unread Only</span>
+                  <input type="checkbox" name="unread" value="1" {% if unread_only %}checked{% endif %} />
+                </label>
+                <button type="submit" class="btn btn-primary-custom">Apply</button>
+              </form>
               <form method="post" action="{% url 'mark_all_notifications_read' %}">
                 {% csrf_token %}
                 <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-                <button type="submit" class="btn btn-outline-dark-custom">Mark all as read</button>
+                <button type="submit" class="btn btn-outline-dark-custom">Acknowledge all visible</button>
               </form>
             </div>
-          </div>
+          </section>
 
-          <div class="notification-page-grid">
-            {% for notification in notifications %}
-            <div class="dash-panel notification-page-card {% if not notification.is_read %}notification-page-card-unread{% endif %}" data-skeleton-item>
-              <div class="d-flex justify-content-between gap-3 flex-wrap">
-                <div class="d-flex gap-3 min-width-0">
-                  <div class="notif-icon {{ notification.icon_bg_class }} {{ notification.icon_text_class }}">
-                    <i data-lucide="{{ notification.icon_name }}"></i>
-                  </div>
-                  <div class="min-width-0">
-                    <div class="d-flex gap-2 align-items-center flex-wrap mb-2">
-                      <h6 class="text-white fw-bold m-0">{{ notification.title }}</h6>
-                      <span class="status-badge {{ notification.badge_class }}">{{ notification.severity|upper }}</span>
-                    </div>
-                    <p class="text-slate-300 text-sm mb-2">{{ notification.message }}</p>
-                    <div class="notification-meta-row">
-                      <span class="text-xs text-muted">{{ notification.created_at|date:"Y-m-d H:i" }}</span>
-                      <span class="text-xs text-muted">{{ notification.notification_type|title }}</span>
-                    </div>
-                  </div>
+          {% if notifications %}
+          <div class="notification-page-groups">
+            {% for group in notification_groups %}
+            <section class="dash-panel notification-group-panel">
+              <div class="notification-group-head">
+                <div>
+                  <h5 class="m-0 text-white fw-bold">{{ group.title }}</h5>
+                  <p class="m-0 text-slate-300 text-sm">{{ group.subtitle }}</p>
                 </div>
-                <div class="notification-page-actions">
-                  {% if not notification.is_read %}
-                  <form method="post" action="{% url 'mark_notification_read' notification.id %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-                    <button type="submit" class="notification-link-btn">Mark read</button>
-                  </form>
-                  {% endif %}
-                  <form method="post" action="{% url 'delete_notification' notification.id %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-                    <button type="submit" class="notification-link-btn">Delete</button>
-                  </form>
-                </div>
+                <span class="utility-chip font-mono">{{ group.items|length }} item{{ group.items|length|pluralize }}</span>
               </div>
-            </div>
-            {% empty %}
-            <div class="dash-panel notification-empty-state">
-              <i data-lucide="inbox"></i>
-              <h5 class="text-white fw-bold">No notifications found</h5>
-              <p class="page-subtitle mb-0">Adjust your filters or wait for the next monitoring event.</p>
-            </div>
+
+              <div class="notification-page-grid">
+                {% for notification in group.items %}
+                <article class="dash-panel notification-page-card notification-page-card-ops {% if not notification.is_read %}notification-page-card-unread{% else %}notification-page-card-read{% endif %}" data-skeleton-item>
+                  <div class="notification-page-card-shell">
+                    <div class="d-flex gap-3 min-width-0">
+                      <div class="notif-icon notification-page-icon {{ notification.icon_bg_class }} {{ notification.icon_text_class }}">
+                        <i data-lucide="{{ notification.icon_name }}"></i>
+                      </div>
+                      <div class="notification-copy min-width-0">
+                        <div class="d-flex gap-2 align-items-center flex-wrap mb-2">
+                          <h6 class="text-white fw-bold m-0">{{ notification.title }}</h6>
+                          <span class="status-badge {{ notification.badge_class }}">{{ notification.severity|upper }}</span>
+                          {% if not notification.is_read %}
+                          <span class="alert-state-pill alert-state-live">Unread</span>
+                          {% else %}
+                          <span class="alert-state-pill">Read</span>
+                          {% endif %}
+                        </div>
+                        <p class="text-slate-300 text-sm mb-3">{{ notification.message }}</p>
+                        <div class="notification-meta-row notification-meta-row-ops">
+                          <span class="utility-chip font-mono">{{ notification.created_at|date:"Y-m-d H:i" }}</span>
+                          <span class="utility-chip font-mono">{{ notification.created_at|timesince }} ago</span>
+                          <span class="utility-chip font-mono">{{ notification.notification_type|title }}</span>
+                          {% if notification.related_website %}
+                          <span class="utility-chip font-mono">{{ notification.related_website.url }}</span>
+                          {% endif %}
+                          {% if notification.related_incident %}
+                          <span class="utility-chip font-mono">{{ notification.related_incident.incident_code }}</span>
+                          {% endif %}
+                        </div>
+                      </div>
+                    </div>
+                    <div class="notification-page-actions notification-page-actions-ops">
+                      <a href="{{ notification.action_url }}" class="notification-link-btn">Open</a>
+                      {% if not notification.is_read %}
+                      <form method="post" action="{% url 'mark_notification_read' notification.id %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+                        <button type="submit" class="notification-link-btn">Acknowledge</button>
+                      </form>
+                      {% else %}
+                      <span class="alert-action-chip">Reviewed</span>
+                      {% endif %}
+                      <form method="post" action="{% url 'delete_notification' notification.id %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+                        <button type="submit" class="notification-link-btn">Delete</button>
+                      </form>
+                    </div>
+                  </div>
+                </article>
+                {% endfor %}
+              </div>
+            </section>
             {% endfor %}
           </div>
+          {% else %}
+          <div class="dash-panel notification-empty-state notification-empty-state-ops">
+            <i data-lucide="inbox"></i>
+            <h5 class="text-white fw-bold">No notifications found</h5>
+            <p class="page-subtitle mb-0">Adjust your filters or wait for the next monitoring event.</p>
+          </div>
+          {% endif %}
         </div>
       </main>
     </div>

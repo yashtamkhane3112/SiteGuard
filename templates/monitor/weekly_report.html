@@ -1,0 +1,460 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Weekly Operational Report | SiteGuard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      {% include "monitor/partials/app_sidebar.html" with active_page="reports" %}
+      <main class="main-content">
+        {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search weekly reports, alerts, incidents..." %}
+
+        <div class="content-wrapper notification-ops-shell">
+          <section class="dash-panel notification-hero-panel">
+            <div class="d-flex flex-column flex-xl-row justify-content-between align-items-start gap-3">
+              <div>
+                <span class="analyzer-eyebrow">Weekly Operations</span>
+                <h2 class="page-title text-white mb-2">Weekly Report {{ week_key }}</h2>
+                <p class="page-subtitle text-slate-300 mb-0">
+                  Deterministic monitoring summary for {{ week_start|date:"M d, Y" }} to {{ week_end|date:"M d, Y" }}.
+                </p>
+              </div>
+              <div class="report-header-actions d-flex gap-3">
+                <a href="{% url 'reports' %}" class="btn btn-outline-dark-custom">Open Analytics</a>
+                <div class="dropdown">
+                  <button
+                    class="btn btn-primary-custom dropdown-toggle d-flex justify-content-center align-items-center"
+                    type="button"
+                    id="weeklyExportMenuBtn"
+                    data-bs-toggle="dropdown"
+                    aria-expanded="false"
+                  >
+                    <i data-lucide="download" class="me-2 size-sm"></i>
+                    <span id="weeklyExportBtnText">Export</span>
+                  </button>
+                  <ul class="dropdown-menu dropdown-menu-end custom-dropdown" aria-labelledby="weeklyExportMenuBtn">
+                    <li><a class="dropdown-item" href="#" id="weeklyExportPdf"><i data-lucide="file-text" class="me-2 size-sm"></i> Download PDF</a></li>
+                    <li><a class="dropdown-item" href="#" id="weeklyExportPng"><i data-lucide="image" class="me-2 size-sm"></i> Save as PNG</a></li>
+                    <li><hr class="dropdown-divider" /></li>
+                    <li><a class="dropdown-item" href="#" id="weeklyExportCsv"><i data-lucide="table" class="me-2 size-sm"></i> Export Timeline CSV</a></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div id="report-canvas-area" class="weekly-report-export">
+            <section class="row g-4 report-metrics-row export-block">
+              <div class="col-md-6 col-xl-3">
+                <div class="report-stat-shell">
+                  <div class="report-stat-card stat-uptime">
+                    <div class="d-flex justify-content-between align-items-start">
+                      <span class="text-slate-300 text-sm fw-medium">Average Uptime</span>
+                      <i data-lucide="activity" class="text-success size-sm"></i>
+                    </div>
+                    <h2 class="mt-2 mb-1 stat-value-lg">{{ average_uptime }}%</h2>
+                    <span class="{% if uptime_delta >= 0 %}text-success{% else %}text-danger{% endif %} text-xs fw-bold">{{ uptime_delta }}% vs previous week</span>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6 col-xl-3">
+                <div class="report-stat-shell">
+                  <div class="report-stat-card stat-response">
+                    <div class="d-flex justify-content-between align-items-start">
+                      <span class="text-slate-300 text-sm fw-medium">Avg Response Time</span>
+                      <i data-lucide="zap" class="text-purple size-sm"></i>
+                    </div>
+                    <h2 class="mt-2 mb-1 stat-value-lg">{{ average_response_time }}ms</h2>
+                    <span class="{% if response_delta <= 0 %}text-success{% else %}text-warning{% endif %} text-xs fw-bold">{{ response_delta }}ms vs previous week</span>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6 col-xl-3">
+                <div class="report-stat-shell">
+                  <div class="report-stat-card stat-issues">
+                    <div class="d-flex justify-content-between align-items-start">
+                      <span class="text-slate-300 text-sm fw-medium">Downtime Duration</span>
+                      <i data-lucide="wifi-off" class="text-danger size-sm"></i>
+                    </div>
+                    <h2 class="mt-2 mb-1 stat-value-lg">{{ downtime_duration }}</h2>
+                    <span class="text-danger text-xs fw-bold">{{ outage_frequency }} outage incident{{ outage_frequency|pluralize }}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6 col-xl-3">
+                <div class="report-stat-shell">
+                  <div class="report-stat-card stat-issues">
+                    <div class="d-flex justify-content-between align-items-start">
+                      <span class="text-slate-300 text-sm fw-medium">Analyzer Findings</span>
+                      <i data-lucide="bug" class="text-active size-sm"></i>
+                    </div>
+                    <h2 class="mt-2 mb-1 stat-value-lg">{{ analyzer_occurrences }}</h2>
+                    <span class="text-active text-xs fw-bold">{{ uploads_count }} upload{{ uploads_count|pluralize }} processed</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="row g-4 export-block">
+              <div class="col-xl-8">
+                <div class="dash-panel h-100">
+                  <h5 class="panel-title">Operational Trend Comparison</h5>
+                  <p class="panel-subtitle mb-4">Daily uptime and response-time rhythm across the selected week.</p>
+                  <div class="chart-container">
+                    <canvas id="weeklyTrendChart"></canvas>
+                  </div>
+                </div>
+              </div>
+              <div class="col-xl-4">
+                <div class="dash-panel h-100">
+                  <h5 class="panel-title">Severity Breakdown</h5>
+                  <p class="panel-subtitle mb-4">Grouped analyzer severity pressure captured this week.</p>
+                  <div class="chart-container-sm">
+                    <canvas id="weeklySeverityChart"></canvas>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="row g-4 export-block">
+              <div class="col-xl-7">
+                <div class="dash-panel h-100">
+                  <h5 class="panel-title">Operational Overview</h5>
+                  <div class="analyzer-smart-panel-grid mt-4">
+                    {% for panel in health_overview %}
+                    <article class="analyzer-smart-panel">
+                      <span class="panel-label d-block mb-2">{{ panel.title }}</span>
+                      <div class="analyzer-smart-value">{{ panel.value }}</div>
+                      <p class="text-slate-300 text-sm mb-0">{{ panel.body }}</p>
+                    </article>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+              <div class="col-xl-5">
+                <div class="dash-panel h-100">
+                  <h5 class="panel-title">Operational Insights</h5>
+                  <div class="analyzer-insights-list mt-4">
+                    {% for insight in insights %}
+                    <div class="analyzer-insight-card">
+                      <span class="panel-label">{{ insight.title }}</span>
+                      <p class="text-slate-300 text-sm mb-0">{{ insight.body }}</p>
+                    </div>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="row g-4 export-block">
+              <div class="col-xl-6">
+                <div class="report-subsection-card h-100">
+                  <h6 class="text-white fw-bold mb-3">Most Unstable Site</h6>
+                  {% if most_unstable_site %}
+                  <div class="analyzer-report-row">
+                    <div>
+                      <div class="text-white fw-semibold">{{ most_unstable_site.website.display_domain }}</div>
+                      <div class="text-slate-300 text-sm">{{ most_unstable_site.issues }} non-UP checks recorded this week.</div>
+                    </div>
+                    <span class="status-badge badge-down">{{ most_unstable_site.issues }}</span>
+                  </div>
+                  {% else %}
+                  <p class="text-slate-300 text-sm mb-0">No unstable site identified this week.</p>
+                  {% endif %}
+                </div>
+              </div>
+              <div class="col-xl-6">
+                <div class="report-subsection-card h-100">
+                  <h6 class="text-white fw-bold mb-3">Slowest Site</h6>
+                  {% if slowest_site and slowest_site.responses %}
+                  <div class="analyzer-report-row">
+                    <div>
+                      <div class="text-white fw-semibold">{{ slowest_site.website.display_domain }}</div>
+                      <div class="text-slate-300 text-sm">Average latency {{ slowest_site.average_response_time }}ms across {{ slowest_site.responses }} valid checks.</div>
+                    </div>
+                    <span class="status-badge badge-slow">{{ slowest_site.average_response_time }}ms</span>
+                  </div>
+                  <p class="text-slate-300 text-sm mb-0 mt-3">Alerts: {{ alert_count }} · Incidents: {{ incident_count }} · Recoveries: {{ recovery_count }}</p>
+                  {% else %}
+                  <p class="text-slate-300 text-sm mb-0">No valid response-time data this week.</p>
+                  {% endif %}
+                </div>
+              </div>
+            </section>
+
+            <section class="dash-panel export-block">
+              <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
+                <div>
+                  <h5 class="panel-title m-0">Unified Operational History</h5>
+                  <p class="panel-subtitle mt-1 m-0">Alerts, incidents, notifications, and analyzer updates in one weekly timeline.</p>
+                </div>
+                <span class="utility-chip font-mono">{{ timeline|length }} correlated events</span>
+              </div>
+              <div class="analyzer-timeline">
+                {% for event in timeline %}
+                <article class="analyzer-timeline-item">
+                  <div class="analyzer-timeline-marker analyzer-timeline-marker-low"></div>
+                  <div class="analyzer-timeline-content">
+                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                      <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="analyzer-timeline-time font-mono">{{ event.timestamp|date:"D H:i" }}</span>
+                        <span class="status-badge {{ event.badge_class }}">{{ event.label }}</span>
+                      </div>
+                      <a href="{{ event.url }}" class="notification-link-btn">Open</a>
+                    </div>
+                    <h6 class="text-white fw-bold mb-1">{{ event.title }}</h6>
+                    <p class="text-slate-300 text-sm mb-0">{{ event.detail }}</p>
+                  </div>
+                </article>
+                {% empty %}
+                <div class="empty-state">
+                  <i data-lucide="history"></i>
+                  <h6>No operational events in this week</h6>
+                  <p class="text-sm mb-0">Run monitoring, investigate alerts, or upload analyzer logs to build weekly history.</p>
+                </div>
+                {% endfor %}
+              </div>
+            </section>
+          </div>
+
+          <section class="dash-panel notification-filter-panel">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
+              <div>
+                <h5 class="panel-title m-0">Report History</h5>
+                <p class="panel-subtitle mt-1 m-0">Browse recent generated weekly snapshots.</p>
+              </div>
+              <span class="status-badge badge-info">{{ history|length }} tracked weeks</span>
+            </div>
+            <div class="notification-page-groups">
+              {% for item in history %}
+              <a href="{{ item.url }}" class="dash-panel notification-page-card notification-page-card-ops text-decoration-none {% if item.is_current %}notification-page-card-unread{% endif %}">
+                <div class="notification-page-card-shell">
+                  <div class="notification-copy min-width-0">
+                    <div class="d-flex gap-2 align-items-center flex-wrap mb-2">
+                      <h6 class="text-white fw-bold m-0">{{ item.label }}</h6>
+                      <span class="status-badge {% if item.is_current %}badge-active{% else %}badge-info{% endif %}">{{ item.week_key }}</span>
+                    </div>
+                    <div class="notification-meta-row notification-meta-row-ops">
+                      <span class="utility-chip font-mono">{{ item.uptime }}% uptime</span>
+                      <span class="utility-chip font-mono">{{ item.alerts }} alerts</span>
+                      <span class="utility-chip font-mono">{{ item.incidents }} incidents</span>
+                    </div>
+                  </div>
+                  <div class="notification-page-actions notification-page-actions-ops">
+                    <span class="notification-link-btn">Open Week</span>
+                  </div>
+                </div>
+              </a>
+              {% endfor %}
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    {{ trend_data.labels|json_script:"weekly-report-labels" }}
+    {{ trend_data.uptime_trend|json_script:"weekly-report-uptime" }}
+    {{ trend_data.response_trend|json_script:"weekly-report-response" }}
+    {{ severity_breakdown|json_script:"weekly-report-severity" }}
+    {{ export_rows|json_script:"weekly-report-export-rows" }}
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{% static 'js/script.js' %}"></script>
+    <script>
+      (() => {
+        if (typeof lucide !== "undefined") {
+          lucide.createIcons();
+        }
+
+        const weeklyLabels = JSON.parse(document.getElementById("weekly-report-labels").textContent);
+        const weeklyUptime = JSON.parse(document.getElementById("weekly-report-uptime").textContent);
+        const weeklyResponse = JSON.parse(document.getElementById("weekly-report-response").textContent);
+        const weeklySeverity = JSON.parse(document.getElementById("weekly-report-severity").textContent);
+        const weeklyExportRows = JSON.parse(document.getElementById("weekly-report-export-rows").textContent);
+        const weeklyArea = document.getElementById("report-canvas-area");
+        const exportBtnText = document.getElementById("weeklyExportBtnText");
+        const reportCharts = (window.siteGuardReportCharts ||= {});
+
+        const destroyChart = (chartKey, canvasId) => {
+          if (reportCharts[chartKey]) {
+            reportCharts[chartKey].destroy();
+            reportCharts[chartKey] = null;
+          }
+          if (typeof Chart !== "undefined") {
+            const canvas = document.getElementById(canvasId);
+            const existingChart = canvas ? Chart.getChart(canvas) : null;
+            if (existingChart) existingChart.destroy();
+          }
+        };
+
+        const createOrReplaceChart = (chartKey, canvasId, config) => {
+          const canvas = document.getElementById(canvasId);
+          if (!canvas || typeof Chart === "undefined") return null;
+          destroyChart(chartKey, canvasId);
+          reportCharts[chartKey] = new Chart(canvas, config);
+          return reportCharts[chartKey];
+        };
+
+        const setExportState = (label, complete = false) => {
+          if (!exportBtnText) return;
+          exportBtnText.innerHTML = complete ? '<i data-lucide="check" class="me-1 size-sm"></i> Done' : label;
+          if (typeof lucide !== "undefined") lucide.createIcons();
+        };
+
+        const buildPagedPdf = async (rootElement, filename) => {
+          const { jsPDF } = window.jspdf;
+          const pdf = new jsPDF("p", "mm", "a4");
+          const pageWidth = pdf.internal.pageSize.getWidth();
+          const pageHeight = pdf.internal.pageSize.getHeight();
+          const margin = 10;
+          const printableWidth = pageWidth - margin * 2;
+          const printableHeight = pageHeight - margin * 2;
+          let cursorY = margin;
+
+          const exportBlocks = Array.from(rootElement.querySelectorAll(".export-block"));
+          for (let index = 0; index < exportBlocks.length; index += 1) {
+            const block = exportBlocks[index];
+            const canvas = await html2canvas(block, {
+              backgroundColor: "#0b0713",
+              scale: 2,
+              useCORS: true,
+              windowWidth: 1440,
+            });
+            const sliceHeightPx = Math.floor((printableHeight * canvas.width) / printableWidth);
+            let sourceY = 0;
+            let sliceIndex = 0;
+
+            while (sourceY < canvas.height) {
+              const currentSliceHeight = Math.min(sliceHeightPx, canvas.height - sourceY);
+              const sliceCanvas = document.createElement("canvas");
+              sliceCanvas.width = canvas.width;
+              sliceCanvas.height = currentSliceHeight;
+              const sliceContext = sliceCanvas.getContext("2d");
+              sliceContext.drawImage(
+                canvas,
+                0,
+                sourceY,
+                canvas.width,
+                currentSliceHeight,
+                0,
+                0,
+                canvas.width,
+                currentSliceHeight
+              );
+
+              const sliceRenderedHeight = (currentSliceHeight * printableWidth) / canvas.width;
+              if ((cursorY + sliceRenderedHeight > pageHeight - margin && cursorY > margin) || sliceIndex > 0) {
+                pdf.addPage();
+                cursorY = margin;
+              }
+
+              pdf.addImage(sliceCanvas.toDataURL("image/png"), "PNG", margin, cursorY, printableWidth, sliceRenderedHeight);
+              sourceY += currentSliceHeight;
+              cursorY += sliceRenderedHeight + 6;
+              sliceIndex += 1;
+            }
+          }
+
+          pdf.save(filename);
+        };
+
+        const bindExportAction = (id, label, handler) => {
+          const trigger = document.getElementById(id);
+          if (!trigger || trigger.dataset.bound === "true") return;
+          trigger.dataset.bound = "true";
+          trigger.addEventListener("click", async (event) => {
+            event.preventDefault();
+            setExportState(label);
+            await handler();
+            setExportState("", true);
+            setTimeout(() => setExportState("Export"), 1800);
+          });
+        };
+
+        bindExportAction("weeklyExportPng", "Generating...", async () => {
+          const canvas = await html2canvas(weeklyArea, { backgroundColor: "#0b0713", scale: 2, useCORS: true, windowWidth: 1440 });
+          const link = document.createElement("a");
+          link.download = `SiteGuard_Weekly_${"{{ week_key }}"}.png`;
+          link.href = canvas.toDataURL();
+          link.click();
+        });
+
+        bindExportAction("weeklyExportPdf", "Building...", async () => {
+          await buildPagedPdf(weeklyArea, `SiteGuard_Weekly_${"{{ week_key }}"}.pdf`);
+        });
+
+        bindExportAction("weeklyExportCsv", "Compiling...", async () => {
+          const header = "Timestamp,Type,Title,Detail\n";
+          const csvBody = weeklyExportRows
+            .map((row) => `"${row.timestamp}","${row.label}","${String(row.title).replace(/"/g, '""')}","${String(row.detail).replace(/"/g, '""')}"`)
+            .join("\n");
+          const link = document.createElement("a");
+          link.href = "data:text/csv;charset=utf-8," + encodeURIComponent(header + csvBody);
+          link.download = `SiteGuard_Weekly_${"{{ week_key }}"}.csv`;
+          link.click();
+        });
+
+        createOrReplaceChart("weeklyTrendChart", "weeklyTrendChart", {
+          type: "line",
+          data: {
+            labels: weeklyLabels,
+            datasets: [
+              {
+                label: "Uptime %",
+                data: weeklyUptime,
+                borderColor: "#10b981",
+                backgroundColor: "rgba(16, 185, 129, 0.12)",
+                tension: 0.35,
+                yAxisID: "y",
+              },
+              {
+                label: "Response ms",
+                data: weeklyResponse,
+                borderColor: "#a855f7",
+                backgroundColor: "rgba(168, 85, 247, 0.1)",
+                tension: 0.35,
+                yAxisID: "y1",
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: "index", intersect: false },
+            scales: {
+              y: { min: 0, max: 100, position: "left" },
+              y1: { min: 0, position: "right", grid: { drawOnChartArea: false } },
+            },
+          },
+        });
+
+        createOrReplaceChart("weeklySeverityChart", "weeklySeverityChart", {
+          type: "doughnut",
+          data: {
+            labels: weeklySeverity.map((row) => row.label),
+            datasets: [{
+              data: weeklySeverity.map((row) => row.count),
+              backgroundColor: ["#ef4444", "#f97316", "#fbbf24", "#818cf8"],
+              borderWidth: 0,
+            }],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: "bottom" } },
+          },
+        });
+      })();
+    </script>
+  </body>
+</html>

@@ -16,87 +16,101 @@
     />
     <link rel="stylesheet" href="{% static 'css/style.css' %}" />
   </head>
-  <body>
+  <body class="alerts-page">
     <div class="dashboard-layout">
       {% include "monitor/partials/app_sidebar.html" with active_page="alerts" %}
 
       <main class="main-content">
         {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search alert history..." %}
 
-        <div class="content-wrapper">
-          <div class="mb-4">
-            <h2 class="page-title text-white">Alerts & Settings</h2>
-            <p class="page-subtitle text-slate-300">
-              Review alert delivery, recovery notifications, and per-site alert preferences.
-            </p>
-          </div>
+        <div class="content-wrapper alert-ops-shell">
+          <section class="alert-ops-hero dash-panel">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+              <div>
+                <span class="analyzer-eyebrow">Operational Alerts</span>
+                <h2 class="page-title text-white mb-2">Alerts & Settings</h2>
+                <p class="page-subtitle text-slate-300 mb-0">
+                  Review alert delivery, recovery notifications, failed sends, and per-site alert preferences from one operational surface.
+                </p>
+              </div>
+              <div class="alert-ops-hero-meta">
+                <span class="status-badge badge-active">{{ active_alerts }} active</span>
+                <span class="status-badge badge-recovery">{{ recovery_alerts }} recoveries</span>
+                <span class="status-badge badge-down">{{ failed_alerts }} failed</span>
+              </div>
+            </div>
+          </section>
 
-          <div class="row g-4 mb-4">
-            <div class="col-md-3">
-              <div class="incident-stat-card alert-metric-card" data-skeleton-item>
+          <section class="row g-4 alert-ops-metrics">
+            <div class="col-md-6 col-xl-3">
+              <div class="incident-stat-card alert-metric-card alert-metric-card-critical" data-skeleton-item>
                 <div class="stat-icon-box bg-critical-light text-critical">
                   <i data-lucide="bell-ring"></i>
                 </div>
                 <div>
                   <h2 class="stat-value-lg counter m-0" data-target="{{ active_alerts }}" data-suffix="">0</h2>
-                  <span class="text-white text-sm fw-bold" style="letter-spacing: 0.5px">Active Alerts</span>
+                  <span class="text-white text-sm fw-bold">Active Alerts</span>
+                  <p class="text-slate-300 text-xs m-0 mt-2">Unread production-impacting signals still awaiting acknowledgement.</p>
                 </div>
               </div>
             </div>
-            <div class="col-md-3">
-              <div class="incident-stat-card alert-metric-card" data-skeleton-item>
-                <div class="stat-icon-box bg-good-light text-good">
+            <div class="col-md-6 col-xl-3">
+              <div class="incident-stat-card alert-metric-card alert-metric-card-low" data-skeleton-item>
+                <div class="stat-icon-box bg-recovery-light text-recovery">
                   <i data-lucide="check-check"></i>
                 </div>
                 <div>
                   <h2 class="stat-value-lg counter m-0" data-target="{{ recovery_alerts }}" data-suffix="">0</h2>
-                  <span class="text-white text-sm fw-bold" style="letter-spacing: 0.5px">Recovery Alerts</span>
+                  <span class="text-white text-sm fw-bold">Recovery Alerts</span>
+                  <p class="text-slate-300 text-xs m-0 mt-2">Closed loops confirming a site returned to its expected operating state.</p>
                 </div>
               </div>
             </div>
-            <div class="col-md-3">
-              <div class="incident-stat-card alert-metric-card" data-skeleton-item>
-                <div class="stat-icon-box bg-critical-light text-critical">
+            <div class="col-md-6 col-xl-3">
+              <div class="incident-stat-card alert-metric-card alert-metric-card-high" data-skeleton-item>
+                <div class="stat-icon-box bg-warning-light text-warning">
                   <i data-lucide="alert-octagon"></i>
                 </div>
                 <div>
                   <h2 class="stat-value-lg counter m-0" data-target="{{ failed_alerts }}" data-suffix="">0</h2>
-                  <span class="text-white text-sm fw-bold" style="letter-spacing: 0.5px">Failed Alerts</span>
+                  <span class="text-white text-sm fw-bold">Failed Alerts</span>
+                  <p class="text-slate-300 text-xs m-0 mt-2">Delivery attempts that need operator attention or a manual retry.</p>
                 </div>
               </div>
             </div>
-            <div class="col-md-3">
-              <div class="incident-stat-card alert-metric-card" data-skeleton-item>
+            <div class="col-md-6 col-xl-3">
+              <div class="incident-stat-card alert-metric-card alert-metric-card-neutral" data-skeleton-item>
                 <div class="stat-icon-box bg-panel-light text-white">
                   <i data-lucide="gauge"></i>
                 </div>
                 <div>
                   <h2 class="stat-value-lg m-0 text-white">{{ average_response_impact }}ms</h2>
-                  <span class="text-white text-sm fw-bold" style="letter-spacing: 0.5px">Avg Response Impact</span>
+                  <span class="text-white text-sm fw-bold">Avg Response Impact</span>
+                  <p class="text-slate-300 text-xs m-0 mt-2">Average response-time effect attached to generated alerts in this workspace.</p>
                 </div>
               </div>
             </div>
-          </div>
+          </section>
 
-          <div class="filter-bar mb-4">
-            <i data-lucide="filter" class="text-white me-2" style="width: 20px; height: 20px"></i>
-            <button class="filter-pill active" data-filter="all">All</button>
-            <button class="filter-pill" data-filter="critical">Critical</button>
-            <button class="filter-pill" data-filter="warning">Warning</button>
-            <button class="filter-pill" data-filter="recovery">Recovery</button>
-            <button class="filter-pill" data-filter="failed">Failed</button>
-          </div>
+          <section class="alert-ops-filterbar">
+            <div class="filter-bar">
+              <i data-lucide="filter" class="text-white me-2" style="width: 20px; height: 20px"></i>
+              <button class="filter-pill active" data-filter="all">All</button>
+              <button class="filter-pill" data-filter="critical">Critical</button>
+              <button class="filter-pill" data-filter="warning">Warning</button>
+              <button class="filter-pill" data-filter="recovery">Recovery</button>
+              <button class="filter-pill" data-filter="failed">Failed</button>
+            </div>
+          </section>
 
-          <div class="row g-4">
-            <div class="col-xl-7">
-              <div class="dash-panel p-0 overflow-hidden">
-                <div class="p-4 border-bottom border-secondary" style="border-color: rgba(255, 255, 255, 0.05) !important">
+          <section class="dash-panel alert-ops-panel alert-stream-panel p-0 overflow-hidden">
+                <div class="alert-panel-head">
                   <div class="d-flex align-items-center gap-3">
-                    <div class="incident-icon bg-panel-light text-purple">
+                    <div class="incident-icon bg-active-light text-active">
                       <i data-lucide="bell-ring"></i>
                     </div>
                     <div>
-                      <h5 class="m-0 text-white fw-bold">Recent Alerts</h5>
+                      <h5 class="m-0 text-white fw-bold">Alert Stream</h5>
                       <p class="m-0 text-slate-300 text-sm">
                         {{ recent_alerts_count }} alert{{ recent_alerts_count|pluralize }} generated from real monitoring events
                       </p>
@@ -104,146 +118,238 @@
                   </div>
                 </div>
 
-                <div class="p-4">
-                  <div class="incidents-container">
+                <div class="alert-stream-body">
+                  <div class="alert-stream-list incidents-container">
                     {% for alert in alerts %}
-                      <div class="incident-card alert-incident-card {% if not alert.is_read %}alert-incident-card-unread{% else %}alert-incident-card-read{% endif %}" data-status="{{ alert.filter_key }}" data-skeleton-item>
-                        <div class="incident-header" onclick="toggleIncident(this)" role="button" tabindex="0" aria-expanded="false">
-                          <div class="d-flex gap-3 align-items-center flex-grow-1">
-                            <div class="incident-icon {{ alert.icon_bg_class }} {{ alert.icon_text_class }}">
-                              <i data-lucide="{{ alert.icon_name }}"></i>
+                    <article class="incident-card alert-incident-card alert-incident-card-ops {% if not alert.is_read %}alert-incident-card-unread{% else %}alert-incident-card-read{% endif %}" data-status="{{ alert.filter_key }}" data-skeleton-item>
+                      <div class="incident-header" role="button" tabindex="0" aria-expanded="false">
+                        <div class="d-flex gap-3 align-items-center flex-grow-1 min-width-0">
+                          <div class="incident-icon {{ alert.icon_bg_class }} {{ alert.icon_text_class }}">
+                            <i data-lucide="{{ alert.icon_name }}"></i>
+                          </div>
+                          <div class="min-width-0">
+                            <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+                              <span class="status-badge {{ alert.badge_class }}">{{ alert.status_label }}</span>
+                              {% if alert.status == 'FAILED' %}
+                              <span class="alert-state-pill alert-state-failed">Delivery Failed</span>
+                              {% elif alert.is_read %}
+                              <span class="alert-state-pill">Operationally Acknowledged</span>
+                              {% else %}
+                              <span class="alert-state-pill alert-state-live">Needs Review</span>
+                              {% endif %}
                             </div>
-                            <div>
-                              <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
-                                <span class="status-badge {{ alert.badge_class }}">{{ alert.status_label }}</span>
-                                {% if alert.status == 'FAILED' %}
-                                  <span class="alert-state-pill alert-state-failed">Delivery Failed</span>
-                                {% elif alert.is_read %}
-                                  <span class="alert-state-pill">Read</span>
-                                {% else %}
-                                  <span class="alert-state-pill alert-state-live">Unread</span>
-                                {% endif %}
-                              </div>
-                              <h5 class="m-0 text-white fw-bold" style="font-size: 1.05rem">
-                                {{ alert.website.display_domain }}
-                              </h5>
-                              <div class="incident-meta mt-2 text-slate-300 fw-medium">
-                                <span>Created: {{ alert.created_at|date:"Y-m-d H:i" }}</span>
-                                <span>Sent To: {{ alert.sent_to|default:"In-app only" }}</span>
-                                <span>Impact: {% if alert.response_time %}{{ alert.response_time|floatformat:2 }}ms{% else %}No response{% endif %}</span>
-                              </div>
+                            <div class="alert-card-title-row">
+                              <h5 class="m-0 text-white fw-bold">{{ alert.website.display_domain }}</h5>
+                            </div>
+                            <div class="alert-operational-metrics">
+                              <span class="utility-chip font-mono">
+                                {% if alert.response_time %}Latency {{ alert.response_time|floatformat:2 }}ms{% else %}Latency unavailable{% endif %}
+                              </span>
+                              <span class="utility-chip font-mono">Delivery {{ alert.status_label }}</span>
+                              <span class="utility-chip font-mono">
+                                {% if alert.alert_type == 'DOWN' %}Outage{% elif alert.alert_type == 'SLOW' %}Threshold breach{% elif alert.alert_type == 'SSL' %}TLS issue{% else %}Recovery{% endif %}
+                              </span>
+                            </div>
+                            <p class="text-slate-300 text-sm mb-0 mt-2">{{ alert.message|truncatechars:150 }}</p>
+                            <div class="incident-meta mt-3 text-slate-300 fw-medium alert-incident-meta">
+                              <span>Created {{ alert.created_at|date:"Y-m-d H:i" }}</span>
+                              <span>Sent to {{ alert.sent_to|default:"In-app only" }}</span>
+                              {% if alert.read_at %}
+                              <span>Acknowledged {{ alert.read_at|date:"Y-m-d H:i" }}</span>
+                              {% elif alert.is_read %}
+                              <span>Acknowledged</span>
+                              {% else %}
+                              <span>Pending acknowledgement</span>
+                              {% endif %}
                             </div>
                           </div>
-                          <div class="d-flex align-items-center gap-2 ms-3">
-                            {% if not alert.is_read %}
-                              <form method="post" action="{% url 'mark_alert_read' alert.id %}" class="m-0 alert-read-form" onclick="event.stopPropagation()">
-                                {% csrf_token %}
-                                <button type="submit" class="alert-action-btn">Mark Read</button>
-                              </form>
-                            {% endif %}
-                            {% if alert.status == 'FAILED' %}
-                              <form method="post" action="{% url 'retry_alert' alert.id %}" class="m-0" onclick="event.stopPropagation()">
-                                {% csrf_token %}
-                                <button type="submit" class="alert-action-btn alert-action-btn-danger">Retry Failed Alert</button>
-                              </form>
-                            {% endif %}
-                            <i data-lucide="chevron-right" class="chevron-icon text-white"></i>
+                        </div>
+                        <div class="d-flex align-items-center gap-2 ms-3 alert-card-actions">
+                          {% if not alert.is_read %}
+                          <form method="post" action="{% url 'mark_alert_read' alert.id %}" class="m-0 alert-read-form" onclick="event.stopPropagation()">
+                            {% csrf_token %}
+                            <button type="submit" class="alert-action-btn">Acknowledge Alert</button>
+                          </form>
+                          {% else %}
+                          <span class="alert-action-chip">Reviewed</span>
+                          {% endif %}
+                          {% if alert.status == 'FAILED' %}
+                          <form method="post" action="{% url 'retry_alert' alert.id %}" class="m-0" onclick="event.stopPropagation()">
+                            {% csrf_token %}
+                            <button type="submit" class="alert-action-btn alert-action-btn-danger">Retry Delivery</button>
+                          </form>
+                          {% endif %}
+                          <i data-lucide="chevron-right" class="chevron-icon text-white"></i>
+                        </div>
+                      </div>
+
+                      <div class="incident-body">
+                        <div class="alert-details-grid">
+                          <div class="alert-detail-card">
+                            <span class="panel-label d-block mb-2">Alert Message</span>
+                            <p class="text-slate-100 fw-medium mb-0">{{ alert.message|linebreaksbr }}</p>
+                          </div>
+                          <div class="alert-detail-card">
+                            <span class="panel-label d-block mb-2">Operational Status</span>
+                          <div class="utility-kv-list analyzer-kv-tight">
+                              <div class="utility-kv-row">
+                                <span>Current state</span>
+                                <span>{{ alert.status_label }}</span>
+                              </div>
+                              <div class="utility-kv-row">
+                                <span>Latency snapshot</span>
+                                <span>{% if alert.response_time %}{{ alert.response_time|floatformat:2 }}ms{% else %}No response{% endif %}</span>
+                              </div>
+                              <div class="utility-kv-row">
+                                <span>Channel</span>
+                                <span>{{ alert.sent_to|default:"In-app only" }}</span>
+                              </div>
+                              <div class="utility-kv-row">
+                                <span>Acknowledgement</span>
+                                <span>{% if alert.is_read %}Completed{% else %}Pending{% endif %}</span>
+                              </div>
+                            </div>
                           </div>
                         </div>
 
-                        <div class="incident-body">
-                          <div class="timeline">
-                            <div class="timeline-item">
-                              <div class="timeline-icon {{ alert.icon_text_class }}">
-                                <i data-lucide="bell-ring"></i>
+                        <div class="timeline alert-ops-timeline">
+                          <div class="timeline-item">
+                            <div class="timeline-icon {{ alert.icon_text_class }}">
+                              <i data-lucide="bell-ring"></i>
+                            </div>
+                            <div class="timeline-content">
+                              <div class="timeline-time">
+                                {{ alert.created_at|date:"H:i" }}
+                                <span class="{{ alert.icon_text_class }} ms-2 fw-bold">Alert Triggered</span>
                               </div>
-                              <div class="timeline-content">
-                                <div class="timeline-time">
-                                  {{ alert.created_at|date:"H:i" }}
-                                  <span class="{{ alert.icon_text_class }} ms-2 fw-bold">Alert Triggered</span>
-                                </div>
-                                <div class="timeline-desc text-slate-100 fw-medium">
-                                  {{ alert.message|linebreaksbr }}
-                                </div>
+                              <div class="timeline-desc text-slate-100 fw-medium">
+                                {{ alert.message|linebreaksbr }}
                               </div>
                             </div>
-                            {% if alert.incident %}
-                              {% for event in alert.incident.events.all %}
-                                <div class="timeline-item">
-                                  <div class="timeline-icon {{ event.text_class }}">
-                                    <i data-lucide="{{ event.icon_name }}"></i>
-                                  </div>
-                                  <div class="timeline-content">
-                                    <div class="timeline-time">
-                                      {{ event.created_at|date:"H:i" }}
-                                      <span class="{{ event.text_class }} ms-2 fw-bold">{{ event.label }}</span>
-                                    </div>
-                                    <div class="timeline-desc text-slate-100 fw-medium">
-                                      {{ event.message }}
-                                    </div>
-                                  </div>
-                                </div>
-                              {% endfor %}
-                            {% endif %}
                           </div>
+                          {% if alert.incident %}
+                          {% for event in alert.incident.events.all %}
+                          <div class="timeline-item">
+                            <div class="timeline-icon {{ event.text_class }}">
+                              <i data-lucide="{{ event.icon_name }}"></i>
+                            </div>
+                            <div class="timeline-content">
+                              <div class="timeline-time">
+                                {{ event.created_at|date:"H:i" }}
+                                <span class="{{ event.text_class }} ms-2 fw-bold">{{ event.label }}</span>
+                              </div>
+                              <div class="timeline-desc text-slate-100 fw-medium">
+                                {{ event.message }}
+                              </div>
+                            </div>
+                          </div>
+                          {% endfor %}
+                          {% endif %}
                         </div>
                       </div>
+                    </article>
                     {% empty %}
-                      <div id="noIncidentsMsg" class="empty-state">
-                        <i data-lucide="bell-off"></i>
-                        <h5 class="text-white fw-bold">No Alerts Yet</h5>
-                        <p class="text-slate-300 fw-medium">
-                          Alerts will appear here as incidents and recoveries are detected.
-                        </p>
-                      </div>
+                    <div id="noIncidentsMsg" class="empty-state">
+                      <i data-lucide="bell-off"></i>
+                      <h5 class="text-white fw-bold">No Alerts Yet</h5>
+                      <p class="text-slate-300 fw-medium">
+                        Alerts will appear here as incidents and recoveries are detected.
+                      </p>
+                    </div>
                     {% endfor %}
                     {% if alerts %}
-                      <div id="noIncidentsMsg" class="empty-state alert-filter-empty-state" style="display: none">
-                        <i data-lucide="bell-off"></i>
-                        <h5 class="text-white fw-bold">No Alerts Match</h5>
-                        <p class="text-slate-300 fw-medium">
-                          No alerts match your current filter.
-                        </p>
-                      </div>
+                    <div id="noIncidentsMsg" class="empty-state alert-filter-empty-state" style="display: none">
+                      <i data-lucide="bell-off"></i>
+                      <h5 class="text-white fw-bold">No Alerts Match</h5>
+                      <p class="text-slate-300 fw-medium">
+                        No alerts match your current filter.
+                      </p>
+                    </div>
                     {% endif %}
                   </div>
                 </div>
-              </div>
-            </div>
+          </section>
 
-            <div class="col-xl-5">
-              <div class="dash-panel p-0 overflow-hidden">
-                <div class="p-4 border-bottom border-secondary" style="border-color: rgba(255, 255, 255, 0.05) !important">
+          <section class="dash-panel alert-ops-panel alert-preferences-panel p-0 overflow-hidden">
+                <div class="alert-panel-head">
                   <div class="d-flex align-items-center gap-3">
-                    <div class="incident-icon bg-panel-light text-purple">
+                    <div class="incident-icon bg-panel-light text-warning">
                       <i data-lucide="sliders-horizontal"></i>
                     </div>
                     <div>
                       <h5 class="m-0 text-white fw-bold">Website Alert Preferences</h5>
                       <p class="m-0 text-slate-300 text-sm">
-                        Tune alert generation without changing the monitoring layout.
+                        Tune alert generation without changing monitoring infrastructure.
                       </p>
                     </div>
                   </div>
                 </div>
 
-                <div class="settings-list">
+                <div class="settings-list alert-settings-list">
                   {% for website in websites %}
-                    <form method="post" action="{% url 'update_website_alert_settings' website.id %}" class="settings-item d-block alert-settings-card" data-skeleton-item>
-                      {% csrf_token %}
-                      <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
-                        <div class="d-flex align-items-start gap-3">
-                          <i data-lucide="globe" class="text-purple mt-1"></i>
-                          <div>
+                  <form method="post" action="{% url 'update_website_alert_settings' website.id %}" class="settings-item d-block alert-settings-card alert-settings-card-ops" data-skeleton-item>
+                    {% csrf_token %}
+                    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap alert-preference-form-head">
+                      <div class="d-flex align-items-start gap-3">
+                        <i data-lucide="globe" class="text-active mt-1"></i>
+                        <div>
+                          <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
                             <h6 class="text-white m-0 fw-bold text-sm">{{ website.display_domain }}</h6>
-                            <p class="text-slate-300 m-0 text-xs mt-1">
-                              Control alert generation, email delivery, and custom slow alert threshold.
-                            </p>
+                            <span class="status-badge {% if website.alerts_enabled %}badge-active{% else %}badge-info{% endif %}">
+                              {% if website.alerts_enabled %}Alerts On{% else %}Paused{% endif %}
+                            </span>
+                            <span class="status-badge {{ website.current_monitoring_badge }}">{{ website.current_monitoring_state }}</span>
                           </div>
+                          <p class="text-slate-300 m-0 text-xs mt-1">
+                            Control alert generation, email delivery, and the slow-alert threshold for this site.
+                          </p>
                         </div>
-                        <button type="submit" class="alert-action-btn">Save</button>
                       </div>
+                      <button type="submit" class="alert-action-btn">Save</button>
+                    </div>
 
+                    <div class="alert-preference-summary">
+                      <div class="alert-preference-metric">
+                        <span class="panel-label">Current Average Latency</span>
+                        <strong>{% if website.current_average_latency %}{{ website.current_average_latency|floatformat:2 }}ms{% else %}No recent sample{% endif %}</strong>
+                      </div>
+                      <div class="alert-preference-metric">
+                        <span class="panel-label">Recent Alert Count</span>
+                        <strong>{{ website.recent_alert_count }} in 7 days</strong>
+                      </div>
+                      <div class="alert-preference-metric">
+                        <span class="panel-label">Email Delivery</span>
+                        <strong><span class="status-badge {{ website.email_delivery_badge }}">{{ website.email_delivery_state }}</span></strong>
+                      </div>
+                      <div class="alert-preference-metric">
+                        <span class="panel-label">Cooldown</span>
+                        <strong>
+                          {% if website.cooldown_active %}
+                          Active until {{ website.cooldown_until|date:"H:i" }}
+                          {% else %}
+                          No active suppression
+                          {% endif %}
+                        </strong>
+                      </div>
+                      <div class="alert-preference-metric">
+                        <span class="panel-label">Threshold Violations</span>
+                        <strong>{{ website.recent_threshold_violations }} in 24h</strong>
+                      </div>
+                      <div class="alert-preference-metric">
+                        <span class="panel-label">Last Recovery</span>
+                        <strong>{% if website.last_recovery_at %}{{ website.last_recovery_at|date:"Y-m-d H:i" }}{% else %}No recent recovery{% endif %}</strong>
+                      </div>
+                      <div class="alert-preference-metric alert-preference-metric-wide">
+                        <span class="panel-label">Last Alert Generated</span>
+                        <strong>{% if website.last_alert_generated_at %}{{ website.last_alert_generated_at|date:"Y-m-d H:i" }} · {{ website.last_alert_generated_label }}{% else %}No recent alert generated{% endif %}</strong>
+                      </div>
+                      <div class="alert-preference-metric alert-preference-metric-wide">
+                        <span class="panel-label">Cooldown Impact</span>
+                        <strong>{{ website.suppressed_due_to_cooldown }} grouped duplicate{{ website.suppressed_due_to_cooldown|pluralize }} suppressed in recent alerts</strong>
+                      </div>
+                    </div>
+
+                    <div class="alert-preference-controls">
                       <div class="alert-settings-grid mt-3">
                         <label class="alert-setting-inline">
                           <span class="text-slate-300 text-xs">Alerts Enabled</span>
@@ -265,20 +371,19 @@
                           />
                         </label>
                       </div>
-                    </form>
-                  {% empty %}
-                    <div class="empty-state">
-                      <i data-lucide="globe"></i>
-                      <h5 class="text-white fw-bold">No Monitored Websites</h5>
-                      <p class="text-slate-300 fw-medium">
-                        Add a site on the dashboard to enable alert preferences.
-                      </p>
                     </div>
+                  </form>
+                  {% empty %}
+                  <div class="empty-state">
+                    <i data-lucide="globe"></i>
+                    <h5 class="text-white fw-bold">No Monitored Websites</h5>
+                    <p class="text-slate-300 fw-medium">
+                      Add a site on the dashboard to enable alert preferences.
+                    </p>
+                  </div>
                   {% endfor %}
                 </div>
-              </div>
-            </div>
-          </div>
+          </section>
         </div>
       </main>
     </div>

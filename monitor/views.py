@@ -1,5 +1,6 @@
 import logging
-from datetime import timedelta
+import re
+from datetime import datetime, timedelta
 from collections import Counter, defaultdict
 from hmac import compare_digest
 from io import StringIO
@@ -13,9 +14,10 @@ from django.contrib.auth.models import User
 from django.contrib import messages
 from django.core.management import call_command
 from django.core.paginator import Paginator
+from django.urls import reverse
 from django.db import connection
 from django.db.utils import OperationalError, ProgrammingError
-from django.db.models import Avg, Count, Sum
+from django.db.models import Avg, Count, Q, Sum
 from django.views.decorators.http import require_GET
 from django.views.decorators.http import require_POST
 from django.utils import timezone
@@ -30,17 +32,21 @@ from .forms import (
     SignUpForm,
     UploadedLogForm,
 )
-from .error_analyzer import build_upload_analytics, get_error_diagnostics, process_uploaded_log
+from .error_analyzer import build_upload_analytics, get_error_diagnostics, iter_error_entries, process_uploaded_log
 from .models import Alert, Incident, MonitorLog, ParsedError, UploadedLog, Website
 from .utils import (
+    ALERT_DEDUP_WINDOW,
     analyze_domain,
     build_global_search_results,
     check_ssl_status,
+    cleanup_old_notifications,
     cleanup_monitoring_state,
     ensure_weekly_report_notification,
+    get_notification_destination,
     get_favicon_url,
     get_latest_logs_by_website,
     get_notification_queryset,
+    notification_priority,
     get_or_create_user_profile,
     get_recent_searches,
     get_user_account_snapshot,
@@ -58,6 +64,20 @@ from .utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+TIMESTAMP_RE = re.compile(
+    r'(?P<stamp>('
+    r'\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?'
+    r'|\d{2}:\d{2}(?::\d{2})?'
+    r'))'
+)
+ROUTE_RE = re.compile(r'(?P<route>/(?:[\w\-./{}:%]+)?)')
+SERVICE_RE = re.compile(r'(?i)\b(?:service|worker|queue|api|db|redis|postgres|mysql|nginx|gunicorn|celery)\b')
+CONFIDENCE_COPY = {
+    'high': 'High confidence',
+    'medium': 'Medium confidence',
+    'low': 'Low confidence',
+}
 
 
 def _auth_user_table_ready():
@@ -362,7 +382,7 @@ def build_reports_context(user, range_key):
         {
             'label': 'SSL Failures',
             'count': ssl_failures,
-            'class': 'bg-info',
+            'class': 'bg-active',
         },
         {
             'label': 'Failed Alerts',
@@ -406,6 +426,313 @@ def build_reports_context(user, range_key):
         'export_rows': export_rows,
         'has_monitoring_data': bool(logs),
         'error_analytics': error_analytics,
+    }
+
+
+def get_week_window(week_key=None):
+    now = timezone.localtime(timezone.now())
+    if week_key:
+        try:
+            week_start = datetime.strptime(f"{week_key}-1", "%G-W%V-%u")
+            week_start = timezone.make_aware(week_start, timezone.get_current_timezone())
+        except ValueError:
+            week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    else:
+        week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    week_end = week_start + timedelta(days=7)
+    return week_start, week_end
+
+
+def _build_weekly_trend(logs, week_start):
+    labels = []
+    uptime_trend = []
+    response_trend = []
+    outage_trend = []
+    for day_offset in range(7):
+        day_start = week_start + timedelta(days=day_offset)
+        day_end = day_start + timedelta(days=1)
+        day_logs = [log for log in logs if day_start <= log.checked_at < day_end]
+        valid_times = [float(log.response_time) for log in day_logs if log.response_time is not None]
+        labels.append(day_start.strftime('%a'))
+        if day_logs:
+            up_count = sum(1 for log in day_logs if get_site_status(log) == "UP")
+            uptime_trend.append(round((up_count / len(day_logs)) * 100, 2))
+        else:
+            uptime_trend.append(0)
+        response_trend.append(round(sum(valid_times) / len(valid_times), 2) if valid_times else 0)
+        outage_trend.append(sum(1 for log in day_logs if get_site_status(log) == "DOWN"))
+    return {
+        'labels': labels,
+        'uptime_trend': uptime_trend,
+        'response_trend': response_trend,
+        'outage_trend': outage_trend,
+    }
+
+
+def build_weekly_report_context(user, week_key=None):
+    cleanup_monitoring_state(user=user)
+    week_start, week_end = get_week_window(week_key)
+    previous_week_start = week_start - timedelta(days=7)
+    previous_week_end = week_start
+    resolved_week_key = week_start.strftime('%G-W%V')
+
+    websites = list(Website.objects.filter(user=user).order_by('url'))
+    for website in websites:
+        set_display_domain(website)
+
+    logs = list(
+        MonitorLog.objects.filter(
+            website__user=user,
+            checked_at__gte=week_start,
+            checked_at__lt=week_end,
+        ).select_related('website').order_by('-checked_at')
+    )
+    previous_logs = list(
+        MonitorLog.objects.filter(
+            website__user=user,
+            checked_at__gte=previous_week_start,
+            checked_at__lt=previous_week_end,
+        ).select_related('website')
+    )
+    incidents = list(
+        Incident.objects.filter(
+            website__user=user,
+            started_at__gte=week_start,
+            started_at__lt=week_end,
+        ).select_related('website').order_by('-started_at', '-created_at')
+    )
+    alerts = list(
+        Alert.objects.filter(
+            website__user=user,
+            created_at__gte=week_start,
+            created_at__lt=week_end,
+        ).select_related('website', 'incident').order_by('-created_at', '-id')
+    )
+    uploads = list(
+        UploadedLog.objects.filter(
+            user=user,
+            uploaded_at__gte=week_start,
+            uploaded_at__lt=week_end,
+        ).prefetch_related('parsed_errors').order_by('-uploaded_at', '-id')
+    )
+    notifications = list(
+        get_notification_queryset(user).filter(
+            created_at__gte=week_start,
+            created_at__lt=week_end,
+        ).order_by('-created_at', '-id')[:20]
+    )
+
+    valid_response_times = [float(log.response_time) for log in logs if log.response_time is not None]
+    up_count = sum(1 for log in logs if get_site_status(log) == "UP")
+    average_uptime = round((up_count / len(logs)) * 100, 2) if logs else 0
+    previous_valid_times = [float(log.response_time) for log in previous_logs if log.response_time is not None]
+    previous_up_count = sum(1 for log in previous_logs if get_site_status(log) == "UP")
+    previous_average_uptime = round((previous_up_count / len(previous_logs)) * 100, 2) if previous_logs else 0
+    average_response_time = round(sum(valid_response_times) / len(valid_response_times), 2) if valid_response_times else 0
+    previous_average_response_time = round(sum(previous_valid_times) / len(previous_valid_times), 2) if previous_valid_times else 0
+
+    downtime_logs = [log for log in logs if get_site_status(log) == "DOWN"]
+    assumed_check_interval_seconds = 300
+    downtime_duration_seconds = len(downtime_logs) * assumed_check_interval_seconds
+    outage_frequency = len([incident for incident in incidents if incident.incident_type == Incident.TYPE_OUTAGE])
+    recovery_count = len([alert for alert in alerts if alert.alert_type == Alert.TYPE_RECOVERY])
+    alert_count = len(alerts)
+    incident_count = len(incidents)
+
+    instability_by_site = defaultdict(lambda: {'issues': 0, 'total_response': 0.0, 'responses': 0, 'website': None})
+    for log in logs:
+        bucket = instability_by_site[log.website_id]
+        bucket['website'] = log.website
+        if get_site_status(log) != "UP":
+            bucket['issues'] += 1
+        if log.response_time is not None:
+            bucket['total_response'] += float(log.response_time)
+            bucket['responses'] += 1
+
+    most_unstable_site = None
+    slowest_site = None
+    if instability_by_site:
+        most_unstable_site = max(instability_by_site.values(), key=lambda item: item['issues'])
+        slowest_candidates = [item for item in instability_by_site.values() if item['responses']]
+        if slowest_candidates:
+            slowest_site = max(slowest_candidates, key=lambda item: item['total_response'] / item['responses'])
+    if most_unstable_site and most_unstable_site['website']:
+        set_display_domain(most_unstable_site['website'])
+    if slowest_site and slowest_site['website']:
+        set_display_domain(slowest_site['website'])
+    if slowest_site and slowest_site['responses']:
+        slowest_site['average_response_time'] = round(slowest_site['total_response'] / slowest_site['responses'], 2)
+
+    parsed_errors = [parsed_error for upload in uploads for parsed_error in upload.parsed_errors.all()]
+    analyzer_occurrences = sum(parsed_error.count for parsed_error in parsed_errors)
+    severity_counter = Counter()
+    for parsed_error in parsed_errors:
+        severity_counter[parsed_error.severity] += parsed_error.count
+    severity_breakdown = [
+        {'label': dict(ParsedError.SEVERITY_CHOICES).get(key, key.title()), 'count': severity_counter.get(key, 0), 'badge_class': badge}
+        for key, badge in (
+            (ParsedError.SEVERITY_CRITICAL, 'badge-down'),
+            (ParsedError.SEVERITY_HIGH, 'badge-slow'),
+            (ParsedError.SEVERITY_MEDIUM, 'badge-purple'),
+            (ParsedError.SEVERITY_LOW, 'badge-info'),
+        )
+        if severity_counter.get(key, 0)
+    ]
+
+    health_overview = []
+    health_overview.append({
+        'title': 'Coverage',
+        'value': f"{len(websites)} monitored site{'s' if len(websites) != 1 else ''}",
+        'body': f"{len(logs)} checks were evaluated in the selected weekly window.",
+    })
+    health_overview.append({
+        'title': 'Downtime',
+        'value': format_duration_value(downtime_duration_seconds),
+        'body': f"{outage_frequency} outage incident{'s' if outage_frequency != 1 else ''} were correlated this week.",
+    })
+    health_overview.append({
+        'title': 'Recoveries',
+        'value': str(recovery_count),
+        'body': 'Recovery alerts confirm when monitored services returned to expected operating conditions.',
+    })
+    health_overview.append({
+        'title': 'Analyzer',
+        'value': f"{len(uploads)} upload{'s' if len(uploads) != 1 else ''}",
+        'body': f"{analyzer_occurrences} grouped analyzer occurrence{'s' if analyzer_occurrences != 1 else ''} enriched reporting context.",
+    })
+
+    insights = []
+    insights.append({
+        'title': 'Uptime trend',
+        'body': f"Average uptime moved from {previous_average_uptime}% in the previous week to {average_uptime}% this week." if previous_logs else f"Average uptime settled at {average_uptime}% for the current week.",
+    })
+    if most_unstable_site and most_unstable_site['website']:
+        insights.append({
+            'title': 'Most unstable site',
+            'body': f"{most_unstable_site['website'].display_domain} generated {most_unstable_site['issues']} non-UP checks during the week.",
+        })
+    if slowest_site and slowest_site['website'] and slowest_site['responses']:
+        insights.append({
+            'title': 'Slowest site',
+            'body': f"{slowest_site['website'].display_domain} averaged {round(slowest_site['total_response'] / slowest_site['responses'], 2)}ms across valid responses.",
+        })
+    if analyzer_occurrences:
+        insights.append({
+            'title': 'Analyzer pressure',
+            'body': f"{analyzer_occurrences} analyzer occurrences were recorded across {len(parsed_errors)} normalized error groups.",
+        })
+
+    timeline = []
+    for incident in incidents[:8]:
+        set_display_domain(incident.website)
+        timeline.append({
+            'timestamp': incident.started_at,
+            'title': incident.title,
+            'detail': f"{incident.website.display_domain} incident opened with status {incident.status}.",
+            'badge_class': 'badge-down' if not incident.is_resolved else 'badge-up',
+            'label': 'Incident',
+            'url': reverse('incidents'),
+        })
+    for alert in alerts[:8]:
+        set_display_domain(alert.website)
+        timeline.append({
+            'timestamp': alert.created_at,
+            'title': f"{alert.alert_type} alert for {alert.website.display_domain}",
+            'detail': alert.message[:180],
+            'badge_class': alert.badge_class,
+            'label': 'Alert',
+            'url': reverse('alerts'),
+        })
+    for upload in uploads[:6]:
+        timeline.append({
+            'timestamp': upload.uploaded_at,
+            'title': f"Analyzer upload processed: {upload.filename}",
+            'detail': f"{upload.parsed_errors.count()} grouped error signatures available for investigation.",
+            'badge_class': 'badge-active',
+            'label': 'Analyzer',
+            'url': reverse('error_log_results', args=[upload.id]),
+        })
+    for notification in notifications[:6]:
+        timeline.append({
+            'timestamp': notification.created_at,
+            'title': notification.title,
+            'detail': notification.message[:180],
+            'badge_class': notification.badge_class,
+            'label': 'Notification',
+            'url': get_notification_destination(notification),
+        })
+    timeline.sort(key=lambda item: item['timestamp'], reverse=True)
+    timeline = timeline[:12]
+
+    history = []
+    current_week_start = get_week_window()[0]
+    for offset in range(8):
+        history_start = current_week_start - timedelta(days=7 * offset)
+        history_end = history_start + timedelta(days=7)
+        week_logs = list(
+            MonitorLog.objects.filter(
+                website__user=user,
+                checked_at__gte=history_start,
+                checked_at__lt=history_end,
+            )
+        )
+        week_alerts_count = Alert.objects.filter(
+            website__user=user,
+            created_at__gte=history_start,
+            created_at__lt=history_end,
+        ).count()
+        week_incidents_count = Incident.objects.filter(
+            website__user=user,
+            started_at__gte=history_start,
+            started_at__lt=history_end,
+        ).count()
+        week_uptime = 0
+        if week_logs:
+            week_uptime = round((sum(1 for log in week_logs if get_site_status(log) == "UP") / len(week_logs)) * 100, 2)
+        history.append({
+            'week_key': history_start.strftime('%G-W%V'),
+            'label': f"Week of {history_start.strftime('%b %d')}",
+            'uptime': week_uptime,
+            'alerts': week_alerts_count,
+            'incidents': week_incidents_count,
+            'url': reverse('weekly_report_detail', args=[history_start.strftime('%G-W%V')]),
+            'is_current': history_start == week_start,
+        })
+
+    export_rows = [
+        {
+            'timestamp': item['timestamp'].strftime('%Y-%m-%d %H:%M'),
+            'label': item['label'],
+            'title': item['title'],
+            'detail': item['detail'],
+        }
+        for item in timeline
+    ]
+
+    return {
+        'week_key': resolved_week_key,
+        'week_start': week_start,
+        'week_end': week_end,
+        'average_uptime': average_uptime,
+        'average_response_time': average_response_time,
+        'uptime_delta': round(average_uptime - previous_average_uptime, 2),
+        'response_delta': round(average_response_time - previous_average_response_time, 2),
+        'downtime_duration': format_duration_value(downtime_duration_seconds),
+        'most_unstable_site': most_unstable_site,
+        'slowest_site': slowest_site,
+        'alert_count': alert_count,
+        'incident_count': incident_count,
+        'recovery_count': recovery_count,
+        'outage_frequency': outage_frequency,
+        'uploads_count': len(uploads),
+        'analyzer_occurrences': analyzer_occurrences,
+        'severity_breakdown': severity_breakdown,
+        'health_overview': health_overview,
+        'insights': insights[:4],
+        'trend_data': _build_weekly_trend(logs, week_start),
+        'timeline': timeline,
+        'history': history,
+        'export_rows': export_rows,
     }
 
 
@@ -489,6 +816,296 @@ def _build_error_insights(parsed_errors, uploads, previous_error_total=0):
             })
 
     return insights[:4]
+
+
+def _build_notification_groups(page_notifications):
+    now = timezone.now()
+    grouped = []
+    buckets = [
+        (
+            'Unread',
+            'Active monitoring signals awaiting acknowledgement.',
+            [item for item in page_notifications if not item.is_read],
+        ),
+        (
+            'Recent Activity',
+            'Operational updates from the last 24 hours.',
+            [item for item in page_notifications if item.is_read and item.created_at >= now - timedelta(hours=24)],
+        ),
+        (
+            'Earlier Activity',
+            'Previously acknowledged updates kept for historical context.',
+            [item for item in page_notifications if item.is_read and item.created_at < now - timedelta(hours=24)],
+        ),
+    ]
+    for title, subtitle, items in buckets:
+        if items:
+            grouped.append({
+                'title': title,
+                'subtitle': subtitle,
+                'items': items,
+            })
+    return grouped
+
+
+def _build_alert_preferences_snapshot(websites, alerts_qs, logs_qs):
+    logs_by_website = defaultdict(list)
+    for log in logs_qs:
+        logs_by_website[log.website_id].append(log)
+
+    alerts_by_website = defaultdict(list)
+    for alert in alerts_qs:
+        alerts_by_website[alert.website_id].append(alert)
+
+    threshold_lookback = timezone.now() - timedelta(hours=24)
+    for website in websites:
+        website_logs = logs_by_website.get(website.id, [])
+        website_alerts = alerts_by_website.get(website.id, [])
+        latest_log = website_logs[0] if website_logs else None
+        latest_alert = website_alerts[0] if website_alerts else None
+        recent_alerts = [alert for alert in website_alerts if alert.created_at >= timezone.now() - timedelta(days=7)]
+        recent_recovery = next((alert for alert in website_alerts if alert.alert_type == Alert.TYPE_RECOVERY), None)
+        recent_threshold_violations = [
+            log for log in website_logs
+            if log.checked_at >= threshold_lookback and log.response_time and log.response_time > website.slow_alert_threshold
+        ]
+        recent_latencies = [log.response_time for log in website_logs[:10] if log.response_time]
+        active_cooldown_until = None
+        if latest_alert and latest_alert.status in {Alert.STATUS_SENT, Alert.STATUS_PENDING} and latest_alert.alert_type != Alert.TYPE_RECOVERY:
+            active_cooldown_until = latest_alert.created_at + ALERT_DEDUP_WINDOW
+
+        website.current_monitoring_state = get_site_status(latest_log)
+        website.current_monitoring_badge = (
+            'badge-up' if website.current_monitoring_state == MonitorLog.STATUS_UP
+            else 'badge-slow' if website.current_monitoring_state == MonitorLog.STATUS_SLOW
+            else 'badge-down'
+        )
+        website.current_average_latency = round(sum(recent_latencies) / len(recent_latencies), 2) if recent_latencies else 0
+        website.last_alert_generated_at = latest_alert.created_at if latest_alert else None
+        website.last_alert_generated_label = latest_alert.status_label if latest_alert else 'No alerts yet'
+        website.last_recovery_at = recent_recovery.created_at if recent_recovery else None
+        website.recent_alert_count = len(recent_alerts)
+        website.email_delivery_state = (
+            'Enabled' if website.email_notifications and website.user.email else 'In-app only'
+        )
+        website.email_delivery_badge = 'badge-active' if website.email_notifications and website.user.email else 'badge-info'
+        website.cooldown_active = bool(active_cooldown_until and active_cooldown_until > timezone.now())
+        website.cooldown_until = active_cooldown_until
+        website.suppressed_due_to_cooldown = max(website.recent_alert_count - len({alert.alert_type for alert in recent_alerts}), 0)
+        website.recent_threshold_violations = len(recent_threshold_violations)
+
+    return websites
+
+
+def _read_uploaded_log_text(uploaded_log):
+    uploaded_log.file.open('rb')
+    try:
+        return uploaded_log.file.read().decode('utf-8', errors='replace')
+    finally:
+        uploaded_log.file.close()
+
+
+def _extract_context_window(lines, first_line, last_line, padding=2):
+    if not lines:
+        return []
+    start = max(first_line - 1 - padding, 0)
+    end = min(last_line + padding, len(lines))
+    return [
+        {
+            'number': index + 1,
+            'text': lines[index],
+        }
+        for index in range(start, end)
+    ]
+
+
+def _extract_timestamp(*candidates):
+    for candidate in candidates:
+        if not candidate:
+            continue
+        match = TIMESTAMP_RE.search(candidate)
+        if match:
+            stamp = match.group('stamp')
+            return stamp[:5] if len(stamp) >= 5 and stamp[2] == ':' else stamp
+    return ''
+
+
+def _extract_routes_and_services(text):
+    routes = []
+    services = []
+    for line in (text or '').splitlines():
+        for match in ROUTE_RE.findall(line):
+            if match.startswith('//'):
+                continue
+            if len(match) > 1 and match not in routes:
+                routes.append(match)
+        for match in SERVICE_RE.findall(line):
+            normalized = match.lower()
+            if normalized not in services:
+                services.append(normalized)
+    return routes[:4], services[:4]
+
+
+def _line_span_label(first_line, last_line):
+    if last_line and last_line != first_line:
+        return f"Lines {first_line}-{last_line}"
+    return f"Line {first_line}"
+
+
+def _confidence_for_error(item):
+    if item.category != ParsedError.CATEGORY_UNKNOWN and item.count >= 3:
+        return 'high'
+    if item.category != ParsedError.CATEGORY_UNKNOWN or item.count >= 2:
+        return 'medium'
+    return 'low'
+
+
+def _operational_impact_for_error(item):
+    if item.severity == ParsedError.SEVERITY_CRITICAL:
+        return 'Likely request failures or blocked critical workflows.'
+    if item.severity == ParsedError.SEVERITY_HIGH:
+        return 'High operator attention required; user-facing degradation is plausible.'
+    if item.severity == ParsedError.SEVERITY_MEDIUM:
+        return 'Investigate before volume grows or downstream latency compounds.'
+    return 'Lower immediate impact, but repeated occurrences may indicate a noisy edge path.'
+
+
+def _build_investigation_workspace(uploaded_log, parsed_errors):
+    log_text = _read_uploaded_log_text(uploaded_log)
+    lines = log_text.splitlines()
+    occurrences_by_key = defaultdict(list)
+    timeline = []
+
+    for entry in iter_error_entries(log_text):
+        occurrence_text = "\n".join(
+            line['text'] for line in _extract_context_window(lines, entry['first_seen_line'], entry['last_seen_line'], padding=1)
+        )
+        routes, services = _extract_routes_and_services(occurrence_text)
+        occurrence = {
+            'first_seen_line': entry['first_seen_line'],
+            'last_seen_line': entry['last_seen_line'],
+            'line_range_display': _line_span_label(entry['first_seen_line'], entry['last_seen_line']),
+            'timestamp': _extract_timestamp(
+                lines[entry['first_seen_line'] - 1] if entry['first_seen_line'] - 1 < len(lines) else '',
+                occurrence_text,
+            ) or f"Line {entry['first_seen_line']}",
+            'routes': routes,
+            'services': services,
+        }
+        occurrences_by_key[(entry['error_type'], entry['raw_line'])].append(occurrence)
+
+    previous_line = None
+    cluster_index = 0
+    for entry in sorted(iter_error_entries(log_text), key=lambda item: (item['first_seen_line'], item['last_seen_line'])):
+        diagnostics = get_error_diagnostics(type('AnalyzerEntry', (), entry))
+        if previous_line is not None and entry['first_seen_line'] - previous_line > 8:
+            cluster_index += 1
+        previous_line = entry['last_seen_line']
+        timeline.append({
+            'timestamp': _extract_timestamp(lines[entry['first_seen_line'] - 1] if entry['first_seen_line'] - 1 < len(lines) else '') or f"Line {entry['first_seen_line']}",
+            'title': entry['error_type'],
+            'message': entry['raw_line'],
+            'severity': diagnostics['severity'],
+            'severity_label': dict(ParsedError.SEVERITY_CHOICES).get(diagnostics['severity'], 'Low'),
+            'severity_badge_class': {
+                ParsedError.SEVERITY_CRITICAL: 'badge-down',
+                ParsedError.SEVERITY_HIGH: 'badge-slow',
+                ParsedError.SEVERITY_MEDIUM: 'badge-purple',
+                ParsedError.SEVERITY_LOW: 'badge-info',
+            }.get(diagnostics['severity'], 'badge-info'),
+            'line_range_display': _line_span_label(entry['first_seen_line'], entry['last_seen_line']),
+            'cluster_index': cluster_index,
+        })
+
+    investigation_groups = []
+    affected_routes = []
+    affected_services = []
+    all_next_actions = []
+    for index, item in enumerate(parsed_errors):
+        diagnostics = get_error_diagnostics(item)
+        occurrences = occurrences_by_key.get((item.error_type, item.raw_line), [])
+        context_lines = _extract_context_window(lines, item.first_seen_line, item.last_seen_line, padding=3)
+        traceback_text = "\n".join(
+            f"{line['number']:>4} | {line['text']}" for line in context_lines
+        )
+        routes, services = _extract_routes_and_services(traceback_text)
+        for route in routes:
+            if route not in affected_routes:
+                affected_routes.append(route)
+        for service in services:
+            if service not in affected_services:
+                affected_services.append(service)
+        all_next_actions.extend(diagnostics['suggested_checks'][:2])
+        confidence_key = _confidence_for_error(item)
+        investigation_groups.append({
+            'id': f"error-group-{index}",
+            'item': item,
+            'occurrences': occurrences,
+            'affected_routes': routes or [occurrence_route for occurrence in occurrences for occurrence_route in occurrence['routes']][:4],
+            'affected_services': services or [occurrence_service for occurrence in occurrences for occurrence_service in occurrence['services']][:4],
+            'confidence_key': confidence_key,
+            'confidence_label': CONFIDENCE_COPY[confidence_key],
+            'operational_impact': _operational_impact_for_error(item),
+            'traceback_text': traceback_text or item.raw_line,
+            'traceback_preview': traceback_text.splitlines()[:4],
+            'default_open': index == 0,
+            'search_blob': " ".join([
+                item.error_type,
+                item.raw_line,
+                item.category_label,
+                item.severity_label,
+                diagnostics['probable_cause'],
+            ]).lower(),
+            'related_occurrence_count': len(occurrences),
+        })
+
+    severity_counter = Counter(item.severity for item in parsed_errors)
+    top_error = parsed_errors[0] if parsed_errors else None
+    likely_root_cause = top_error.probable_cause if top_error else 'No classified issue patterns were detected in this upload.'
+    if parsed_errors:
+        highest_severity = next(
+            (
+                label for key, label in ParsedError.SEVERITY_CHOICES
+                if severity_counter.get(key, 0)
+            ),
+            'Low',
+        )
+    else:
+        highest_severity = 'Low'
+
+    smart_panels = [
+        {
+            'title': 'Systems affected',
+            'value': ", ".join((affected_services + affected_routes)[:4]) or 'Application runtime',
+            'body': 'Derived from traceback context, routes, and subsystem keywords already present in the uploaded log.',
+        },
+        {
+            'title': 'Likely root cause',
+            'value': likely_root_cause,
+            'body': 'Based on the most dominant classified signature and the deterministic diagnostics rules.',
+        },
+        {
+            'title': 'Confidence level',
+            'value': CONFIDENCE_COPY[_confidence_for_error(top_error)] if top_error else 'Low confidence',
+            'body': 'Confidence increases when the same classified signature repeats across multiple occurrences.',
+        },
+        {
+            'title': 'Operational impact',
+            'value': highest_severity,
+            'body': _operational_impact_for_error(top_error) if top_error else 'No active impact inferred from this upload.',
+        },
+        {
+            'title': 'Recommended next actions',
+            'value': ", ".join(list(dict.fromkeys(all_next_actions))[:3]) or 'Upload a richer traceback sample for more context.',
+            'body': 'These checks are deterministic suggestions aggregated from the visible classified failures.',
+        },
+    ]
+
+    return {
+        'timeline_events': timeline,
+        'investigation_groups': investigation_groups,
+        'smart_panels': smart_panels,
+    }
 
 
 def build_error_report_analytics(user, range_start, range_key):
@@ -582,6 +1199,7 @@ def build_error_analyzer_summary(uploaded_log):
     analytics['severity_rows'] = severity_rows
     analytics['category_rows'] = category_rows
     analytics['insights'] = _build_error_insights(parsed_errors, [uploaded_log])
+    analytics.update(_build_investigation_workspace(uploaded_log, parsed_errors))
     return analytics
 
 
@@ -892,6 +1510,13 @@ def reports(request):
 
 
 @login_required
+def weekly_reports(request, week_key=None):
+    ensure_weekly_report_notification(request.user)
+    context = build_weekly_report_context(request.user, week_key=week_key)
+    return render(request, 'monitor/weekly_report.html', context)
+
+
+@login_required
 def error_log_upload(request):
     if request.method == 'POST':
         form = UploadedLogForm(request.POST, request.FILES)
@@ -1097,22 +1722,38 @@ def settings(request):
 
 @login_required
 def notifications(request):
+    cleanup_old_notifications(user=request.user)
     notifications_qs = get_notification_queryset(request.user)
     selected_severity = request.GET.get('severity', '').strip().lower()
     unread_only = request.GET.get('unread') == '1'
+    selected_query = request.GET.get('q', '').strip()
 
     if selected_severity in {'critical', 'warning', 'success', 'info'}:
         notifications_qs = notifications_qs.filter(severity=selected_severity)
     if unread_only:
         notifications_qs = notifications_qs.filter(is_read=False)
+    if selected_query:
+        notifications_qs = notifications_qs.filter(
+            Q(title__icontains=selected_query)
+            | Q(message__icontains=selected_query)
+            | Q(notification_type__icontains=selected_query)
+            | Q(related_website__url__icontains=selected_query)
+        )
 
-    paginator = Paginator(notifications_qs, 20)
+    ordered_notifications = sorted(notifications_qs, key=notification_priority, reverse=True)
+    paginator = Paginator(ordered_notifications, 20)
     page_obj = paginator.get_page(request.GET.get('page'))
+    page_notifications = list(page_obj.object_list)
+    for notification in page_notifications:
+        notification.action_url = get_notification_destination(notification)
+    notification_groups = _build_notification_groups(page_notifications)
 
     context = {
         'page_obj': page_obj,
-        'notifications': page_obj.object_list,
+        'notifications': page_notifications,
+        'notification_groups': notification_groups,
         'selected_severity': selected_severity,
+        'selected_query': selected_query,
         'unread_only': unread_only,
         'unread_count': get_unread_notification_count(request.user),
     }
@@ -1125,7 +1766,7 @@ def mark_notification_read(request, notification_id):
     notification = get_object_or_404(get_notification_queryset(request.user), id=notification_id)
     notification.is_read = True
     notification.save(update_fields=['is_read'])
-    messages.success(request, 'Notification marked as read.')
+    messages.success(request, 'Notification operationally acknowledged.')
     return redirect(request.POST.get('next') or 'notifications')
 
 
@@ -1133,7 +1774,7 @@ def mark_notification_read(request, notification_id):
 @require_POST
 def mark_all_notifications_read(request):
     get_notification_queryset(request.user).filter(is_read=False).update(is_read=True)
-    messages.success(request, 'All notifications marked as read.')
+    messages.success(request, 'All visible notifications acknowledged.')
     return redirect(request.POST.get('next') or 'notifications')
 
 
@@ -1264,10 +1905,14 @@ def alerts(request):
         website__user=request.user
     ).select_related('website', 'incident').prefetch_related('incident__events').order_by('-created_at', '-id')
     websites = Website.objects.filter(user=request.user).order_by('-created_at')
+    website_logs = list(
+        MonitorLog.objects.filter(website__user=request.user).select_related('website').order_by('-checked_at', '-id')
+    )
     for alert in alerts_qs:
         set_display_domain(alert.website)
     for website in websites:
         set_display_domain(website)
+    websites = _build_alert_preferences_snapshot(list(websites), list(alerts_qs), website_logs)
 
     active_alerts = alerts_qs.filter(
         is_read=False,
@@ -1306,7 +1951,7 @@ def mark_alert_read(request, alert_id):
     alert.is_read = True
     alert.read_at = timezone.now()
     alert.save(update_fields=['is_read', 'read_at'])
-    messages.success(request, 'Alert marked as read.')
+    messages.success(request, 'Alert operationally acknowledged.')
     return redirect('alerts')
 
 

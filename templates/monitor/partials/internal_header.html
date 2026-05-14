@@ -44,41 +44,58 @@
       >
         <div class="notification-dropdown-head">
           <div>
-            <h6 class="m-0 text-white fw-bold">Notifications</h6>
-            <span class="text-xs text-slate-300">{{ global_unread_notifications_count }} unread</span>
+            <h6 class="m-0 text-white fw-bold">Activity Center</h6>
+            <span class="text-xs text-slate-300">{{ global_notification_activity.summary.unread }} unread</span>
           </div>
-          <span class="status-badge {% if global_unread_notifications_count %}badge-purple{% else %}badge-up{% endif %}">
+          <span class="status-badge {% if global_unread_notifications_count %}badge-active{% else %}badge-up{% endif %}">
             {{ global_notifications|length }} recent
           </span>
         </div>
 
         <div class="notification-list">
-          {% for notification in global_notifications %}
-          <div class="notification-card {% if not notification.is_read %}unread{% endif %}">
-            <div class="notif-icon {{ notification.icon_bg_class }} {{ notification.icon_text_class }}">
-              <i data-lucide="{{ notification.icon_name }}"></i>
-            </div>
-            <div class="notification-copy">
-              <div class="d-flex align-items-start justify-content-between gap-2">
-                <div>
-                  <p class="m-0 text-white text-sm fw-medium">{{ notification.title }}</p>
-                  <span class="text-xs text-slate-300">{{ notification.message|truncatechars:92 }}</span>
-                </div>
-                <span class="status-badge {{ notification.badge_class }}">{{ notification.severity|upper }}</span>
+          <div class="notification-dropdown-summary">
+            <span class="status-badge badge-down">{{ global_notification_activity.summary.critical }} critical</span>
+            <span class="status-badge badge-info">{{ global_notification_activity.summary.reports }} reports</span>
+            <span class="status-badge badge-active">{{ global_notification_activity.summary.analyzer_uploads }} analyzer</span>
+          </div>
+          {% for group in global_notification_activity.sections %}
+          <div class="notification-dropdown-group">
+            <div class="notification-dropdown-group-head">
+              <div>
+                <h6 class="m-0 text-white fw-bold text-sm">{{ group.title }}</h6>
+                <span class="text-xs text-slate-300">{{ group.subtitle }}</span>
               </div>
-              <div class="notification-meta-row">
-                <span class="text-xs text-muted">{{ notification.created_at|timesince }} ago</span>
-                <div class="notification-inline-actions">
-                  {% if not notification.is_read %}
-                  <form method="post" action="{% url 'mark_notification_read' notification.id %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-                    <button type="submit" class="notification-link-btn">Mark read</button>
-                  </form>
-                  {% endif %}
+              <span class="utility-chip font-mono">{{ group.items|length }}</span>
+            </div>
+            {% for item in group.items %}
+            <div class="notification-card {% if not item.is_read %}unread{% endif %}">
+              <div class="notif-icon {{ item.icon_bg_class }} {{ item.icon_text_class }}">
+                <i data-lucide="{{ item.icon_name }}"></i>
+              </div>
+              <div class="notification-copy">
+                <div class="d-flex align-items-start justify-content-between gap-2">
+                  <div>
+                    <p class="m-0 text-white text-sm fw-medium">{{ item.title }}</p>
+                    <span class="text-xs text-slate-300">{{ item.message|truncatechars:110 }}</span>
+                  </div>
+                  <span class="status-badge {{ item.badge_class }}">{{ item.severity_label }}</span>
+                </div>
+                <div class="notification-meta-row">
+                  <span class="text-xs text-muted">{{ item.created_at|timesince }} ago</span>
+                  <div class="notification-inline-actions">
+                    <a href="{{ item.action_url }}" class="notification-link-btn">{{ item.action_label }}</a>
+                    {% if item.kind == 'notification' and not item.is_read %}
+                    <form method="post" action="{{ item.mark_read_url }}">
+                      {% csrf_token %}
+                      <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+                      <button type="submit" class="notification-link-btn">Ack</button>
+                    </form>
+                    {% endif %}
+                  </div>
                 </div>
               </div>
             </div>
+            {% endfor %}
           </div>
           {% empty %}
           <div class="notification-empty-state">
@@ -93,9 +110,13 @@
           <form method="post" action="{% url 'mark_all_notifications_read' %}">
             {% csrf_token %}
             <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-            <button type="submit" class="notification-link-btn">Mark all as read</button>
+            <button type="submit" class="notification-link-btn">Acknowledge visible</button>
           </form>
-          <a href="{% url 'notifications' %}" class="notification-link-btn">View all notifications</a>
+          <div class="notification-dropdown-footer-links">
+            {% for link in global_notification_activity.quick_links %}
+            <a href="{{ link.url }}" class="notification-link-btn">{{ link.label }}</a>
+            {% endfor %}
+          </div>
         </div>
       </div>
     </div>

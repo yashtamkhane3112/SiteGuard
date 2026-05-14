@@ -23,90 +23,80 @@
       <main class="main-content">
         {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search error signatures, uploads, incidents..." %}
 
-        <div class="content-wrapper" style="max-width: 1240px">
-          <div class="d-flex align-items-start justify-content-between flex-wrap gap-3 mb-4">
-            <div>
-              <h2 class="page-title text-white">Error Analyzer Results</h2>
-              <p class="page-subtitle text-slate-300">
-                Parsed results for <span class="font-mono text-white">{{ uploaded_log.filename }}</span>.
-                Uploaded {{ uploaded_log.uploaded_at|date:"Y-m-d H:i" }} and processed synchronously for grouped diagnostics.
-              </p>
+        <div class="content-wrapper analyzer-results-shell" style="max-width: 1320px">
+          <section class="analyzer-sticky-summary analyzer-section analyzer-summary-section">
+            <div class="analyzer-summary-copy">
+              <span class="analyzer-eyebrow">Investigation Workspace</span>
+              <div class="d-flex align-items-start justify-content-between flex-wrap gap-3">
+                <div>
+                  <h1 class="page-title text-white analyzer-page-title">Error Analyzer Results</h1>
+                  <p class="page-subtitle text-slate-300 analyzer-page-subtitle mb-0">
+                    Parsed results for <span class="font-mono text-white">{{ uploaded_log.filename }}</span>.
+                    Uploaded {{ uploaded_log.uploaded_at|date:"Y-m-d H:i" }} and processed synchronously for deterministic diagnostics.
+                  </p>
+                </div>
+                <div class="utility-action-row">
+                  <a href="{% url 'error_log_upload' %}" class="btn btn-outline-dark-custom">
+                    <i data-lucide="upload" class="me-2 size-sm"></i>
+                    Upload Another File
+                  </a>
+                </div>
+              </div>
             </div>
-            <div class="utility-action-row">
-              <a href="{% url 'error_log_upload' %}" class="btn btn-outline-dark-custom">
-                <i data-lucide="upload" class="me-2 size-sm"></i>
-                Upload Another File
-              </a>
-            </div>
-          </div>
 
-          <div class="stats-grid mb-4">
-            <div class="stat-card analyzer-stat-card">
-              <span class="panel-label">Detected Occurrences</span>
-              <span class="stat-value">{{ total_detected_errors }}</span>
-              <span class="stat-subtext text-light opacity-75">All grouped matches found in this upload</span>
+            <div class="stats-grid analyzer-summary-stats">
+              <div class="stat-card analyzer-stat-card analyzer-stat-card-premium">
+                <span class="panel-label">Detected Occurrences</span>
+                <span class="stat-value">{{ total_detected_errors }}</span>
+                <span class="stat-subtext text-light opacity-75">All grouped matches found in this upload</span>
+              </div>
+              <div class="stat-card analyzer-stat-card analyzer-stat-card-premium">
+                <span class="panel-label">Recurring Error Groups</span>
+                <span class="stat-value">{{ recurring_errors_count }}</span>
+                <span class="stat-subtext text-light opacity-75">Signatures seen more than once</span>
+              </div>
+              <div class="stat-card analyzer-stat-card analyzer-stat-card-premium">
+                <span class="panel-label">Most Common Error</span>
+                <span class="stat-value analyzer-stat-text">{% if most_common_error %}{{ most_common_error.error_type }}{% else %}None{% endif %}</span>
+                <span class="stat-subtext text-light opacity-75">
+                  {% if most_common_error %}{{ most_common_error.count }} occurrence{{ most_common_error.count|pluralize }}{% else %}No patterns detected{% endif %}
+                </span>
+              </div>
+              <div class="stat-card analyzer-stat-card analyzer-stat-card-premium">
+                <span class="panel-label">Affected Line Spans</span>
+                <span class="stat-value">{{ line_span_count }}</span>
+                <span class="stat-subtext text-light opacity-75">Distinct file ranges tied to grouped errors</span>
+              </div>
             </div>
-            <div class="stat-card analyzer-stat-card">
-              <span class="panel-label">Recurring Error Groups</span>
-              <span class="stat-value">{{ recurring_errors_count }}</span>
-              <span class="stat-subtext text-light opacity-75">Signatures seen more than once</span>
-            </div>
-            <div class="stat-card analyzer-stat-card">
-              <span class="panel-label">Most Common Error</span>
-              <span class="stat-value analyzer-stat-text">{% if most_common_error %}{{ most_common_error.error_type }}{% else %}None{% endif %}</span>
-              <span class="stat-subtext text-light opacity-75">
-                {% if most_common_error %}{{ most_common_error.count }} occurrence{{ most_common_error.count|pluralize }}{% else %}No patterns detected{% endif %}
-              </span>
-            </div>
-            <div class="stat-card analyzer-stat-card">
-              <span class="panel-label">Affected Line Spans</span>
-              <span class="stat-value">{{ line_span_count }}</span>
-              <span class="stat-subtext text-light opacity-75">Distinct file ranges tied to grouped errors</span>
-            </div>
-          </div>
+          </section>
 
-          <div class="row g-4 mb-4">
+          <section class="row g-4 analyzer-section analyzer-section-grid analyzer-summary-row">
             <div class="col-xl-8">
-              <div class="dash-panel h-100">
-                <div class="d-flex align-items-center gap-3 mb-4">
+              <div class="dash-panel analyzer-panel h-100">
+                <div class="d-flex align-items-center gap-3 mb-4 analyzer-section-header">
                   <div class="incident-icon bg-panel-light text-white">
-                    <i data-lucide="bar-chart-3"></i>
+                    <i data-lucide="radar"></i>
                   </div>
                   <div>
-                    <h5 class="m-0 text-white fw-bold">Parsing Summary</h5>
-                    <p class="m-0 text-slate-300 text-sm">Severity and category breakdown for this upload.</p>
+                    <h5 class="m-0 text-white fw-bold">Investigation Summary</h5>
+                    <p class="m-0 text-slate-300 text-sm">High-signal operational context from this upload.</p>
                   </div>
                 </div>
-                <div class="row g-3">
-                  <div class="col-lg-6">
-                    <div class="analyzer-mini-panel h-100">
-                      <span class="panel-label d-block mb-3">Severity</span>
-                      <div class="utility-chip-wrap">
-                        {% for row in severity_rows %}
-                        {% if row.count %}
-                        <span class="utility-chip font-mono">{{ row.label }} · {{ row.count }}</span>
-                        {% endif %}
-                        {% endfor %}
-                      </div>
-                    </div>
-                  </div>
-                  <div class="col-lg-6">
-                    <div class="analyzer-mini-panel h-100">
-                      <span class="panel-label d-block mb-3">Categories</span>
-                      <div class="utility-chip-wrap">
-                        {% for row in category_rows %}
-                        <span class="utility-chip font-mono">{{ row.label }} · {{ row.count }}</span>
-                        {% endfor %}
-                      </div>
-                    </div>
-                  </div>
+                <div class="analyzer-smart-panel-grid">
+                  {% for panel in smart_panels %}
+                  <article class="analyzer-smart-panel">
+                    <span class="panel-label d-block mb-2">{{ panel.title }}</span>
+                    <div class="analyzer-smart-value">{{ panel.value }}</div>
+                    <p class="text-slate-300 text-sm mb-0">{{ panel.body }}</p>
+                  </article>
+                  {% endfor %}
                 </div>
               </div>
             </div>
 
             <div class="col-xl-4">
-              <div class="dash-panel h-100">
-                <div class="d-flex align-items-center gap-3 mb-4">
+              <div class="dash-panel analyzer-panel h-100">
+                <div class="d-flex align-items-center gap-3 mb-4 analyzer-section-header">
                   <div class="incident-icon bg-panel-light text-white">
                     <i data-lucide="sparkles"></i>
                   </div>
@@ -117,7 +107,7 @@
                 </div>
                 <div class="analyzer-insights-list">
                   {% for insight in insights %}
-                  <div class="analyzer-insight-card">
+                  <div class="analyzer-insight-card analyzer-tight-card">
                     <span class="panel-label">{{ insight.title }}</span>
                     <p class="text-slate-300 text-sm mb-0">{{ insight.body }}</p>
                   </div>
@@ -125,38 +115,322 @@
                 </div>
               </div>
             </div>
-          </div>
+          </section>
 
-          <div class="dash-panel mb-4">
-            <div class="d-flex align-items-center gap-3 mb-4">
+          <section class="dash-panel analyzer-panel analyzer-section analyzer-analytics-row analyzer-parsing-panel">
+            <div class="d-flex align-items-center gap-3 mb-4 analyzer-section-header">
               <div class="incident-icon bg-panel-light text-white">
-                <i data-lucide="layers-3"></i>
+                <i data-lucide="bar-chart-3"></i>
               </div>
               <div>
-                <h5 class="m-0 text-white fw-bold">Grouped Recurring Errors</h5>
-                <p class="m-0 text-slate-300 text-sm">Grouped by normalized error type with dominant category and severity.</p>
+                <h5 class="m-0 text-white fw-bold">Parsing Summary</h5>
+                <p class="m-0 text-slate-300 text-sm">Severity and category distribution for this upload.</p>
+              </div>
+            </div>
+            <div class="row g-3">
+              <div class="col-xl-4 col-md-6">
+                <div class="analyzer-mini-panel h-100 analyzer-tight-card">
+                  <span class="panel-label d-block mb-3">Severity</span>
+                  <div class="utility-chip-wrap">
+                    {% for row in severity_rows %}
+                    {% if row.count %}
+                    <span class="utility-chip font-mono analyzer-chip analyzer-chip-{{ row.key }}">{{ row.label }} · {{ row.count }}</span>
+                    {% endif %}
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+              <div class="col-xl-4 col-md-6">
+                <div class="analyzer-mini-panel h-100 analyzer-tight-card">
+                  <span class="panel-label d-block mb-3">Categories</span>
+                  <div class="utility-chip-wrap">
+                    {% for row in category_rows %}
+                    <span class="utility-chip font-mono analyzer-chip">{{ row.label }} · {{ row.count }}</span>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+              <div class="col-xl-4">
+                <div class="analyzer-metadata-grid analyzer-metadata-grid-compact">
+                  <div class="analyzer-metadata-block">
+                    <span class="panel-label">Upload</span>
+                    <strong>{{ uploaded_log.filename }}</strong>
+                  </div>
+                  <div class="analyzer-metadata-block">
+                    <span class="panel-label">Processed</span>
+                    <strong>{{ uploaded_log.uploaded_at|date:"M d, Y H:i" }}</strong>
+                  </div>
+                  <div class="analyzer-metadata-block">
+                    <span class="panel-label">Recurring Focus</span>
+                    <strong>{{ recurring_errors_count }} grouped signatures</strong>
+                  </div>
+                  <div class="analyzer-metadata-block">
+                    <span class="panel-label">Workspace Insight</span>
+                    <strong>{% if workspace_insights %}{{ workspace_insights.0.title }}{% else %}Awaiting more uploads{% endif %}</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="dash-panel analyzer-panel analyzer-section analyzer-timeline-panel">
+            <div class="d-flex align-items-center gap-3 mb-4 analyzer-section-header analyzer-timeline-header">
+              <div class="incident-icon bg-panel-light text-white">
+                <i data-lucide="activity"></i>
+              </div>
+              <div>
+                <h5 class="m-0 text-white fw-bold">Operational Timeline</h5>
+                <p class="m-0 text-slate-300 text-sm">Visual sequence of detected error events in this upload.</p>
+              </div>
+            </div>
+            {% if timeline_events %}
+            <div class="analyzer-timeline" id="timeline-events">
+              {% for event in timeline_events %}
+              {% ifchanged event.cluster_index %}
+              {% if not forloop.first %}
+              <div class="analyzer-timeline-cluster-label">Event cluster {{ event.cluster_index|add:"1" }}</div>
+              {% endif %}
+              {% endifchanged %}
+              <article class="analyzer-timeline-item" data-severity="{{ event.severity }}" data-cluster="{{ event.cluster_index }}">
+                <div class="analyzer-timeline-marker analyzer-timeline-marker-{{ event.severity }}"></div>
+                <div class="analyzer-timeline-content">
+                  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                      <span class="analyzer-timeline-time font-mono">{{ event.timestamp }}</span>
+                      <span class="status-badge {{ event.severity_badge_class }}">{{ event.severity_label }}</span>
+                    </div>
+                    <span class="utility-chip font-mono">{{ event.line_range_display }}</span>
+                  </div>
+                  <h6 class="text-white fw-bold mb-1">{{ event.title }}</h6>
+                  <p class="text-slate-300 text-sm mb-0 analyzer-raw-line">{{ event.message }}</p>
+                </div>
+              </article>
+              {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+              <i data-lucide="history"></i>
+              <h6>No timeline events available</h6>
+              <p class="text-sm mb-0">Timeline markers appear when the parser detects classified occurrences in the uploaded log.</p>
+            </div>
+            {% endif %}
+          </section>
+
+          <section class="dash-panel analyzer-panel analyzer-section analyzer-investigation-section">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4 analyzer-section-header analyzer-section-header-spread">
+              <div>
+                <h5 class="m-0 text-white fw-bold">Recurring Error Groups</h5>
+                <p class="m-0 text-slate-300 text-sm">Filter, search, and expand grouped errors without losing deterministic diagnostics.</p>
+              </div>
+              <div class="analyzer-filter-shell">
+                <div class="analyzer-filter-row">
+                  <select class="form-select analyzer-filter-control" id="severity-filter" aria-label="Filter by severity">
+                    <option value="all">All severities</option>
+                    {% for row in severity_rows %}
+                    {% if row.count %}
+                    <option value="{{ row.key }}">{{ row.label }}</option>
+                    {% endif %}
+                    {% endfor %}
+                  </select>
+                  <select class="form-select analyzer-filter-control" id="category-filter" aria-label="Filter by category">
+                    <option value="all">All categories</option>
+                    {% for row in category_rows %}
+                    <option value="{{ row.key }}">{{ row.label }}</option>
+                    {% endfor %}
+                  </select>
+                  <div class="form-check form-switch analyzer-toggle">
+                    <input class="form-check-input" type="checkbox" role="switch" id="recurring-only" />
+                    <label class="form-check-label text-slate-300 text-sm" for="recurring-only">Recurring only</label>
+                  </div>
+                </div>
+                <div class="position-relative">
+                  <i data-lucide="search" class="analyzer-search-icon"></i>
+                  <input
+                    type="search"
+                    id="group-search"
+                    class="form-control analyzer-search-control"
+                    placeholder="Search signatures, messages, probable causes"
+                    aria-label="Search signatures and messages"
+                  />
+                </div>
               </div>
             </div>
 
             {% if grouped_results %}
-            <div class="error-group-grid">
+            <div class="error-group-grid analyzer-summary-groups mb-4">
               {% for group in grouped_results %}
-              <div class="error-group-card">
+              <article class="error-group-card analyzer-summary-group-card">
                 <div class="d-flex justify-content-between align-items-start gap-2 mb-3 flex-wrap">
-                  <span class="status-badge {% if group.severity == 'critical' %}badge-down{% elif group.severity == 'high' %}badge-slow{% elif group.severity == 'medium' %}badge-purple{% else %}badge-up{% endif %}">
+                  <span class="status-badge {% if group.severity == 'critical' %}badge-down{% elif group.severity == 'high' %}badge-slow{% elif group.severity == 'medium' %}badge-purple{% else %}badge-info{% endif %}">
                     {{ group.severity|upper }}
                   </span>
-                  <span class="status-badge {% if group.category == 'database' or group.category == 'django' %}badge-purple{% elif group.category == 'network' or group.category == 'security' %}badge-down{% elif group.category == 'authentication' or group.category == 'timeout' %}badge-slow{% else %}badge-up{% endif %}">
+                  <span class="status-badge {% if group.category == 'database' or group.category == 'django' %}badge-purple{% elif group.category == 'network' or group.category == 'security' %}badge-down{% elif group.category == 'authentication' or group.category == 'timeout' %}badge-slow{% else %}badge-info{% endif %}">
                     {{ group.category|title }}
                   </span>
                 </div>
-                <span class="panel-label d-block mb-2">{{ group.error_type }}</span>
+                <span class="panel-label d-block mb-2">Signature</span>
+                <h6 class="text-white fw-bold mb-3">{{ group.error_type }}</h6>
                 <div class="d-flex align-items-end justify-content-between gap-3">
                   <strong class="error-group-count">{{ group.total_count }}</strong>
                   <span class="utility-chip font-mono">Occurrences</span>
                 </div>
-              </div>
+              </article>
               {% endfor %}
+            </div>
+
+            <div class="analyzer-accordion" id="investigation-groups">
+              {% for group in investigation_groups %}
+              <article
+                class="analyzer-investigation-card{% if group.default_open %} is-open{% endif %}"
+                data-investigation-card
+                data-default-open="{% if group.default_open %}true{% else %}false{% endif %}"
+                data-severity="{{ group.item.severity }}"
+                data-category="{{ group.item.category }}"
+                data-recurring="{% if group.item.count > 1 %}true{% else %}false{% endif %}"
+                data-search="{{ group.search_blob }}"
+              >
+                <button
+                  type="button"
+                  class="analyzer-investigation-toggle"
+                  data-investigation-toggle
+                  aria-expanded="{% if group.default_open %}true{% else %}false{% endif %}"
+                  aria-controls="{{ group.id }}"
+                >
+                  <div class="analyzer-investigation-head">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                      <span class="status-badge {{ group.item.severity_badge_class }}">{{ group.item.severity_label }}</span>
+                      <span class="status-badge {{ group.item.category_badge_class }}">{{ group.item.category_label }}</span>
+                      <span class="utility-chip font-mono">{{ group.item.line_range_display }}</span>
+                    </div>
+                    <div class="analyzer-investigation-count">
+                      <strong>{{ group.item.count }}</strong>
+                      <span>occurrence{{ group.item.count|pluralize }}</span>
+                    </div>
+                  </div>
+                  <div class="analyzer-investigation-title-row">
+                    <div>
+                      <h6 class="text-white fw-bold mb-1">{{ group.item.error_type }}</h6>
+                      <p class="text-slate-300 text-sm mb-0 analyzer-raw-line">{{ group.item.raw_line }}</p>
+                    </div>
+                    <i data-lucide="chevron-down" class="analyzer-chevron"></i>
+                  </div>
+                </button>
+
+                <div class="analyzer-investigation-body" id="{{ group.id }}" {% if not group.default_open %}hidden{% endif %}>
+                  <div class="row g-3 mb-3">
+                    <div class="col-xl-3 col-md-6">
+                      <div class="analyzer-mini-panel h-100 analyzer-tight-card">
+                        <span class="panel-label d-block mb-2">Probable Cause</span>
+                        <p class="text-slate-300 text-sm mb-0">{{ group.item.probable_cause }}</p>
+                      </div>
+                    </div>
+                    <div class="col-xl-3 col-md-6">
+                      <div class="analyzer-mini-panel h-100 analyzer-tight-card">
+                        <span class="panel-label d-block mb-2">Confidence Level</span>
+                        <p class="text-white fw-semibold mb-1">{{ group.confidence_label }}</p>
+                        <p class="text-slate-300 text-sm mb-0">{{ group.operational_impact }}</p>
+                      </div>
+                    </div>
+                    <div class="col-xl-3 col-md-6">
+                      <div class="analyzer-mini-panel h-100 analyzer-tight-card">
+                        <span class="panel-label d-block mb-2">Affected Routes</span>
+                        <div class="utility-chip-wrap">
+                          {% for route in group.affected_routes %}
+                          <span class="utility-chip font-mono">{{ route }}</span>
+                          {% empty %}
+                          <span class="text-slate-300 text-sm">No route context captured</span>
+                          {% endfor %}
+                        </div>
+                      </div>
+                    </div>
+                    <div class="col-xl-3 col-md-6">
+                      <div class="analyzer-mini-panel h-100 analyzer-tight-card">
+                        <span class="panel-label d-block mb-2">Affected Services</span>
+                        <div class="utility-chip-wrap">
+                          {% for service in group.affected_services %}
+                          <span class="utility-chip font-mono">{{ service }}</span>
+                          {% empty %}
+                          <span class="text-slate-300 text-sm">Application runtime</span>
+                          {% endfor %}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="row g-3 mb-3">
+                    <div class="col-lg-4">
+                      <div class="analyzer-mini-panel h-100 analyzer-tight-card">
+                        <span class="panel-label d-block mb-2">Suggested Checks</span>
+                        <ul class="analyzer-list mb-0">
+                          {% for tip in group.item.suggested_checks %}
+                          <li>{{ tip }}</li>
+                          {% endfor %}
+                        </ul>
+                      </div>
+                    </div>
+                    <div class="col-lg-4">
+                      <div class="analyzer-mini-panel h-100 analyzer-tight-card">
+                        <span class="panel-label d-block mb-2">Remediation Tips</span>
+                        <ul class="analyzer-list mb-0">
+                          {% for tip in group.item.remediation_tips %}
+                          <li>{{ tip }}</li>
+                          {% endfor %}
+                        </ul>
+                      </div>
+                    </div>
+                    <div class="col-lg-4">
+                      <div class="analyzer-mini-panel h-100 analyzer-tight-card">
+                        <span class="panel-label d-block mb-2">Related Occurrences</span>
+                        <div class="analyzer-occurrence-list">
+                          {% for occurrence in group.occurrences %}
+                          <div class="analyzer-occurrence-row">
+                            <span class="font-mono">{{ occurrence.timestamp }}</span>
+                            <span>{{ occurrence.line_range_display }}</span>
+                          </div>
+                          {% empty %}
+                          <div class="text-slate-300 text-sm">Grouped occurrence metadata unavailable.</div>
+                          {% endfor %}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="analyzer-traceback-panel">
+                    <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap mb-3">
+                      <div>
+                        <span class="panel-label d-block">Traceback Viewer</span>
+                        <p class="text-slate-300 text-sm mb-0">Monospace context window with safe wrapping and horizontal scroll fallback.</p>
+                      </div>
+                      <button
+                        type="button"
+                        class="btn btn-outline-dark-custom btn-sm analyzer-copy-btn"
+                        data-copy-target="{{ group.id }}-traceback"
+                      >
+                        <i data-lucide="copy" class="me-2 size-sm"></i>
+                        Copy Traceback
+                      </button>
+                    </div>
+                    <div class="analyzer-traceback-preview">
+                      {% for preview_line in group.traceback_preview %}
+                      <div class="font-mono">{{ preview_line }}</div>
+                      {% endfor %}
+                    </div>
+                    <details class="analyzer-traceback-details">
+                      <summary>Expand full traceback context</summary>
+                      <div class="analyzer-traceback-scroll">
+                        <pre class="analyzer-traceback-code" id="{{ group.id }}-traceback">{{ group.traceback_text }}</pre>
+                      </div>
+                    </details>
+                  </div>
+                </div>
+              </article>
+              {% endfor %}
+            </div>
+
+            <div class="empty-state analyzer-filter-empty-state" id="investigation-empty" hidden>
+              <i data-lucide="search-x"></i>
+              <h6>No groups match the current filters</h6>
+              <p class="text-sm mb-0">Try clearing the search query or widening severity and category filters.</p>
             </div>
             {% else %}
             <div class="empty-state">
@@ -165,10 +439,10 @@
               <p class="text-sm mb-0">This file did not match the current analyzer signatures.</p>
             </div>
             {% endif %}
-          </div>
+          </section>
 
-          <div class="dash-panel mb-4">
-            <div class="d-flex align-items-center gap-3 mb-4">
+          <section class="dash-panel analyzer-panel analyzer-section analyzer-recurring-section">
+            <div class="d-flex align-items-center gap-3 mb-4 analyzer-section-header">
               <div class="incident-icon bg-panel-light text-white">
                 <i data-lucide="flame"></i>
               </div>
@@ -181,7 +455,7 @@
             {% if top_recurring_errors %}
             <div class="analyzer-top-errors-grid">
               {% for item in top_recurring_errors %}
-              <div class="error-group-card">
+              <div class="error-group-card analyzer-top-error-card">
                 <div class="d-flex justify-content-between align-items-start gap-2 mb-3 flex-wrap">
                   <span class="status-badge {{ item.severity_badge_class }}">{{ item.severity_label }}</span>
                   <span class="status-badge {{ item.category_badge_class }}">{{ item.category_label }}</span>
@@ -212,81 +486,10 @@
               <p class="text-sm mb-0">Recurring signatures will appear here when the same failure pattern repeats.</p>
             </div>
             {% endif %}
-          </div>
+          </section>
 
-          <div class="dash-panel mb-4">
-            <div class="d-flex align-items-center gap-3 mb-4">
-              <div class="incident-icon bg-panel-light text-white">
-                <i data-lucide="list-tree"></i>
-              </div>
-              <div>
-                <h5 class="m-0 text-white fw-bold">Detected Error Lines</h5>
-                <p class="m-0 text-slate-300 text-sm">Each grouped signature with line spans, classification, and deterministic remediation notes.</p>
-              </div>
-            </div>
-
-            {% if parsed_errors %}
-            <div class="analyzer-results-list">
-              {% for item in parsed_errors %}
-              <div class="analyzer-result-card">
-                <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
-                  <div>
-                    <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
-                      <span class="status-badge {{ item.severity_badge_class }}">{{ item.severity_label }}</span>
-                      <span class="status-badge {{ item.category_badge_class }}">{{ item.category_label }}</span>
-                      <span class="utility-chip font-mono">{{ item.line_range_display }}</span>
-                    </div>
-                    <h6 class="text-white fw-bold mb-1">{{ item.error_type }}</h6>
-                    <p class="text-slate-300 text-sm mb-0 analyzer-raw-line">{{ item.raw_line }}</p>
-                  </div>
-                  <div class="text-end analyzer-result-meta">
-                    <div class="error-group-count analyzer-count-sm">{{ item.count }}</div>
-                    <div class="panel-label">Occurrences</div>
-                  </div>
-                </div>
-
-                <div class="row g-3">
-                  <div class="col-lg-4">
-                    <div class="analyzer-mini-panel h-100">
-                      <span class="panel-label d-block mb-2">Probable Cause</span>
-                      <p class="text-slate-300 text-sm mb-0">{{ item.probable_cause }}</p>
-                    </div>
-                  </div>
-                  <div class="col-lg-4">
-                    <div class="analyzer-mini-panel h-100">
-                      <span class="panel-label d-block mb-2">Suggested Checks</span>
-                      <ul class="analyzer-list mb-0">
-                        {% for tip in item.suggested_checks %}
-                        <li>{{ tip }}</li>
-                        {% endfor %}
-                      </ul>
-                    </div>
-                  </div>
-                  <div class="col-lg-4">
-                    <div class="analyzer-mini-panel h-100">
-                      <span class="panel-label d-block mb-2">Remediation Tips</span>
-                      <ul class="analyzer-list mb-0">
-                        {% for tip in item.remediation_tips %}
-                        <li>{{ tip }}</li>
-                        {% endfor %}
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              {% endfor %}
-            </div>
-            {% else %}
-            <div class="empty-state">
-              <i data-lucide="file-search"></i>
-              <h6>No matching entries found</h6>
-              <p class="text-sm mb-0">Try a file that contains traceback lines, exception names, or common error keywords.</p>
-            </div>
-            {% endif %}
-          </div>
-
-          <div class="dash-panel">
-            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
+          <section class="dash-panel analyzer-panel analyzer-section analyzer-history-section">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4 analyzer-section-header analyzer-section-header-spread">
               <div>
                 <h5 class="panel-title m-0">Upload History</h5>
                 <p class="panel-subtitle mt-1 m-0">Jump back to previous analyses and compare recurring signatures.</p>
@@ -308,7 +511,7 @@
                 {% endif %}
               </div>
               <div class="col-xl-4">
-                <div class="analyzer-mini-panel h-100">
+                <div class="analyzer-mini-panel h-100 analyzer-tight-card">
                   <span class="panel-label d-block mb-2">Workspace Insight</span>
                   {% if workspace_insights %}
                   <p class="text-slate-300 text-sm mb-0">{{ workspace_insights.0.body }}</p>
@@ -318,12 +521,127 @@
                 </div>
               </div>
             </div>
-          </div>
+          </section>
         </div>
       </main>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{% static 'js/script.js' %}"></script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        if (window.lucide) {
+          window.lucide.createIcons();
+        }
+
+        const cards = Array.from(document.querySelectorAll("[data-investigation-card]"));
+        const emptyState = document.getElementById("investigation-empty");
+        const severityFilter = document.getElementById("severity-filter");
+        const categoryFilter = document.getElementById("category-filter");
+        const recurringOnly = document.getElementById("recurring-only");
+        const searchInput = document.getElementById("group-search");
+
+        const setCardOpen = (targetCard) => {
+          cards.forEach((card) => {
+            const toggle = card.querySelector("[data-investigation-toggle]");
+            const body = card.querySelector(".analyzer-investigation-body");
+            const shouldOpen = card === targetCard && !card.hidden;
+            card.classList.toggle("is-open", shouldOpen);
+            toggle.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+            body.hidden = !shouldOpen;
+          });
+        };
+
+        cards.forEach((card) => {
+          const toggle = card.querySelector("[data-investigation-toggle]");
+          toggle.addEventListener("click", () => {
+            const expanded = toggle.getAttribute("aria-expanded") === "true";
+            if (expanded) {
+              card.classList.remove("is-open");
+              toggle.setAttribute("aria-expanded", "false");
+              card.querySelector(".analyzer-investigation-body").hidden = true;
+              return;
+            }
+            setCardOpen(card);
+          });
+        });
+
+        const applyFilters = () => {
+          const severityValue = severityFilter ? severityFilter.value : "all";
+          const categoryValue = categoryFilter ? categoryFilter.value : "all";
+          const recurringValue = recurringOnly ? recurringOnly.checked : false;
+          const query = (searchInput ? searchInput.value : "").trim().toLowerCase();
+          let visibleCount = 0;
+
+          cards.forEach((card) => {
+            const matchesSeverity = severityValue === "all" || card.dataset.severity === severityValue;
+            const matchesCategory = categoryValue === "all" || card.dataset.category === categoryValue;
+            const matchesRecurring = !recurringValue || card.dataset.recurring === "true";
+            const matchesQuery = !query || (card.dataset.search || "").includes(query);
+            const visible = matchesSeverity && matchesCategory && matchesRecurring && matchesQuery;
+            card.hidden = !visible;
+            if (visible) {
+              visibleCount += 1;
+            } else {
+              card.classList.remove("is-open");
+              const toggle = card.querySelector("[data-investigation-toggle]");
+              toggle.setAttribute("aria-expanded", "false");
+              card.querySelector(".analyzer-investigation-body").hidden = true;
+            }
+          });
+
+          if (emptyState) {
+            emptyState.hidden = visibleCount !== 0;
+          }
+
+          const openVisibleCard = cards.find((card) => !card.hidden && card.classList.contains("is-open"));
+          if (!openVisibleCard) {
+            const firstVisibleCard = cards.find((card) => !card.hidden);
+            if (firstVisibleCard) {
+              setCardOpen(firstVisibleCard);
+            }
+          }
+        };
+
+        [severityFilter, categoryFilter, recurringOnly, searchInput].forEach((element) => {
+          if (!element) {
+            return;
+          }
+          element.addEventListener("input", applyFilters);
+          element.addEventListener("change", applyFilters);
+        });
+
+        document.querySelectorAll(".analyzer-copy-btn").forEach((button) => {
+          button.addEventListener("click", async () => {
+            const target = document.getElementById(button.dataset.copyTarget);
+            if (!target) {
+              return;
+            }
+            try {
+              await navigator.clipboard.writeText(target.textContent || "");
+              button.classList.add("is-copied");
+              button.innerHTML = '<i data-lucide="check" class="me-2 size-sm"></i>Copied';
+              if (window.lucide) {
+                window.lucide.createIcons();
+              }
+              window.setTimeout(() => {
+                button.classList.remove("is-copied");
+                button.innerHTML = '<i data-lucide="copy" class="me-2 size-sm"></i>Copy Traceback';
+                if (window.lucide) {
+                  window.lucide.createIcons();
+                }
+              }, 1800);
+            } catch (_error) {
+              button.innerHTML = '<i data-lucide="triangle-alert" class="me-2 size-sm"></i>Copy failed';
+              if (window.lucide) {
+                window.lucide.createIcons();
+              }
+            }
+          });
+        });
+
+        applyFilters();
+      });
+    </script>
   </body>
 </html>

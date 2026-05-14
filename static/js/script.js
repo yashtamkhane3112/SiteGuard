@@ -472,7 +472,6 @@ if (filterPills.length > 0 && incidentCards.length > 0) {
 }
 
 // 2. Animated Accordions (Expand/Collapse Timelines)
-// This function is triggered by the onclick attribute in the HTML
 function toggleIncident(headerElement) {
     const bodyElement = headerElement.nextElementSibling;
     const chevron = headerElement.querySelector('.chevron-icon');
@@ -496,6 +495,8 @@ function toggleIncident(headerElement) {
     }
 }
 
+window.toggleIncident = toggleIncident;
+
 document.querySelectorAll('.incident-header[role="button"]').forEach((header) => {
     const body = header.nextElementSibling;
     const chevron = header.querySelector('.chevron-icon');
@@ -509,6 +510,10 @@ document.querySelectorAll('.incident-header[role="button"]').forEach((header) =>
     }
     if (chevron) {
         chevron.style.transform = 'rotate(0deg)';
+    }
+    if (header.dataset.incidentBound !== 'true') {
+        header.dataset.incidentBound = 'true';
+        header.addEventListener('click', () => toggleIncident(header));
     }
     header.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' || event.key === ' ') {

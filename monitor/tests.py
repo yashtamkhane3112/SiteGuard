@@ -17,8 +17,12 @@ from monitor.error_analyzer import parse_log_content
 from monitor.models import Alert, Incident, IncidentEvent, MonitorLog, Notification, ParsedError, UploadedLog, UserProfile, Website
 from monitor.utils import (
     analyze_domain,
+    build_notification_activity_center,
     cleanup_monitoring_state,
+    create_notification_from_alert,
     get_favicon_url,
+    get_notification_destination,
+    get_recent_notifications,
     get_site_status,
     normalize_domain_display,
     run_single_check,
@@ -206,6 +210,44 @@ class ErrorAnalyzerTests(TestCase):
         self.assertContains(response, "Probable Cause")
         self.assertContains(response, "Run pending migrations")
 
+    def test_error_analyzer_results_show_investigation_workspace_controls(self):
+        uploaded_log = UploadedLog.objects.create(
+            user=self.user,
+            filename="multi.log",
+            file=SimpleUploadedFile(
+                "multi.log",
+                b"\n".join([
+                    b"2026-05-14 10:16:00 GET /api/orders 500",
+                    b"Traceback (most recent call last):",
+                    b'  File "app.py", line 10, in <module>',
+                    b"django.db.utils.OperationalError: database is locked",
+                    b"2026-05-14 10:17:00 GET /api/orders 500",
+                    b"django.db.utils.OperationalError: database is locked",
+                ]),
+                content_type="text/plain",
+            ),
+            processed=True,
+        )
+        ParsedError.objects.create(
+            uploaded_log=uploaded_log,
+            error_type="OperationalError",
+            raw_line="django.db.utils.OperationalError: database is locked",
+            count=2,
+            first_seen_line=2,
+            last_seen_line=6,
+            category=ParsedError.CATEGORY_DATABASE,
+            severity=ParsedError.SEVERITY_CRITICAL,
+        )
+
+        response = self.client.get(reverse("error_log_results", args=[uploaded_log.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Operational Timeline")
+        self.assertContains(response, "Recurring Error Groups")
+        self.assertContains(response, "Copy Traceback")
+        self.assertContains(response, "Likely root cause")
+        self.assertContains(response, "Recurring only")
+
     def test_reports_view_includes_error_analytics_section(self):
         uploaded_log = UploadedLog.objects.create(
             user=self.user,
@@ -264,6 +306,8 @@ class MonitorEmailAlertTests(TestCase):
         self.assertIn("Alert Details:", args[1])
         self.assertIn("HTTP 500", args[1])
         self.assertIn("Incident Started:", args[1])
+        self.assertIn("Operational Assessment:", args[1])
+        self.assertIn("Current Outage State:", args[1])
 
     @patch("monitor.utils.check_ssl_status", return_value="Valid")
     @patch("monitor.utils.send_mail")
@@ -295,6 +339,42 @@ class MonitorEmailAlertTests(TestCase):
         run_single_check(self.website)
 
         mock_send_mail.assert_not_called()
+
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    @patch("monitor.utils.send_mail")
+    @patch("monitor.utils.requests.get")
+    def test_does_not_create_new_alert_after_acknowledgement_during_same_outage(self, mock_get, mock_send_mail, _mock_ssl):
+        original_log = MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_DOWN, response_time=0)
+        incident = Incident.objects.create(
+            website=self.website,
+            title="Complete Outage",
+            incident_type=Incident.TYPE_OUTAGE,
+            status=Incident.STATUS_DOWN,
+            started_at=original_log.checked_at,
+            latest_response_time=0,
+        )
+        alert = Alert.objects.create(
+            website=self.website,
+            incident=incident,
+            alert_type=Alert.TYPE_DOWN,
+            status=Alert.STATUS_SENT,
+            message="Automated monitoring detected https://example.com as DOWN at 0ms.",
+            sent_to=self.user.email,
+            response_time=0,
+            is_read=True,
+            read_at=timezone.now(),
+        )
+        mock_get.return_value = Mock(
+            status_code=500,
+            elapsed=Mock(total_seconds=Mock(return_value=0.123)),
+        )
+
+        run_single_check(self.website)
+
+        self.assertEqual(Alert.objects.filter(website=self.website, incident=incident, alert_type=Alert.TYPE_DOWN).count(), 1)
+        mock_send_mail.assert_not_called()
+        alert.refresh_from_db()
+        self.assertTrue(alert.is_read)
 
 
 class MonitorStatusSyncTests(TestCase):
@@ -555,6 +635,10 @@ class AlertSyncTests(TestCase):
 
         self.assertTrue(Alert.objects.filter(website=self.website, alert_type=Alert.TYPE_RECOVERY).exists())
         self.assertGreaterEqual(mock_send_mail.call_count, 2)
+        recovery_email = mock_send_mail.call_args_list[-1].args[1]
+        self.assertIn("Recovery Summary:", recovery_email)
+        self.assertIn("Downtime Duration:", recovery_email)
+        self.assertIn("Peak Latency During Window:", recovery_email)
 
     @patch("monitor.utils.send_mail", side_effect=Exception("SMTP failed"))
     def test_retry_failed_alert_action_updates_status(self, _mock_send_mail):
@@ -918,6 +1002,44 @@ class ReportingViewsTests(TestCase):
 
         self.assertEqual(reports_response.context["slowest_websites"][0]["display_domain"], "slow.example.com")
         self.assertEqual(logs_response.context["logs"][0]["display_domain"], "slow.example.com")
+
+    def test_weekly_reports_view_builds_operational_summary_and_history(self):
+        now = timezone.now()
+        MonitorLog.objects.create(
+            website=self.website,
+            status=MonitorLog.STATUS_UP,
+            response_time=120,
+        )
+        MonitorLog.objects.create(
+            website=self.second_website,
+            status=MonitorLog.STATUS_DOWN,
+            response_time=0,
+        )
+        incident = Incident.objects.create(
+            website=self.second_website,
+            title="Weekly outage",
+            incident_type=Incident.TYPE_OUTAGE,
+            status=Incident.STATUS_DOWN,
+            started_at=now,
+            latest_response_time=0,
+        )
+        Alert.objects.create(
+            website=self.second_website,
+            incident=incident,
+            alert_type=Alert.TYPE_DOWN,
+            status=Alert.STATUS_SENT,
+            message="slow.example.com is down",
+            response_time=0,
+        )
+
+        response = self.client.get(reverse("weekly_reports"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("week_key", response.context)
+        self.assertGreaterEqual(response.context["alert_count"], 1)
+        self.assertGreaterEqual(response.context["incident_count"], 1)
+        self.assertTrue(response.context["history"])
+        self.assertContains(response, "Unified Operational History")
 
 
 class UtilityHelperTests(TestCase):
@@ -1456,6 +1578,137 @@ class NotificationAndSearchTests(TestCase):
         self.assertRedirects(mark_response, reverse("notifications"))
         unread.refresh_from_db()
         self.assertTrue(unread.is_read)
+
+    def test_notifications_page_supports_query_filter_and_groups(self):
+        Notification.objects.create(
+            user=self.user,
+            title="SSL warning for example.com",
+            message="certificate warning",
+            notification_type=Notification.TYPE_SSL,
+            severity=Notification.SEVERITY_WARNING,
+            related_website=self.website,
+        )
+        Notification.objects.create(
+            user=self.user,
+            title="Weekly report ready",
+            message="report generated",
+            notification_type=Notification.TYPE_REPORT,
+            severity=Notification.SEVERITY_INFO,
+            is_read=True,
+        )
+
+        response = self.client.get(reverse("notifications"), {"q": "certificate"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "SSL warning for example.com")
+        self.assertEqual(len(response.context["notifications"]), 1)
+        self.assertEqual(response.context["notifications"][0].title, "SSL warning for example.com")
+        self.assertEqual(len(response.context["notification_groups"]), 1)
+        self.assertEqual(response.context["notification_groups"][0]["title"], "Unread")
+
+    def test_create_notification_from_alert_reuses_recent_matching_notification(self):
+        incident = Incident.objects.create(
+            website=self.website,
+            title="Complete Outage",
+            incident_type=Incident.TYPE_OUTAGE,
+            status=Incident.STATUS_DOWN,
+            started_at=timezone.now(),
+            latest_response_time=0,
+        )
+        alert = Alert.objects.create(
+            website=self.website,
+            incident=incident,
+            alert_type=Alert.TYPE_DOWN,
+            status=Alert.STATUS_SENT,
+            message="example.com is down",
+            response_time=0,
+        )
+
+        first = create_notification_from_alert(alert)
+        first.is_read = True
+        first.save(update_fields=["is_read"])
+        second = create_notification_from_alert(alert)
+
+        self.assertEqual(first.id, second.id)
+        self.assertEqual(Notification.objects.filter(user=self.user, related_incident=incident).count(), 1)
+
+    def test_notifications_view_cleans_up_old_read_items_and_prioritizes_unread(self):
+        stale = Notification.objects.create(
+            user=self.user,
+            title="Old weekly report",
+            message="older operational context",
+            notification_type=Notification.TYPE_REPORT,
+            severity=Notification.SEVERITY_INFO,
+            is_read=True,
+        )
+        Notification.objects.filter(id=stale.id).update(created_at=timezone.now() - timedelta(days=60))
+
+        warning_read = Notification.objects.create(
+            user=self.user,
+            title="Read warning",
+            message="already reviewed",
+            notification_type=Notification.TYPE_WARNING,
+            severity=Notification.SEVERITY_WARNING,
+            is_read=True,
+        )
+        critical_unread = Notification.objects.create(
+            user=self.user,
+            title="Unread outage",
+            message="needs action",
+            notification_type=Notification.TYPE_OUTAGE,
+            severity=Notification.SEVERITY_CRITICAL,
+            is_read=False,
+            related_website=self.website,
+        )
+
+        response = self.client.get(reverse("notifications"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Notification.objects.filter(id=stale.id).exists())
+        self.assertEqual(response.context["notifications"][0].id, critical_unread.id)
+        self.assertIn("Unread", [group["title"] for group in response.context["notification_groups"]])
+        self.assertTrue(Notification.objects.filter(id=warning_read.id).exists())
+
+    def test_recent_notifications_prioritize_unread_before_read_items(self):
+        older_unread = Notification.objects.create(
+            user=self.user,
+            title="Unread warning",
+            message="requires acknowledgement",
+            notification_type=Notification.TYPE_WARNING,
+            severity=Notification.SEVERITY_WARNING,
+            is_read=False,
+        )
+        Notification.objects.filter(id=older_unread.id).update(created_at=timezone.now() - timedelta(hours=2))
+        older_unread.refresh_from_db()
+
+        newer_read = Notification.objects.create(
+            user=self.user,
+            title="Read report",
+            message="already reviewed",
+            notification_type=Notification.TYPE_REPORT,
+            severity=Notification.SEVERITY_INFO,
+            is_read=True,
+        )
+
+        recent = get_recent_notifications(self.user, limit=2)
+
+        self.assertEqual(recent[0].id, older_unread.id)
+        self.assertEqual(recent[1].id, newer_read.id)
+
+    def test_report_notification_resolves_to_weekly_report_destination_and_activity_center(self):
+        report_notification = Notification.objects.create(
+            user=self.user,
+            title="Weekly report ready for 2026-W20",
+            message="report generated",
+            notification_type=Notification.TYPE_REPORT,
+            severity=Notification.SEVERITY_INFO,
+        )
+
+        destination = get_notification_destination(report_notification)
+        activity_center = build_notification_activity_center(self.user)
+
+        self.assertEqual(destination, reverse("weekly_report_detail", args=["2026-W20"]))
+        self.assertTrue(any(section["title"] == "Recovery + Reports" for section in activity_center["sections"]))
 
     def test_mark_all_notifications_read_and_delete(self):
         first = Notification.objects.create(

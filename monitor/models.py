@@ -18,6 +18,59 @@ def uploaded_log_file_path(instance, filename):
     return f'error_logs/user_{instance.user_id}/{timestamp}_{safe_name}'
 
 
+STATUS_TONE_HEALTHY = 'healthy'
+STATUS_TONE_CRITICAL = 'critical'
+STATUS_TONE_HIGH = 'high'
+STATUS_TONE_WARNING = 'warning'
+STATUS_TONE_INFO = 'info'
+STATUS_TONE_ACTIVE = 'active'
+STATUS_TONE_RECOVERED = 'recovered'
+STATUS_TONE_FAILED = 'failed'
+STATUS_TONE_NEUTRAL = 'neutral'
+
+
+def tone_to_badge_class(tone):
+    return {
+        STATUS_TONE_HEALTHY: 'badge-up',
+        STATUS_TONE_RECOVERED: 'badge-recovery',
+        STATUS_TONE_CRITICAL: 'badge-down',
+        STATUS_TONE_FAILED: 'badge-down',
+        STATUS_TONE_HIGH: 'badge-slow',
+        STATUS_TONE_WARNING: 'badge-purple',
+        STATUS_TONE_INFO: 'badge-info',
+        STATUS_TONE_ACTIVE: 'badge-active',
+        STATUS_TONE_NEUTRAL: 'badge-purple',
+    }.get(tone, 'badge-purple')
+
+
+def tone_to_icon_bg_class(tone):
+    return {
+        STATUS_TONE_HEALTHY: 'bg-good-light',
+        STATUS_TONE_RECOVERED: 'bg-recovery-light',
+        STATUS_TONE_CRITICAL: 'bg-critical-light',
+        STATUS_TONE_FAILED: 'bg-critical-light',
+        STATUS_TONE_HIGH: 'bg-warning-light',
+        STATUS_TONE_WARNING: 'bg-medium-light',
+        STATUS_TONE_INFO: 'bg-info-light',
+        STATUS_TONE_ACTIVE: 'bg-active-light',
+        STATUS_TONE_NEUTRAL: 'bg-panel-light',
+    }.get(tone, 'bg-panel-light')
+
+
+def tone_to_icon_text_class(tone):
+    return {
+        STATUS_TONE_HEALTHY: 'text-good',
+        STATUS_TONE_RECOVERED: 'text-recovery',
+        STATUS_TONE_CRITICAL: 'text-critical',
+        STATUS_TONE_FAILED: 'text-critical',
+        STATUS_TONE_HIGH: 'text-warning',
+        STATUS_TONE_WARNING: 'text-purple',
+        STATUS_TONE_INFO: 'text-info-tone',
+        STATUS_TONE_ACTIVE: 'text-active',
+        STATUS_TONE_NEUTRAL: 'text-white',
+    }.get(tone, 'text-white')
+
+
 class Website(models.Model):
     """Model representing a website to be monitored."""
     SIMPLE_DOMAIN_ALIASES = {
@@ -228,12 +281,12 @@ class Incident(models.Model):
     @property
     def badge_class(self):
         if self.is_resolved:
-            return 'badge-up'
+            return tone_to_badge_class(STATUS_TONE_RECOVERED)
         if self.status == self.STATUS_DOWN:
-            return 'badge-down'
+            return tone_to_badge_class(STATUS_TONE_CRITICAL)
         if self.status == self.STATUS_SLOW:
-            return 'badge-slow'
-        return 'badge-up'
+            return tone_to_badge_class(STATUS_TONE_HIGH)
+        return tone_to_badge_class(STATUS_TONE_ACTIVE)
 
     @property
     def status_label(self):
@@ -254,22 +307,22 @@ class Incident(models.Model):
     @property
     def icon_bg_class(self):
         if self.is_resolved:
-            return 'bg-good-light'
+            return tone_to_icon_bg_class(STATUS_TONE_RECOVERED)
         if self.status == self.STATUS_DOWN:
-            return 'bg-critical-light'
+            return tone_to_icon_bg_class(STATUS_TONE_CRITICAL)
         if self.status == self.STATUS_SLOW:
-            return 'bg-warning-light'
-        return 'bg-panel-light'
+            return tone_to_icon_bg_class(STATUS_TONE_HIGH)
+        return tone_to_icon_bg_class(STATUS_TONE_ACTIVE)
 
     @property
     def icon_text_class(self):
         if self.is_resolved:
-            return 'text-good'
+            return tone_to_icon_text_class(STATUS_TONE_RECOVERED)
         if self.status == self.STATUS_DOWN:
-            return 'text-critical'
+            return tone_to_icon_text_class(STATUS_TONE_CRITICAL)
         if self.status == self.STATUS_SLOW:
-            return 'text-warning'
-        return 'text-white'
+            return tone_to_icon_text_class(STATUS_TONE_HIGH)
+        return tone_to_icon_text_class(STATUS_TONE_ACTIVE)
 
     @property
     def incident_code(self):
@@ -333,7 +386,7 @@ class IncidentEvent(models.Model):
             self.TYPE_DETECTED: 'text-critical',
             self.TYPE_INVESTIGATING: 'text-warning',
             self.TYPE_IDENTIFIED: 'text-white',
-            self.TYPE_MONITORING: 'text-info',
+            self.TYPE_MONITORING: 'text-active',
             self.TYPE_RESOLVED: 'text-good',
         }
         return text_map.get(self.event_type, 'text-white')
@@ -398,12 +451,14 @@ class Alert(models.Model):
     @property
     def badge_class(self):
         if self.status == self.STATUS_FAILED:
-            return 'badge-down'
+            return tone_to_badge_class(STATUS_TONE_FAILED)
         if self.alert_type == self.TYPE_DOWN:
-            return 'badge-down'
-        if self.alert_type in {self.TYPE_SLOW, self.TYPE_SSL}:
-            return 'badge-slow'
-        return 'badge-up'
+            return tone_to_badge_class(STATUS_TONE_CRITICAL)
+        if self.alert_type == self.TYPE_SLOW:
+            return tone_to_badge_class(STATUS_TONE_HIGH)
+        if self.alert_type == self.TYPE_SSL:
+            return tone_to_badge_class(STATUS_TONE_WARNING)
+        return tone_to_badge_class(STATUS_TONE_RECOVERED)
 
     @property
     def status_label(self):
@@ -426,22 +481,26 @@ class Alert(models.Model):
     @property
     def icon_bg_class(self):
         if self.status == self.STATUS_FAILED:
-            return 'bg-critical-light'
+            return tone_to_icon_bg_class(STATUS_TONE_FAILED)
         if self.alert_type == self.TYPE_DOWN:
-            return 'bg-critical-light'
-        if self.alert_type in {self.TYPE_SLOW, self.TYPE_SSL}:
-            return 'bg-warning-light'
-        return 'bg-good-light'
+            return tone_to_icon_bg_class(STATUS_TONE_CRITICAL)
+        if self.alert_type == self.TYPE_SLOW:
+            return tone_to_icon_bg_class(STATUS_TONE_HIGH)
+        if self.alert_type == self.TYPE_SSL:
+            return tone_to_icon_bg_class(STATUS_TONE_WARNING)
+        return tone_to_icon_bg_class(STATUS_TONE_RECOVERED)
 
     @property
     def icon_text_class(self):
         if self.status == self.STATUS_FAILED:
-            return 'text-critical'
+            return tone_to_icon_text_class(STATUS_TONE_FAILED)
         if self.alert_type == self.TYPE_DOWN:
-            return 'text-critical'
-        if self.alert_type in {self.TYPE_SLOW, self.TYPE_SSL}:
-            return 'text-warning'
-        return 'text-good'
+            return tone_to_icon_text_class(STATUS_TONE_CRITICAL)
+        if self.alert_type == self.TYPE_SLOW:
+            return tone_to_icon_text_class(STATUS_TONE_HIGH)
+        if self.alert_type == self.TYPE_SSL:
+            return tone_to_icon_text_class(STATUS_TONE_WARNING)
+        return tone_to_icon_text_class(STATUS_TONE_RECOVERED)
 
 
 class Notification(models.Model):
@@ -506,11 +565,11 @@ class Notification(models.Model):
     @property
     def badge_class(self):
         return {
-            self.SEVERITY_CRITICAL: 'badge-down',
-            self.SEVERITY_WARNING: 'badge-slow',
-            self.SEVERITY_SUCCESS: 'badge-up',
-            self.SEVERITY_INFO: 'badge-purple',
-        }.get(self.severity, 'badge-purple')
+            self.SEVERITY_CRITICAL: tone_to_badge_class(STATUS_TONE_CRITICAL),
+            self.SEVERITY_WARNING: tone_to_badge_class(STATUS_TONE_WARNING),
+            self.SEVERITY_SUCCESS: tone_to_badge_class(STATUS_TONE_RECOVERED),
+            self.SEVERITY_INFO: tone_to_badge_class(STATUS_TONE_INFO),
+        }.get(self.severity, tone_to_badge_class(STATUS_TONE_INFO))
 
     @property
     def icon_name(self):
@@ -526,20 +585,20 @@ class Notification(models.Model):
     @property
     def icon_bg_class(self):
         return {
-            self.SEVERITY_CRITICAL: 'bg-critical-light',
-            self.SEVERITY_WARNING: 'bg-warning-light',
-            self.SEVERITY_SUCCESS: 'bg-good-light',
-            self.SEVERITY_INFO: 'bg-panel-light',
-        }.get(self.severity, 'bg-panel-light')
+            self.SEVERITY_CRITICAL: tone_to_icon_bg_class(STATUS_TONE_CRITICAL),
+            self.SEVERITY_WARNING: tone_to_icon_bg_class(STATUS_TONE_WARNING),
+            self.SEVERITY_SUCCESS: tone_to_icon_bg_class(STATUS_TONE_RECOVERED),
+            self.SEVERITY_INFO: tone_to_icon_bg_class(STATUS_TONE_INFO),
+        }.get(self.severity, tone_to_icon_bg_class(STATUS_TONE_INFO))
 
     @property
     def icon_text_class(self):
         return {
-            self.SEVERITY_CRITICAL: 'text-critical',
-            self.SEVERITY_WARNING: 'text-warning',
-            self.SEVERITY_SUCCESS: 'text-good',
-            self.SEVERITY_INFO: 'text-purple',
-        }.get(self.severity, 'text-purple')
+            self.SEVERITY_CRITICAL: tone_to_icon_text_class(STATUS_TONE_CRITICAL),
+            self.SEVERITY_WARNING: tone_to_icon_text_class(STATUS_TONE_WARNING),
+            self.SEVERITY_SUCCESS: tone_to_icon_text_class(STATUS_TONE_RECOVERED),
+            self.SEVERITY_INFO: tone_to_icon_text_class(STATUS_TONE_INFO),
+        }.get(self.severity, tone_to_icon_text_class(STATUS_TONE_INFO))
 
 
 class UploadedLog(models.Model):
@@ -624,13 +683,13 @@ class ParsedError(models.Model):
             self.CATEGORY_DATABASE: 'badge-purple',
             self.CATEGORY_AUTHENTICATION: 'badge-slow',
             self.CATEGORY_TIMEOUT: 'badge-slow',
-            self.CATEGORY_HTTP: 'badge-up',
+            self.CATEGORY_HTTP: 'badge-info',
             self.CATEGORY_NETWORK: 'badge-down',
             self.CATEGORY_DJANGO: 'badge-purple',
-            self.CATEGORY_FRONTEND: 'badge-up',
+            self.CATEGORY_FRONTEND: 'badge-info',
             self.CATEGORY_SECURITY: 'badge-down',
-            self.CATEGORY_UNKNOWN: 'badge-up',
-        }.get(self.category, 'badge-up')
+            self.CATEGORY_UNKNOWN: 'badge-info',
+        }.get(self.category, 'badge-info')
 
     @property
     def severity_badge_class(self):
@@ -638,8 +697,8 @@ class ParsedError(models.Model):
             self.SEVERITY_CRITICAL: 'badge-down',
             self.SEVERITY_HIGH: 'badge-slow',
             self.SEVERITY_MEDIUM: 'badge-purple',
-            self.SEVERITY_LOW: 'badge-up',
-        }.get(self.severity, 'badge-up')
+            self.SEVERITY_LOW: 'badge-info',
+        }.get(self.severity, 'badge-info')
 
 
 @receiver(post_save, sender=User)
