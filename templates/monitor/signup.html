@@ -40,10 +40,10 @@
         <div class="auth-card">
           <h4 class="text-center text-white fw-bold mb-4">Create an Account</h4>
 
-          <button class="btn-social w-100 mb-3">
+          <button class="btn-social w-100 mb-3" type="button">
             <i class="bi bi-google me-2"></i> Sign up with Google
           </button>
-          <button class="btn-social w-100 mb-4">
+          <button class="btn-social w-100 mb-4" type="button">
             <i class="bi bi-github me-2"></i> Sign up with GitHub
           </button>
 
@@ -91,11 +91,13 @@
                   placeholder="Create a strong password"
                   autocomplete="new-password"
                 />
-                <i
-                  data-lucide="eye"
+                <button
+                  type="button"
                   id="togglePassword1"
-                  class="auth-input-icon-right"
-                ></i>
+                  class="auth-input-icon-right auth-toggle-btn"
+                >
+                  <span data-password-icon aria-hidden="true"><i data-lucide="eye"></i></span>
+                </button>
               </div>
               {% for error in form.password1.errors %}
               <div class="text-danger small mt-2">{{ error }}</div>
@@ -114,11 +116,13 @@
                   placeholder="Confirm your password"
                   autocomplete="new-password"
                 />
-                <i
-                  data-lucide="eye"
+                <button
+                  type="button"
                   id="togglePassword2"
-                  class="auth-input-icon-right"
-                ></i>
+                  class="auth-input-icon-right auth-toggle-btn"
+                >
+                  <span data-password-icon aria-hidden="true"><i data-lucide="eye"></i></span>
+                </button>
               </div>
               {% for error in form.password2.errors %}
               <div class="text-danger small mt-2">{{ error }}</div>

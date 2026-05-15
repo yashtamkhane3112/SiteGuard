@@ -376,8 +376,13 @@
           trigger.addEventListener("click", async (event) => {
             event.preventDefault();
             setExportState(label);
-            await handler();
-            setExportState("", true);
+            try {
+              await handler();
+              setExportState("", true);
+            } catch (error) {
+              exportBtnText.textContent = "Export failed";
+              console.error("Weekly report export failed.", error);
+            }
             setTimeout(() => setExportState("Export"), 1800);
           });
         };

@@ -49,6 +49,26 @@ python manage.py migrate
 python manage.py runserver
 ```
 
+For real local email delivery instead of console output, keep `EMAIL_BACKEND` blank in `.env` and set Gmail SMTP values for `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL`, and `SERVER_EMAIL`. Local development will auto-switch to SMTP only when the Gmail credentials exist; otherwise it safely falls back to the console backend.
+
+Gmail local setup:
+
+1. Enable 2-Step Verification on the Gmail sender account.
+2. Create a Google App Password for Mail.
+3. Put the Gmail address in `EMAIL_HOST_USER`.
+4. Put the App Password in `EMAIL_HOST_PASSWORD`.
+5. Set `DEFAULT_FROM_EMAIL` and `SERVER_EMAIL` to the same Gmail sender identity.
+6. Local password reset emails use the active request host while `DEBUG=True`, so start the app on the exact host you want in the email, such as `http://127.0.0.1:8000` or `http://localhost:8000`.
+7. Keep `APP_BASE_URL` pointed at your production HTTPS origin for Render production mail.
+
+Local email verification:
+
+```bash
+python manage.py test_email your@email.com
+python manage.py test_email your@email.com --kind operational --site https://example.com
+python manage.py test_email your@email.com --kind password_reset
+```
+
 If `python --version` still prints `Python 3.14.x`, you are not using the project virtual environment. In that case run commands explicitly through the venv:
 
 ```bash
@@ -95,6 +115,7 @@ Required production variables:
 - `ALLOWED_HOSTS`
 - `CSRF_TRUSTED_ORIGINS`
 - `APP_BASE_URL`
+- SMTP variables for production mail delivery: `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL`
 - `CRON_SECRET`
 - `DJANGO_SETTINGS_MODULE=siteguard.settings.prod`
 

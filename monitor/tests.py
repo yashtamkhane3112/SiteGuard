@@ -10,10 +10,12 @@ import requests
 from django.contrib.auth.models import User
 from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test.client import RequestFactory
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from monitor.emailing import build_password_reset_email_options, get_email_base_url
 from monitor.error_analyzer import parse_log_content
 from monitor.models import Alert, Incident, IncidentEvent, MonitorLog, Notification, ParsedError, UploadedLog, UserProfile, Website
 from monitor.utils import (
@@ -38,6 +40,9 @@ TEST_PNG_BYTES = base64.b64decode(
 
 
 class AuthFlowTests(TestCase):
+    def setUp(self):
+        self.request_factory = RequestFactory()
+
     def test_login_page_creates_default_admin_user(self):
         with self.settings(BOOTSTRAP_ADMIN_ENABLED=True):
             self.client.get(reverse("login"))
@@ -131,7 +136,95 @@ class AuthFlowTests(TestCase):
 
         self.assertRedirects(response, reverse("password_reset_done"))
         self.assertEqual(len(mail.outbox), 1)
-        self.assertIn("password reset", mail.outbox[0].subject.lower())
+        self.assertEqual(mail.outbox[0].subject, "[SiteGuard] Password reset instructions for SiteGuard")
+        self.assertIn("text/html", [alternative[1] for alternative in mail.outbox[0].alternatives])
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        APP_BASE_URL="https://siteguard.onrender.com",
+        CANONICAL_BASE_URL="https://siteguard.onrender.com",
+        SUPPORT_EMAIL="support@siteguard.example",
+    )
+    def test_password_reset_email_uses_canonical_https_render_link(self):
+        User.objects.create_user(
+            username="reset-user",
+            password="StrongPass123!",
+            email="reset@example.com",
+        )
+
+        response = self.client.post(
+            reverse("password_reset"),
+            {"email": "reset@example.com"},
+        )
+
+        self.assertRedirects(response, reverse("password_reset_done"))
+        self.assertEqual(len(mail.outbox), 1)
+        body = mail.outbox[0].body
+        self.assertIn("https://siteguard.onrender.com/reset/", body)
+        self.assertNotIn("http://testserver", body)
+        self.assertNotIn("localhost", body.lower())
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DEBUG=True,
+        APP_BASE_URL="https://siteguard.onrender.com",
+        CANONICAL_BASE_URL="https://siteguard.onrender.com",
+    )
+    def test_password_reset_email_uses_request_host_during_local_development(self):
+        User.objects.create_user(
+            username="reset-user",
+            password="StrongPass123!",
+            email="reset@example.com",
+        )
+
+        response = self.client.post(
+            reverse("password_reset"),
+            {"email": "reset@example.com"},
+            HTTP_HOST="127.0.0.1:8000",
+        )
+
+        self.assertRedirects(response, reverse("password_reset_done"))
+        self.assertEqual(len(mail.outbox), 1)
+        body = mail.outbox[0].body
+        self.assertIn("http://127.0.0.1:8000/reset/", body)
+        self.assertNotIn("https://siteguard.onrender.com/reset/", body)
+
+    @override_settings(
+        DEBUG=True,
+        APP_BASE_URL="https://siteguard.onrender.com",
+        CANONICAL_BASE_URL="https://siteguard.onrender.com",
+    )
+    def test_password_reset_email_options_fall_back_to_localhost_without_request_in_debug(self):
+        options = build_password_reset_email_options()
+
+        self.assertEqual(options["domain_override"], "127.0.0.1:8000")
+        self.assertFalse(options["use_https"])
+        self.assertEqual(options["extra_email_context"]["resolved_base_url"], "http://127.0.0.1:8000")
+
+    @override_settings(
+        DEBUG=True,
+        APP_BASE_URL="https://siteguard.onrender.com",
+        CANONICAL_BASE_URL="https://siteguard.onrender.com",
+    )
+    def test_email_base_url_uses_request_host_in_debug(self):
+        request = self.request_factory.get("/password-reset/", HTTP_HOST="localhost:8000")
+
+        self.assertEqual(get_email_base_url(request), "http://localhost:8000")
+
+    @patch("monitor.forms.send_siteguard_email", return_value=False)
+    def test_password_reset_send_failure_does_not_break_request(self, _mock_send_email):
+        User.objects.create_user(
+            username="reset-user",
+            password="StrongPass123!",
+            email="reset@example.com",
+        )
+
+        response = self.client.post(
+            reverse("password_reset"),
+            {"email": "reset@example.com"},
+        )
+
+        self.assertRedirects(response, reverse("password_reset_done"))
 
 
 class AdminStabilityTests(TestCase):
@@ -311,9 +404,9 @@ class MonitorEmailAlertTests(TestCase):
         )
 
     @patch("monitor.utils.check_ssl_status", return_value="Valid")
-    @patch("monitor.utils.send_mail")
+    @patch("monitor.utils.send_siteguard_email", return_value=True)
     @patch("monitor.utils.requests.get")
-    def test_sends_email_only_when_site_transitions_from_up_to_down(self, mock_get, mock_send_mail, _mock_ssl):
+    def test_sends_email_only_when_site_transitions_from_up_to_down(self, mock_get, mock_send_email, _mock_ssl):
         MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=123)
         mock_get.return_value = Mock(
             status_code=500,
@@ -322,21 +415,40 @@ class MonitorEmailAlertTests(TestCase):
 
         run_single_check(self.website)
 
-        self.assertEqual(mock_send_mail.call_count, 1)
-        args = mock_send_mail.call_args.args
-        self.assertIn("is DOWN", args[0])
-        self.assertEqual(args[3], [self.user.email])
+        self.assertEqual(mock_send_email.call_count, 1)
+        kwargs = mock_send_email.call_args.kwargs
+        self.assertIn("is down", kwargs["subject"].lower())
+        self.assertEqual(kwargs["recipients"], [self.user.email])
         self.assertEqual(Alert.objects.filter(website=self.website, alert_type=Alert.TYPE_DOWN).count(), 1)
-        self.assertIn("Alert Details:", args[1])
-        self.assertIn("HTTP 500", args[1])
-        self.assertIn("Incident Started:", args[1])
-        self.assertIn("Operational Assessment:", args[1])
-        self.assertIn("Current Outage State:", args[1])
+        self.assertIn("Alert Details:", kwargs["text_body"])
+        self.assertIn("HTTP 500", kwargs["text_body"])
+        self.assertIn("Incident Started:", kwargs["text_body"])
+        self.assertIn("Operational Assessment:", kwargs["text_body"])
+        self.assertIn("Current Outage State:", kwargs["text_body"])
+        self.assertIn("Alerts Dashboard:", kwargs["text_body"])
+        self.assertIn("Open alerts dashboard", kwargs["html_body"])
+
+    @override_settings(DEBUG=True, APP_BASE_URL="https://siteguard.onrender.com", CANONICAL_BASE_URL="https://siteguard.onrender.com")
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    @patch("monitor.utils.send_siteguard_email", return_value=True)
+    @patch("monitor.utils.requests.get")
+    def test_operational_alert_email_uses_localhost_links_during_local_development(self, mock_get, mock_send_email, _mock_ssl):
+        MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=123)
+        mock_get.return_value = Mock(
+            status_code=500,
+            elapsed=Mock(total_seconds=Mock(return_value=0.123)),
+        )
+
+        run_single_check(self.website)
+
+        kwargs = mock_send_email.call_args.kwargs
+        self.assertIn("http://127.0.0.1:8000/alerts/", kwargs["text_body"])
+        self.assertNotIn("https://siteguard.onrender.com/alerts/", kwargs["text_body"])
 
     @patch("monitor.utils.check_ssl_status", return_value="Valid")
-    @patch("monitor.utils.send_mail")
+    @patch("monitor.utils.send_siteguard_email", return_value=True)
     @patch("monitor.utils.requests.get")
-    def test_does_not_send_duplicate_email_when_active_down_alert_exists(self, mock_get, mock_send_mail, _mock_ssl):
+    def test_does_not_send_duplicate_email_when_active_down_alert_exists(self, mock_get, mock_send_email, _mock_ssl):
         MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_DOWN, response_time=0)
         incident = Incident.objects.create(
             website=self.website,
@@ -362,12 +474,12 @@ class MonitorEmailAlertTests(TestCase):
 
         run_single_check(self.website)
 
-        mock_send_mail.assert_not_called()
+        mock_send_email.assert_not_called()
 
     @patch("monitor.utils.check_ssl_status", return_value="Valid")
-    @patch("monitor.utils.send_mail")
+    @patch("monitor.utils.send_siteguard_email", return_value=True)
     @patch("monitor.utils.requests.get")
-    def test_does_not_create_new_alert_after_acknowledgement_during_same_outage(self, mock_get, mock_send_mail, _mock_ssl):
+    def test_does_not_create_new_alert_after_acknowledgement_during_same_outage(self, mock_get, mock_send_email, _mock_ssl):
         original_log = MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_DOWN, response_time=0)
         incident = Incident.objects.create(
             website=self.website,
@@ -396,7 +508,7 @@ class MonitorEmailAlertTests(TestCase):
         run_single_check(self.website)
 
         self.assertEqual(Alert.objects.filter(website=self.website, incident=incident, alert_type=Alert.TYPE_DOWN).count(), 1)
-        mock_send_mail.assert_not_called()
+        mock_send_email.assert_not_called()
         alert.refresh_from_db()
         self.assertTrue(alert.is_read)
 
@@ -641,9 +753,9 @@ class AlertSyncTests(TestCase):
         self.client.login(username="alert-user", password="StrongPass123!")
 
     @patch("monitor.utils.check_ssl_status", return_value="Valid")
-    @patch("monitor.utils.send_mail")
+    @patch("monitor.utils.send_siteguard_email", return_value=True)
     @patch("monitor.utils.requests.get")
-    def test_recovery_alert_is_created_when_incident_resolves(self, mock_get, mock_send_mail, _mock_ssl):
+    def test_recovery_alert_is_created_when_incident_resolves(self, mock_get, mock_send_email, _mock_ssl):
         MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=100)
         mock_get.return_value = Mock(
             status_code=503,
@@ -658,14 +770,14 @@ class AlertSyncTests(TestCase):
         run_single_check(self.website)
 
         self.assertTrue(Alert.objects.filter(website=self.website, alert_type=Alert.TYPE_RECOVERY).exists())
-        self.assertGreaterEqual(mock_send_mail.call_count, 2)
-        recovery_email = mock_send_mail.call_args_list[-1].args[1]
+        self.assertGreaterEqual(mock_send_email.call_count, 2)
+        recovery_email = mock_send_email.call_args_list[-1].kwargs["text_body"]
         self.assertIn("Recovery Summary:", recovery_email)
         self.assertIn("Downtime Duration:", recovery_email)
         self.assertIn("Peak Latency During Window:", recovery_email)
 
-    @patch("monitor.utils.send_mail", side_effect=Exception("SMTP failed"))
-    def test_retry_failed_alert_action_updates_status(self, _mock_send_mail):
+    @patch("monitor.utils.send_siteguard_email", return_value=False)
+    def test_retry_failed_alert_action_updates_status(self, _mock_send_email):
         alert = Alert.objects.create(
             website=self.website,
             alert_type=Alert.TYPE_DOWN,
@@ -696,10 +808,10 @@ class AlertSyncTests(TestCase):
         self.assertTrue(alert.is_read)
         self.assertIsNotNone(alert.read_at)
 
-    @patch("monitor.utils.send_mail")
+    @patch("monitor.utils.send_siteguard_email", return_value=True)
     @patch("monitor.utils.check_ssl_status", return_value="Invalid")
     @patch("monitor.utils.requests.get")
-    def test_ssl_alert_and_incident_are_created_once(self, mock_get, _mock_ssl, _mock_send_mail):
+    def test_ssl_alert_and_incident_are_created_once(self, mock_get, _mock_ssl, _mock_send_email):
         MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=100)
         mock_get.return_value = Mock(
             status_code=200,
@@ -707,6 +819,16 @@ class AlertSyncTests(TestCase):
         )
 
         run_single_check(self.website)
+        run_single_check(self.website)
+
+        self.assertEqual(Alert.objects.filter(website=self.website, alert_type=Alert.TYPE_SSL).count(), 1)
+        self.assertEqual(Incident.objects.filter(website=self.website, incident_type=Incident.TYPE_SSL).count(), 1)
+
+    @patch("monitor.utils.send_siteguard_email", return_value=True)
+    @patch("monitor.utils.requests.get", side_effect=requests.exceptions.SSLError("certificate verify failed"))
+    def test_ssl_request_exception_still_creates_ssl_alert_and_incident(self, _mock_get, _mock_send_email):
+        MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=100)
+
         run_single_check(self.website)
 
         self.assertEqual(Alert.objects.filter(website=self.website, alert_type=Alert.TYPE_SSL).count(), 1)
@@ -729,9 +851,9 @@ class AlertSyncTests(TestCase):
         self.assertEqual(response.context["recent_alerts_count"], 1)
 
     @patch("monitor.utils.check_ssl_status", return_value="Valid")
-    @patch("monitor.utils.send_mail")
+    @patch("monitor.utils.send_siteguard_email", return_value=True)
     @patch("monitor.utils.requests.get")
-    def test_down_alert_message_includes_http_reason_and_response_context(self, mock_get, _mock_send_mail, _mock_ssl):
+    def test_down_alert_message_includes_http_reason_and_response_context(self, mock_get, _mock_send_email, _mock_ssl):
         MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=100)
         mock_get.return_value = Mock(
             status_code=503,
@@ -746,9 +868,9 @@ class AlertSyncTests(TestCase):
         self.assertIn(self.website.url, alert.message)
 
     @patch("monitor.utils.check_ssl_status", return_value="Valid")
-    @patch("monitor.utils.send_mail")
+    @patch("monitor.utils.send_siteguard_email", return_value=True)
     @patch("monitor.utils.requests.get", side_effect=requests.Timeout("timed out"))
-    def test_timeout_alert_message_includes_timeout_reason(self, _mock_get, _mock_send_mail, _mock_ssl):
+    def test_timeout_alert_message_includes_timeout_reason(self, _mock_get, _mock_send_email, _mock_ssl):
         MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=100)
 
         run_single_check(self.website)
@@ -1274,6 +1396,16 @@ class UtilitiesViewTests(TestCase):
         self.assertContains(response, "Domain added to monitoring.")
         self.assertTrue(response.context["domain_result"]["already_monitored"])
 
+    def test_add_to_monitoring_rejects_private_hosts_with_validation_feedback(self):
+        response = self.client.post(reverse("utilities"), {
+            "utility_action": "add_to_monitoring",
+            "monitor_domain": "localhost",
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Local, private, and reserved hosts are not allowed.")
+        self.assertFalse(Website.objects.filter(user=self.user, url="https://localhost").exists())
+
 
 ACCOUNT_TEST_MEDIA_ROOT = os.path.join(os.path.dirname(__file__), "_test_media")
 os.makedirs(ACCOUNT_TEST_MEDIA_ROOT, exist_ok=True)
@@ -1457,9 +1589,9 @@ class AccountManagementTests(TestCase):
         self.assertTrue(profile.two_factor_enabled)
 
     @patch("monitor.utils.check_ssl_status", return_value="Valid")
-    @patch("monitor.utils.send_mail")
+    @patch("monitor.utils.send_siteguard_email", return_value=True)
     @patch("monitor.utils.requests.get")
-    def test_account_alert_preferences_affect_email_delivery(self, mock_get, mock_send_mail, _mock_ssl):
+    def test_account_alert_preferences_affect_email_delivery(self, mock_get, mock_send_email, _mock_ssl):
         self.user.profile.email_alerts_enabled = False
         self.user.profile.save(update_fields=["email_alerts_enabled"])
         MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=100)
@@ -1470,7 +1602,7 @@ class AccountManagementTests(TestCase):
 
         run_single_check(self.website)
 
-        mock_send_mail.assert_not_called()
+        mock_send_email.assert_not_called()
         self.assertTrue(Alert.objects.filter(website=self.website, alert_type=Alert.TYPE_DOWN).exists())
 
     def test_profile_and_settings_require_authentication(self):
@@ -1527,6 +1659,18 @@ class ImmediateMonitoringTests(TestCase):
         self.assertRedirects(response, reverse("dashboard"))
         website = Website.objects.get(user=self.user, url="https://example.com")
         mock_run_single_check.assert_called_once_with(website)
+
+    @patch("monitor.views.run_single_check", side_effect=RuntimeError("network unavailable"))
+    def test_add_website_keeps_site_when_initial_check_fails(self, mock_run_single_check):
+        response = self.client.post(reverse("add_website"), {"url": "example.com"}, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Website.objects.filter(user=self.user, url="https://example.com").exists())
+        self.assertContains(
+            response,
+            "Website added, but the initial monitoring check could not complete.",
+        )
+        mock_run_single_check.assert_called_once()
 
 
 class NotificationAndSearchTests(TestCase):

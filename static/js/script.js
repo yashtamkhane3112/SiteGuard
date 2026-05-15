@@ -77,30 +77,83 @@ document.querySelectorAll('.count-section').forEach(section => {
 function bindToggle(toggleId, inputId) {
     const toggle = document.getElementById(toggleId);
     const input = document.getElementById(inputId);
+    const icon = toggle ? (toggle.querySelector('[data-password-icon]') || toggle) : null;
 
     if (!toggle || !input || toggle.dataset.bound === 'true') return;
     toggle.dataset.bound = 'true';
+    toggle.setAttribute('aria-controls', inputId);
+
+    const syncToggleState = () => {
+        const isVisible = input.type === 'text';
+        const iconName = isVisible ? 'eye-off' : 'eye';
+        toggle.setAttribute('aria-pressed', isVisible ? 'true' : 'false');
+        toggle.setAttribute('aria-label', isVisible ? 'Hide password' : 'Show password');
+
+        if (icon && window.lucide && lucide.icons[iconName]) {
+            icon.innerHTML = lucide.icons[iconName].toSvg({
+                'data-password-icon': 'true',
+                'aria-hidden': 'true',
+            });
+        } else if (icon) {
+            icon.setAttribute('data-lucide', iconName);
+        }
+    };
+
+    const toggleVisibility = () => {
+        input.type = input.type === 'password' ? 'text' : 'password';
+        syncToggleState();
+        if (window.lucide) {
+            lucide.createIcons();
+        }
+    };
+
+    syncToggleState();
 
     toggle.addEventListener('click', function () {
-        const type = input.type === 'password' ? 'text' : 'password';
-        input.type = type;
+        toggleVisibility();
+    });
 
-        this.setAttribute(
-            'data-lucide',
-            type === 'password' ? 'eye' : 'eye-off'
-        );
-
-        if (window.lucide) {
-            const replacement = lucide.icons[type === 'password' ? 'eye' : 'eye-off'].toSvg({
-                id: toggleId,
-                class: this.getAttribute('class') || 'auth-input-icon-right',
-                'data-lucide': type === 'password' ? 'eye' : 'eye-off',
-            });
-            this.outerHTML = replacement;
-            lucide.createIcons();
-            bindToggle(toggleId, inputId);
+    toggle.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            toggleVisibility();
         }
     });
+}
+window.bindToggle = bindToggle;
+
+function animateCounter(counter) {
+    if (!counter || counter.dataset.counterAnimated === 'true') return;
+
+    const targetAttr = counter.getAttribute('data-target');
+    if (targetAttr === null || targetAttr === '') return;
+
+    const target = parseFloat(targetAttr);
+    if (Number.isNaN(target)) return;
+
+    const suffix = counter.getAttribute('data-suffix') || '';
+    const hasDecimals = target % 1 !== 0;
+    const duration = hasDecimals ? 45 : 30;
+    let current = 0;
+
+    counter.dataset.counterAnimated = 'true';
+
+    const updateCount = () => {
+        const increment = target / duration;
+        current = Math.min(target, current + increment);
+        counter.innerText = hasDecimals
+            ? `${current.toFixed(1)}${suffix}`
+            : `${Math.ceil(current)}${suffix}`;
+
+        if (current < target) {
+            window.setTimeout(updateCount, 20);
+            return;
+        }
+
+        counter.innerText = `${target}${suffix}`;
+    };
+
+    updateCount();
 }
 
 // 5. Password Strength Meter Logic (Sign Up Page)
@@ -541,51 +594,8 @@ document.querySelectorAll('[data-stop-propagation]').forEach((element) => {
     });
 });
 
-// 3. Number Counters for Incident Stats
-const incidentCounters = document.querySelectorAll('.incident-stat-card .counter');
-if (incidentCounters.length > 0) {
-    const speed = 30;
-    incidentCounters.forEach(counter => {
-        const updateCount = () => {
-            const target = +counter.getAttribute('data-target');
-            const count = +counter.innerText;
-            const inc = target / speed;
-
-            if (count < target) {
-                counter.innerText = Math.ceil(count + inc);
-                setTimeout(updateCount, 40);
-            } else {
-                counter.innerText = target;
-            }
-        };
-        updateCount();
-    });
-}
-// 3. Number Counter Animations (Stats)
-const animateCounters = () => {
-    document.querySelectorAll('.counter').forEach(counter => {
-        const targetAttr = counter.getAttribute('data-target');
-        if(!targetAttr) return;
-        
-        const target = parseFloat(targetAttr);
-        const count = parseFloat(counter.innerText.replace(/[^0-9.]/g, '')) || 0;
-        const suffix = counter.getAttribute('data-suffix') || '';
-        const inc = target / 30; // Animation speed
-
-        const updateCount = () => {
-            const currentCount = parseFloat(counter.innerText.replace(/[^0-9.]/g, '')) || 0;
-            if (currentCount < target) {
-                counter.innerText = (target % 1 !== 0) ? (currentCount + inc).toFixed(1) + suffix : Math.ceil(currentCount + inc) + suffix;
-                setTimeout(updateCount, 20);
-            } else {
-                counter.innerText = target + suffix;
-            }
-        };
-        updateCount();
-    });
-};
-// Run counters immediately on dashboard load
-animateCounters();
+// 3. Number Counter Animations
+document.querySelectorAll('.counter[data-target]').forEach((counter) => animateCounter(counter));
 
 // 4. "Check Status" Button Simulation
 const statusSearchInput = document.getElementById('websiteUrl');
@@ -664,40 +674,7 @@ if (searchInput && searchInput.dataset.tableSearchBound !== 'true') {
     });
 }
 
-// 6. Draw Uptime Timeline Blocks
-const container = document.getElementById('timelineContainer');
-if(container) {
-    const totalSegments = 48;
-    const errorIndices = [12, 28]; 
-    const warnIndices = [11, 24];  
-
-    for (let i = 0; i < totalSegments; i++) {
-        const segment = document.createElement('div');
-        let statusClass = 'segment-up';
-        let statusText = 'UP (112ms)';
-        
-        if (errorIndices.includes(i)) {
-            statusClass = 'segment-down'; statusText = 'DOWN (Timeout)';
-        } else if (warnIndices.includes(i)) {
-            statusClass = 'segment-warn'; statusText = 'SLOW (850ms)';
-        }
-
-        segment.className = `segment ${statusClass}`;
-        segment.addEventListener('click', function() { window.location.href = 'logs.html'; });
-        
-        const date = new Date();
-        date.setMinutes(date.getMinutes() - ((totalSegments - 1 - i) * 30));
-        const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-        const tooltip = document.createElement('div');
-        tooltip.className = 'custom-tooltip';
-        tooltip.innerText = `${timeString} - ${statusText}`;
-        segment.appendChild(tooltip);
-        container.appendChild(segment);
-    }
-}
-
-// 7. Global Search Suggestions
+// 6. Global Search Suggestions
 const globalSearchInput = document.getElementById('globalSearch');
 const searchSuggestionsPanel = document.getElementById('searchSuggestionsPanel');
 
@@ -787,7 +764,7 @@ if (globalSearchInput && searchSuggestionsPanel) {
     }
 }
 
-// 8. Alert Read Collapse
+// 7. Alert Read Collapse
 document.querySelectorAll('.alert-read-form').forEach((form) => {
     if (form.dataset.bound === 'true') return;
     form.dataset.bound = 'true';

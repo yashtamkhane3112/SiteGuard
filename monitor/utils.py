@@ -1,4 +1,5 @@
 import ipaddress
+import logging
 import re
 import socket
 import ssl
@@ -10,12 +11,12 @@ from urllib.parse import quote, unquote, urlparse
 import requests
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.core.mail import send_mail
 from django.db.models import Q
 from django.db import transaction
 from django.urls import reverse
 from django.utils import timezone
 
+from .emailing import get_email_base_url, get_support_email, render_email_template, send_siteguard_email
 from .models import Alert, Incident, IncidentEvent, MonitorLog, Notification, UploadedLog, UserProfile, Website
 
 try:
@@ -38,6 +39,7 @@ ALERT_DEDUP_WINDOW = timedelta(minutes=20)
 NOTIFICATION_DEDUP_WINDOW = timedelta(minutes=30)
 NOTIFICATION_RETENTION_DAYS = 45
 WEEKLY_REPORT_TITLE_RE = re.compile(r"Weekly report ready for (?P<week>\d{4}-W\d{2})")
+logger = logging.getLogger(__name__)
 
 
 def get_site_status(log):
@@ -1125,24 +1127,36 @@ def create_incident_event(incident, event_type, message):
     )
 
 
-def send_alert_email(alert, recovery_time=None):
+def _build_canonical_url(path):
+    base_url = get_email_base_url()
+    normalized_path = f"/{(path or '').lstrip('/')}"
+    if base_url:
+        return f"{base_url}{normalized_path}"
+    return normalized_path
+
+
+def _get_alert_subject(alert):
+    website_label = normalize_domain_display(alert.website.url) or alert.website.url
+    if alert.alert_type == Alert.TYPE_DOWN:
+        return f"Operational alert: {website_label} is down"
+    if alert.alert_type == Alert.TYPE_SLOW:
+        return f"Operational warning: {website_label} latency is degraded"
+    if alert.alert_type == Alert.TYPE_RECOVERY:
+        return f"Recovery notice: {website_label} is operational again"
+    return f"SSL warning: {website_label} certificate validation failed"
+
+
+def _build_alert_email_bodies(alert, *, recovery_time=None):
     website = alert.website
     incident = alert.incident
     incident_start = incident.started_at if incident else alert.created_at
     response_time = _format_response_time(alert.response_time)
     email_context = _build_alert_email_context(alert, recovery_time=recovery_time)
+    dashboard_url = _build_canonical_url(reverse("alerts"))
+    incident_url = _build_canonical_url(reverse("incidents"))
 
-    if alert.alert_type == Alert.TYPE_DOWN:
-        subject = f"SiteGuard Alert: {website.url} is DOWN"
-    elif alert.alert_type == Alert.TYPE_SLOW:
-        subject = f"SiteGuard Warning: {website.url} response times degraded"
-    elif alert.alert_type == Alert.TYPE_RECOVERY:
-        subject = f"SiteGuard Recovery: {website.url} is operational again"
-    else:
-        subject = f"SiteGuard SSL Alert: {website.url} SSL validation failed"
-
-    lines = [
-        "SiteGuard Monitoring Alert",
+    text_lines = [
+        f"{getattr(settings, 'SITE_NAME', 'SiteGuard')} Monitoring Alert",
         "",
         f"Website: {website.url}",
         f"Alert Type: {alert.alert_type}",
@@ -1150,27 +1164,30 @@ def send_alert_email(alert, recovery_time=None):
         f"Response Metric: {response_time}",
         f"Incident Started: {_format_email_timestamp(incident_start)}",
         f"Alert Generated: {_format_email_timestamp(alert.created_at)}",
+        f"Alerts Dashboard: {dashboard_url}",
     ]
-    if email_context['last_successful_log'] is not None:
-        lines.append(f"Last Successful Check: {_format_email_timestamp(email_context['last_successful_log'].checked_at)}")
-    lines.append(f"Operational Assessment: {email_context['probable_cause']}")
-    if recovery_time is not None:
-        lines.append(f"Recovery Time: {_format_email_timestamp(recovery_time)}")
-        if email_context['outage_duration'] is not None:
-            lines.append(f"Downtime Duration: {_format_duration_seconds(email_context['outage_duration'].total_seconds())}")
     if incident is not None:
-        lines.append(f"Incident Reference: {incident.incident_code}")
-        lines.append(f"Incident Category: {incident.get_incident_type_display()}")
+        text_lines.append(f"Incident Timeline: {incident_url}")
+    if email_context['last_successful_log'] is not None:
+        text_lines.append(f"Last Successful Check: {_format_email_timestamp(email_context['last_successful_log'].checked_at)}")
+    text_lines.append(f"Operational Assessment: {email_context['probable_cause']}")
+    if recovery_time is not None:
+        text_lines.append(f"Recovery Time: {_format_email_timestamp(recovery_time)}")
+        if email_context['outage_duration'] is not None:
+            text_lines.append(f"Downtime Duration: {_format_duration_seconds(email_context['outage_duration'].total_seconds())}")
+    if incident is not None:
+        text_lines.append(f"Incident Reference: {incident.incident_code}")
+        text_lines.append(f"Incident Category: {incident.get_incident_type_display()}")
         if incident.status == Incident.STATUS_RESOLVED:
-            lines.append("Current Outage State: Recovered and monitoring stabilized.")
+            text_lines.append("Current Outage State: Recovered and monitoring stabilized.")
         else:
-            lines.append(f"Current Outage State: {incident.status}")
+            text_lines.append(f"Current Outage State: {incident.status}")
         if incident.latest_response_time is not None:
-            lines.append(f"Latest Incident Latency: {_format_response_time(incident.latest_response_time)}")
+            text_lines.append(f"Latest Incident Latency: {_format_response_time(incident.latest_response_time)}")
     if email_context['peak_latency'] is not None:
-        lines.append(f"Peak Latency During Window: {_format_response_time(email_context['peak_latency'])}")
+        text_lines.append(f"Peak Latency During Window: {_format_response_time(email_context['peak_latency'])}")
     if alert.sent_to:
-        lines.append(f"Recipient: {alert.sent_to}")
+        text_lines.append(f"Recipient: {alert.sent_to}")
 
     detail_notes = []
     lowered_message = alert.message.lower()
@@ -1185,32 +1202,63 @@ def send_alert_email(alert, recovery_time=None):
     if 'response time' in lowered_message and 'slow threshold' in lowered_message:
         detail_notes.append('Escalation context: latency crossed the configured slow threshold and triggered degraded-state handling.')
 
-    lines.extend([
+    text_lines.extend([
         "",
         "Alert Details:",
         alert.message,
     ])
     if detail_notes:
-        lines.extend([
+        text_lines.extend([
             "",
             "Operational Hints:",
             *detail_notes,
         ])
 
     if alert.alert_type == Alert.TYPE_RECOVERY:
-        lines.extend([
+        text_lines.extend([
             "",
             "Recovery Summary:",
             "Recovery confirmation: the monitor returned a healthy result and closed the active outage window.",
             f"Operational recovery status: {'Recovered' if incident and incident.is_resolved else 'Healthy check confirmed'}.",
         ])
 
-    send_mail(
-        subject,
-        "\n".join(lines),
-        getattr(settings, 'DEFAULT_FROM_EMAIL', None),
-        [website.user.email],
-        fail_silently=False,
+    html_body = render_email_template(
+        "monitor/emails/alert_email.html",
+        {
+            "site_name": getattr(settings, "SITE_NAME", "SiteGuard"),
+            "support_email": get_support_email(),
+            "subject": _get_alert_subject(alert),
+            "website": website,
+            "alert": alert,
+            "incident": incident,
+            "incident_start": incident_start,
+            "response_time": response_time,
+            "email_context": email_context,
+            "recovery_time": recovery_time,
+            "dashboard_url": dashboard_url,
+            "incident_url": incident_url,
+            "detail_notes": detail_notes,
+        },
+    )
+    return "\n".join(text_lines), html_body
+
+
+def send_alert_email(alert, recovery_time=None):
+    subject = _get_alert_subject(alert)
+    text_body, html_body = _build_alert_email_bodies(alert, recovery_time=recovery_time)
+    return send_siteguard_email(
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+        recipients=[alert.website.user.email],
+        from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None),
+        log_context={
+            "flow": "operational_alert",
+            "alert_id": alert.id,
+            "alert_type": alert.alert_type,
+            "website_id": alert.website_id,
+            "incident_id": alert.incident_id,
+        },
     )
 
 
@@ -1283,15 +1331,25 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
         create_notification_from_alert(alert)
         return alert
 
-    try:
-        send_alert_email(alert, recovery_time=recovery_time)
+    sent = send_alert_email(alert, recovery_time=recovery_time)
+    if sent:
         alert.status = Alert.STATUS_SENT
         alert.sent_to = sent_to
         alert.save(update_fields=['status', 'sent_to'])
-    except Exception as exc:
+    else:
         alert.status = Alert.STATUS_FAILED
-        alert.message = f"{message}\n\nDelivery failure: {exc}"
-        alert.save(update_fields=['status', 'message'])
+        alert.save(update_fields=['status'])
+        logger.warning(
+            "Operational alert email delivery failed.",
+            extra={
+                "email_context": {
+                    "flow": "operational_alert",
+                    "alert_id": alert.id,
+                    "alert_type": alert.alert_type,
+                    "website_id": website.id,
+                }
+            },
+        )
 
     create_notification_from_alert(alert)
     return alert
@@ -1618,12 +1676,16 @@ def run_single_check(website, timeout=5):
         return log, response
     except Exception as exc:
         reason = _describe_exception_reason(exc, timeout)
+        if isinstance(exc, requests.exceptions.SSLError):
+            ssl_status = "Invalid"
+            ssl_reason = "TLS handshake or certificate validation failed during the monitoring request."
         log = MonitorLog.objects.create(
             website=website,
             status=MonitorLog.STATUS_DOWN,
             response_time=0,
         )
         sync_incident_state(website, previous_log, log, status_code=status_code, reason=reason)
+        sync_ssl_state(website, log, ssl_status, status_code=status_code, reason=ssl_reason)
         return log, None
 
 

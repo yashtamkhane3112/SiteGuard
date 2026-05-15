@@ -32,7 +32,10 @@
 
           {% if messages %}
           {% for message in messages %}
-          <div class="utility-state-banner utility-state-success mb-3"><i data-lucide="check-circle"></i><span>{{ message }}</span></div>
+          <div class="utility-state-banner utility-state-{{ message.tags|default:'success' }} mb-3">
+            <i data-lucide="{% if 'error' in message.tags %}x-circle{% elif 'warning' in message.tags %}alert-triangle{% else %}check-circle{% endif %}"></i>
+            <span>{{ message }}</span>
+          </div>
           {% endfor %}
           {% endif %}
 

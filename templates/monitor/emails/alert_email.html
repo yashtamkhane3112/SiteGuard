@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <body style="margin:0;padding:0;background-color:#f4f4f7;font-family:Arial,sans-serif;color:#17181c;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f4f4f7;padding:24px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;border-radius:18px;overflow:hidden;">
+            <tr>
+              <td style="background:#0f172a;padding:28px 32px;color:#ffffff;">
+                <div style="font-size:12px;letter-spacing:0.12em;text-transform:uppercase;opacity:0.8;">{{ site_name }}</div>
+                <h1 style="margin:12px 0 0;font-size:24px;line-height:1.3;">{{ subject }}</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px;">
+                <p style="margin:0 0 20px;font-size:15px;line-height:1.7;">{{ alert.message }}</p>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-bottom:24px;">
+                  <tr>
+                    <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;font-weight:700;">Website</td>
+                    <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">{{ website.url }}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;font-weight:700;">Alert Type</td>
+                    <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">{{ alert.alert_type }}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;font-weight:700;">Response Metric</td>
+                    <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">{{ response_time }}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;font-weight:700;">Incident Started</td>
+                    <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">{{ incident_start|date:"M d, Y H:i T" }}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;font-weight:700;">Assessment</td>
+                    <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">{{ email_context.probable_cause }}</td>
+                  </tr>
+                  {% if recovery_time %}
+                  <tr>
+                    <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;font-weight:700;">Recovery Time</td>
+                    <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">{{ recovery_time|date:"M d, Y H:i T" }}</td>
+                  </tr>
+                  {% endif %}
+                  {% if incident %}
+                  <tr>
+                    <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;font-weight:700;">Incident Reference</td>
+                    <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">{{ incident.incident_code }}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;font-weight:700;">Incident Category</td>
+                    <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">{{ incident.get_incident_type_display }}</td>
+                  </tr>
+                  {% endif %}
+                </table>
+
+                {% if detail_notes %}
+                <div style="margin:0 0 24px;padding:18px;background:#f8fafc;border-radius:12px;">
+                  <div style="margin:0 0 10px;font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#475569;">Operational Hints</div>
+                  {% for note in detail_notes %}
+                  <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#334155;">{{ note }}</p>
+                  {% endfor %}
+                </div>
+                {% endif %}
+
+                <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 0 18px;">
+                  <tr>
+                    <td style="border-radius:10px;background:#0f766e;">
+                      <a href="{{ dashboard_url }}" style="display:inline-block;padding:14px 22px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;">Open alerts dashboard</a>
+                    </td>
+                  </tr>
+                </table>
+                {% if incident %}
+                <p style="margin:0 0 16px;font-size:14px;line-height:1.6;"><a href="{{ incident_url }}" style="color:#0f766e;">Open incident timeline</a></p>
+                {% endif %}
+                <p style="margin:0;font-size:13px;line-height:1.6;color:#64748b;">Support contact: {{ support_email }}</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

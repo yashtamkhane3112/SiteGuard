@@ -1,7 +1,10 @@
 from django import forms
+from django.conf import settings
 from django.contrib.auth.forms import PasswordChangeForm, PasswordResetForm, SetPasswordForm, UserCreationForm
 from django.contrib.auth.models import User
 from django.core.files.images import get_image_dimensions
+
+from .emailing import build_password_reset_email_options, render_email_template, send_siteguard_email
 from .models import UploadedLog, UserProfile
 
 
@@ -69,12 +72,61 @@ class SignUpForm(UserCreationForm):
 class SiteGuardPasswordResetForm(PasswordResetForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._last_send_succeeded = None
         self.fields["email"].widget.attrs.update(
             {
                 "class": "auth-input",
                 "placeholder": "you@example.com",
                 "autocomplete": "email",
             }
+        )
+
+    def save(self, *args, **kwargs):
+        email_options = build_password_reset_email_options(request=kwargs.get("request"))
+        if not kwargs.get("from_email"):
+            kwargs["from_email"] = email_options["from_email"]
+        if not kwargs.get("html_email_template_name"):
+            kwargs["html_email_template_name"] = email_options["html_email_template_name"]
+        if not kwargs.get("extra_email_context"):
+            kwargs["extra_email_context"] = email_options["extra_email_context"]
+        if email_options.get("domain_override") and not kwargs.get("domain_override"):
+            kwargs["domain_override"] = email_options["domain_override"]
+        if "use_https" in email_options:
+            kwargs["use_https"] = email_options["use_https"]
+        return super().save(*args, **kwargs)
+
+    def send_mail(
+        self,
+        subject_template_name,
+        email_template_name,
+        context,
+        from_email,
+        to_email,
+        html_email_template_name=None,
+    ):
+        merged_context = {
+            **context,
+            "site_name": getattr(settings, "SITE_NAME", "SiteGuard"),
+            "support_email": getattr(settings, "SUPPORT_EMAIL", ""),
+            "email_subject_prefix": getattr(settings, "EMAIL_SUBJECT_PREFIX", ""),
+        }
+        subject = render_email_template(subject_template_name, merged_context)
+        text_body = render_email_template(email_template_name, merged_context)
+        html_body = (
+            render_email_template(html_email_template_name, merged_context)
+            if html_email_template_name
+            else None
+        )
+        self._last_send_succeeded = send_siteguard_email(
+            subject=subject,
+            text_body=text_body,
+            html_body=html_body,
+            recipients=[to_email],
+            from_email=from_email,
+            log_context={
+                "flow": "password_reset",
+                "recipient": to_email,
+            },
         )
 
 

@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from urllib.parse import urlparse
+from email.utils import formataddr
 
 from decouple import Csv, config
 
@@ -34,6 +35,8 @@ if render_hostname:
     if render_origin not in csrf_trusted_origins:
         csrf_trusted_origins.append(render_origin)
 app_base_url = config("APP_BASE_URL", default="").rstrip("/")
+if not app_base_url and render_hostname:
+    app_base_url = f"https://{render_hostname}"
 if app_base_url:
     parsed_app_base = urlparse(app_base_url)
     app_origin = f"{parsed_app_base.scheme}://{parsed_app_base.netloc}" if parsed_app_base.scheme and parsed_app_base.netloc else ""
@@ -143,23 +146,27 @@ LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/dashboard/"
 LOGOUT_REDIRECT_URL = "/login/"
 
+SITE_NAME = config("SITE_NAME", default="SiteGuard").strip() or "SiteGuard"
 EMAIL_BACKEND = config(
     "EMAIL_BACKEND",
-    default="django.core.mail.backends.smtp.EmailBackend",
+    default="django.core.mail.backends.console.EmailBackend" if DEBUG else "django.core.mail.backends.smtp.EmailBackend",
 )
 EMAIL_HOST = config("EMAIL_HOST", default="smtp.gmail.com")
 EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
 EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
 EMAIL_USE_SSL = config("EMAIL_USE_SSL", default=False, cast=bool)
-EMAIL_TIMEOUT = config("EMAIL_TIMEOUT", default=10, cast=int)
+EMAIL_TIMEOUT = config("EMAIL_TIMEOUT", default=15, cast=int)
 EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="").strip()
 EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="").strip()
-DEFAULT_FROM_EMAIL = config(
-    "DEFAULT_FROM_EMAIL",
-    default=EMAIL_HOST_USER or "webmaster@localhost",
-)
+EMAIL_SENDER_NAME = config("EMAIL_SENDER_NAME", default=f"{SITE_NAME} Alerts").strip() or f"{SITE_NAME} Alerts"
+EMAIL_SUBJECT_PREFIX = config("EMAIL_SUBJECT_PREFIX", default="[SiteGuard] ").strip()
+if EMAIL_SUBJECT_PREFIX and not EMAIL_SUBJECT_PREFIX.endswith(" "):
+    EMAIL_SUBJECT_PREFIX = f"{EMAIL_SUBJECT_PREFIX} "
+_default_sender_address = EMAIL_HOST_USER or "noreply@siteguard.local"
+_default_from_email = formataddr((EMAIL_SENDER_NAME, _default_sender_address))
+DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default=_default_from_email).strip()
 SERVER_EMAIL = config("SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
-EMAIL_SUBJECT_PREFIX = config("EMAIL_SUBJECT_PREFIX", default="[SiteGuard] ")
+SUPPORT_EMAIL = config("SUPPORT_EMAIL", default=EMAIL_HOST_USER or _default_sender_address).strip()
 PASSWORD_RESET_TIMEOUT = config("PASSWORD_RESET_TIMEOUT", default=86400, cast=int)
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
@@ -175,6 +182,13 @@ APPEND_SLASH = True
 BOOTSTRAP_ADMIN_ENABLED = config("BOOTSTRAP_ADMIN_ENABLED", default=DEBUG, cast=bool)
 CRON_SECRET = config("CRON_SECRET", default="")
 APP_BASE_URL = app_base_url
+CANONICAL_BASE_URL = app_base_url
+EMAIL_CONFIGURED = bool(
+    EMAIL_BACKEND and (
+        EMAIL_BACKEND != "django.core.mail.backends.smtp.EmailBackend"
+        or (EMAIL_HOST and EMAIL_HOST_USER and EMAIL_HOST_PASSWORD)
+    )
+)
 
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")
 DJANGO_LOG_LEVEL = config("DJANGO_LOG_LEVEL", default="INFO")
@@ -186,11 +200,18 @@ LOGGING = {
         "standard": {
             "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
         },
+        "verbose": {
+            "format": "%(asctime)s %(levelname)s %(name)s %(message)s %(email_context)s",
+        },
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
             "formatter": "standard",
+        },
+        "email_console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
         },
     },
     "loggers": {
@@ -201,6 +222,11 @@ LOGGING = {
         "django": {
             "handlers": ["console"],
             "level": DJANGO_LOG_LEVEL,
+            "propagate": False,
+        },
+        "siteguard.email": {
+            "handlers": ["email_console"],
+            "level": LOG_LEVEL,
             "propagate": False,
         },
     },

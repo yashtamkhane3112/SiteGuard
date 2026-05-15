@@ -14,6 +14,7 @@ from django.contrib.auth.models import User
 from django.contrib import messages
 from django.core.management import call_command
 from django.core.paginator import Paginator
+from django.core.exceptions import ValidationError
 from django.urls import reverse
 from django.db import connection
 from django.db.utils import OperationalError, ProgrammingError
@@ -1882,7 +1883,7 @@ def legal_page(request, slug):
             'eyebrow': 'Contact',
             'sections': [
                 ('Support', 'Reach the SiteGuard team for operational questions, account help, or product feedback.'),
-                ('Email', 'webmaster@localhost'),
+                ('Email', django_settings.SUPPORT_EMAIL),
                 ('Response', 'We aim to respond to platform questions as quickly as practical.'),
             ],
         },
@@ -1975,12 +1976,12 @@ def retry_alert(request, alert_id):
     alert.sent_to = alert.website.user.email
     alert.save(update_fields=['status', 'sent_to'])
 
-    try:
-        send_alert_email(alert, recovery_time=alert.incident.resolved_at if alert.incident else None)
+    sent = send_alert_email(alert, recovery_time=alert.incident.resolved_at if alert.incident else None)
+    if sent:
         alert.status = Alert.STATUS_SENT
         alert.save(update_fields=['status'])
         messages.success(request, 'Alert delivery retried successfully.')
-    except Exception:
+    else:
         alert.status = Alert.STATUS_FAILED
         alert.save(update_fields=['status'])
         messages.error(request, 'Alert retry failed.')
@@ -2110,8 +2111,12 @@ def utilities(request):
                     'domain_value': normalized_domain,
                     'domain_result': domain_result,
                 })
+            except ValidationError as exc:
+                utility_context['utility_feedback'] = exc.messages[0] if exc.messages else 'Enter a valid public domain.'
+                utility_context['utility_feedback_state'] = 'failure'
             except Exception:
-                utility_context['utility_feedback'] = 'Unable to add this domain to monitoring.'
+                logger.exception("Failed to add utility domain to monitoring.")
+                utility_context['utility_feedback'] = 'Unable to add this domain to monitoring right now.'
                 utility_context['utility_feedback_state'] = 'failure'
 
     return render(request, 'monitor/utilities.html', utility_context)
@@ -2130,7 +2135,7 @@ def add_website(request):
         try:
             clean_url = Website.normalize_url(raw_url)
             Website.validate_normalized_url(clean_url)
-        except Exception:
+        except ValidationError:
             messages.error(request, 'Invalid URL')
             return redirect('dashboard')
 
@@ -2140,11 +2145,27 @@ def add_website(request):
 
         try:
             website = Website.objects.create(user=request.user, url=clean_url)
-            run_single_check(website)
-            messages.success(request, 'Website added and initial monitoring started immediately.')
-        except Exception:
+        except ValidationError:
             messages.error(request, 'Invalid URL')
             return redirect('dashboard')
+        except Exception:
+            logger.exception("Failed to create monitored website.", extra={"url": clean_url, "user_id": request.user.id})
+            messages.error(request, 'Website could not be added right now.')
+            return redirect('dashboard')
+
+        try:
+            run_single_check(website)
+        except Exception:
+            logger.exception(
+                "Initial monitoring check failed after website creation.",
+                extra={"website_id": website.id, "user_id": request.user.id},
+            )
+            messages.warning(
+                request,
+                'Website added, but the initial monitoring check could not complete. The next monitoring run will retry it.',
+            )
+        else:
+            messages.success(request, 'Website added and initial monitoring started immediately.')
 
         return redirect('dashboard')
 

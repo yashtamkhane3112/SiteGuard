@@ -21,6 +21,11 @@ Set these on the Render web service and cron job:
 - `CSRF_TRUSTED_ORIGINS=https://<render-hostname>`
 - `APP_BASE_URL=https://<render-hostname>`
 - `CRON_SECRET=<long random secret>`
+- `EMAIL_HOST=<smtp host>`
+- `EMAIL_PORT=<smtp port>`
+- `EMAIL_HOST_USER=<smtp username>`
+- `EMAIL_HOST_PASSWORD=<smtp password>`
+- `DEFAULT_FROM_EMAIL=SiteGuard Alerts <noreply@your-domain>`
 
 Recommended:
 
@@ -28,16 +33,18 @@ Recommended:
 - `BOOTSTRAP_ADMIN_ENABLED=False`
 - `LOG_LEVEL=INFO`
 - `DJANGO_LOG_LEVEL=INFO`
+- `EMAIL_TIMEOUT=15`
+- `EMAIL_USE_TLS=True`
+- `EMAIL_USE_SSL=False`
+- `SERVER_EMAIL=SiteGuard Alerts <noreply@your-domain>`
+- `SUPPORT_EMAIL=support@your-domain`
+- `EMAIL_SENDER_NAME=SiteGuard Alerts`
+- `EMAIL_SUBJECT_PREFIX=[SiteGuard] `
+- `SITE_NAME=SiteGuard`
 
 Optional email settings:
 
-- `EMAIL_HOST`
-- `EMAIL_PORT`
-- `EMAIL_USE_TLS`
-- `EMAIL_HOST_USER`
-- `EMAIL_HOST_PASSWORD`
-- `DEFAULT_FROM_EMAIL`
-- `SERVER_EMAIL`
+- `EMAIL_BACKEND`
 
 ## Render Service Configuration
 
@@ -115,6 +122,8 @@ Then verify:
 - signup GET and POST
 - login GET and POST
 - `/health/`
+- password reset request creates an email with `https://<render-hostname>/reset/...`
+- alert retry sends a real operational email from the configured sender identity
 
 ## Local Production Checks
 
@@ -135,4 +144,5 @@ python manage.py check --deploy --settings=siteguard.settings.prod
 python manage.py migrate --settings=siteguard.settings.prod --noinput
 python manage.py collectstatic --settings=siteguard.settings.prod --noinput
 python manage.py monitor_sites --settings=siteguard.settings.prod
+python manage.py test_email your@email.com --kind operational --settings=siteguard.settings.prod
 ```

@@ -500,28 +500,6 @@
           return reportCharts[chartKey];
         };
 
-        const reportCounters = document.querySelectorAll(".report-stat-card .counter");
-        const speed = 40;
-        reportCounters.forEach((counter) => {
-          const updateCount = () => {
-            const target = +counter.getAttribute("data-target");
-            const count = +counter.innerText.replace("%", "");
-            const suffix = counter.getAttribute("data-suffix");
-            const inc = target % 1 !== 0 ? target / (speed * 2) : target / speed;
-
-            if (count < target) {
-              counter.innerText =
-                target % 1 !== 0
-                  ? (count + inc).toFixed(1) + suffix
-                  : Math.ceil(count + inc) + suffix;
-              setTimeout(updateCount, 15);
-            } else {
-              counter.innerText = target + suffix;
-            }
-          };
-          updateCount();
-        });
-
         const rangeFilter = document.getElementById("dateRangeFilter");
         if (rangeFilter && !rangeFilter.dataset.bound) {
           rangeFilter.dataset.bound = "true";
@@ -536,21 +514,30 @@
         const reportCanvasArea = document.getElementById("report-canvas-area");
         const exportRows = JSON.parse(document.getElementById("report-export-rows").textContent);
 
-        function simulateDownload(text, action) {
+        async function simulateDownload(text, action) {
           if (!exportBtnText) return;
           const originalHtml = exportBtnText.innerHTML;
           exportBtnText.innerHTML =
             '<span class="spinner-border spinner-border-sm me-2" style="width:14px; height:14px;"></span> ' +
             text;
 
-          setTimeout(async () => {
-            await action();
-            exportBtnText.innerHTML = '<i data-lucide="check" class="me-1 size-sm"></i> Done';
+          window.setTimeout(async () => {
+            try {
+              await action();
+              exportBtnText.innerHTML = '<i data-lucide="check" class="me-1 size-sm"></i> Done';
+            } catch (error) {
+              exportBtnText.textContent = "Export failed";
+              console.error("Report export failed.", error);
+            }
+
             if (typeof lucide !== "undefined") {
               lucide.createIcons();
             }
-            setTimeout(() => {
+            window.setTimeout(() => {
               exportBtnText.innerHTML = originalHtml;
+              if (typeof lucide !== "undefined") {
+                lucide.createIcons();
+              }
             }, 2000);
           }, 600);
         }
@@ -648,9 +635,15 @@
           exportCsv.addEventListener("click", (e) => {
             e.preventDefault();
             simulateDownload("Compiling...", () => {
+              const escapeCsv = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
               const header = "Date,Website,Status,ResponseTime_ms\n";
               const csvBody = exportRows
-                .map((row) => `${row.date},${row.website},${row.status},${row.response_time}`)
+                .map((row) => [
+                  escapeCsv(row.date),
+                  escapeCsv(row.website),
+                  escapeCsv(row.status),
+                  escapeCsv(row.response_time),
+                ].join(","))
                 .join("\n");
               const csvContent = "data:text/csv;charset=utf-8," + header + csvBody;
               const link = document.createElement("a");

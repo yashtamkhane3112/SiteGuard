@@ -10,12 +10,14 @@
     <form method="get" action="{% url 'search' %}" class="search-bar global-search-shell d-none d-sm-flex">
       <i data-lucide="search" class="search-icon"></i>
       <input
-        type="text"
+        type="search"
         name="q"
         id="globalSearch"
         value="{{ request.GET.q|default:'' }}"
         placeholder="{{ global_search_placeholder|default:'Search websites, incidents, alerts, logs...' }}"
         autocomplete="off"
+        aria-label="{{ global_search_placeholder|default:'Search SiteGuard records' }}"
+        spellcheck="false"
         data-search-suggestions-url="{% url 'search_suggestions' %}"
       />
       <div class="search-suggestions-panel d-none" id="searchSuggestionsPanel">
