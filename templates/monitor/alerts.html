@@ -364,18 +364,19 @@
 
                     <div class="alert-preference-controls">
                       <div class="alert-settings-grid mt-3">
-                        <label class="alert-setting-inline">
+                        <label class="alert-setting-inline" for="alerts-enabled-{{ website.id }}">
                           <span class="text-slate-300 text-xs">Alerts Enabled</span>
-                          <input type="checkbox" name="alerts_enabled" {% if website.alerts_enabled %}checked{% endif %} />
+                          <input id="alerts-enabled-{{ website.id }}" type="checkbox" name="alerts_enabled" {% if website.alerts_enabled %}checked{% endif %} />
                         </label>
-                        <label class="alert-setting-inline">
+                        <label class="alert-setting-inline" for="email-notifications-{{ website.id }}">
                           <span class="text-slate-300 text-xs">Email Notifications</span>
-                          <input type="checkbox" name="email_notifications" {% if website.email_notifications %}checked{% endif %} />
+                          <input id="email-notifications-{{ website.id }}" type="checkbox" name="email_notifications" {% if website.email_notifications %}checked{% endif %} />
                         </label>
-                        <label class="alert-setting-inline alert-setting-threshold">
+                        <label class="alert-setting-inline alert-setting-threshold" for="slow-alert-threshold-{{ website.id }}">
                           <span class="text-slate-300 text-xs">Slow Alert Threshold</span>
                           <input
                             type="number"
+                            id="slow-alert-threshold-{{ website.id }}"
                             name="slow_alert_threshold"
                             value="{{ website.slow_alert_threshold }}"
                             min="2000"

@@ -114,7 +114,7 @@
               {% endif %}
 
               <div>
-                <label class="form-label text-slate-300 text-sm fw-medium">{{ profile_form.username.label }}</label>
+                <label class="form-label text-slate-300 text-sm fw-medium" for="{{ profile_form.username.id_for_label }}">{{ profile_form.username.label }}</label>
                 {{ profile_form.username }}
                 {% for error in profile_form.username.errors %}
                 <div class="account-field-error">{{ error }}</div>
@@ -122,7 +122,7 @@
               </div>
 
               <div>
-                <label class="form-label text-slate-300 text-sm fw-medium">{{ profile_form.email.label }}</label>
+                <label class="form-label text-slate-300 text-sm fw-medium" for="{{ profile_form.email.id_for_label }}">{{ profile_form.email.label }}</label>
                 <div class="position-relative">
                   <i data-lucide="mail" class="url-icon"></i>
                   {{ profile_form.email }}
@@ -133,7 +133,7 @@
               </div>
 
               <div class="account-form-full">
-                <label class="form-label text-slate-300 text-sm fw-medium">{{ profile_form.avatar.label }}</label>
+                <label class="form-label text-slate-300 text-sm fw-medium" for="{{ profile_form.avatar.id_for_label }}">{{ profile_form.avatar.label }}</label>
                 {{ profile_form.avatar }}
                 <div class="account-help-text">Image only. Maximum 2 MB. Supports JPG, PNG, GIF, and WebP.</div>
                 {% for error in profile_form.avatar.errors %}
@@ -163,7 +163,7 @@
                     <span class="text-white font-mono text-sm fw-medium">Email Alerts</span>
                     <div class="account-help-text">Allow account-level monitoring emails to be sent to your saved address.</div>
                   </div>
-                  <label class="custom-toggle">
+                  <label class="custom-toggle" for="{{ security_form.email_alerts_enabled.id_for_label }}">
                     {{ security_form.email_alerts_enabled }}
                     <span class="toggle-slider"></span>
                   </label>
@@ -174,7 +174,7 @@
                     <span class="text-white font-mono text-sm fw-medium">Two-Factor Authentication</span>
                     <div class="account-help-text">Preference is saved now. Full verification flow is coming soon.</div>
                   </div>
-                  <label class="custom-toggle">
+                  <label class="custom-toggle" for="{{ security_form.two_factor_enabled.id_for_label }}">
                     {{ security_form.two_factor_enabled }}
                     <span class="toggle-slider"></span>
                   </label>
@@ -200,7 +200,7 @@
 
                 {% for field in password_form %}
                 <div>
-                  <label class="form-label text-slate-300 text-sm fw-medium">{{ field.label }}</label>
+                  <label class="form-label text-slate-300 text-sm fw-medium" for="{{ field.id_for_label }}">{{ field.label }}</label>
                   {{ field }}
                   {% for error in field.errors %}
                   <div class="account-field-error">{{ error }}</div>
@@ -282,7 +282,7 @@
               <input type="hidden" name="profile_action" value="delete_account" />
 
               <div>
-                <label class="form-label text-slate-300 text-sm fw-medium">{{ delete_account_form.password.label }}</label>
+                <label class="form-label text-slate-300 text-sm fw-medium" for="{{ delete_account_form.password.id_for_label }}">{{ delete_account_form.password.label }}</label>
                 {{ delete_account_form.password }}
                 {% for error in delete_account_form.password.errors %}
                 <div class="account-field-error">{{ error }}</div>
@@ -290,7 +290,7 @@
               </div>
 
               <div class="account-form-full">
-                <label class="danger-confirm-box">
+                <label class="danger-confirm-box" for="{{ delete_account_form.confirm_delete.id_for_label }}">
                   {{ delete_account_form.confirm_delete }}
                   <span>I understand this permanently removes my SiteGuard account and monitoring data.</span>
                 </label>

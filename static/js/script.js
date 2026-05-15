@@ -268,32 +268,35 @@ if (heatmapBlocks.length > 0) {
         positionHeatTooltip(block.getBoundingClientRect(), pointerX, pointerY);
     };
 
-    // Array of times to simulate the labels (00:00, 02:00, etc.)
-    const hours = ['00:00', '02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'];
+    const heatmapHeaderLabels = Array.from(document.querySelectorAll('.heatmap-labels-top span')).map((label) => label.textContent.trim());
 
     heatmapBlocks.forEach((block, index) => {
         if (block.dataset.heatmapTooltipBound === 'true') return;
         block.dataset.heatmapTooltipBound = 'true';
 
-        // Assign a simulated time based on its position in the row (12 blocks per row)
-        const hourLabel = hours[index % 12];
+        const row = block.closest('.heatmap-row');
+        const blocksInRow = row ? Array.from(row.querySelectorAll('.heatmap-blocks .block')) : [];
+        const blockIndex = blocksInRow.indexOf(block);
+        const hourLabel = heatmapHeaderLabels[blockIndex] || `Window ${blockIndex + 1}`;
+        const siteLabel = row ? (row.querySelector('.heatmap-label')?.textContent || '').trim() : '';
+        const rawCellLabel = block.getAttribute('title') || '';
         
-        // Determine simulated data based on the CSS class
         let status = "Optimal";
-        let timeStr = "~120ms";
+        let timeStr = rawCellLabel || "~120ms";
         
-        if (block.classList.contains('bg-ok')) { status = "Normal"; timeStr = "~250ms"; }
-        if (block.classList.contains('bg-warn')) { status = "Slow"; timeStr = "~850ms"; }
-        if (block.classList.contains('bg-critical')) { status = "Timeout"; timeStr = "5000ms+"; }
+        if (block.classList.contains('bg-ok')) { status = "Normal"; }
+        if (block.classList.contains('bg-warn')) { status = "Slow"; }
+        if (block.classList.contains('bg-critical')) { status = "Timeout"; }
+        if (block.classList.contains('bg-good')) { status = "Fast"; }
 
         block.addEventListener('mouseenter', (e) => {
             if (heatTooltip.dataset.pinned === 'true') return;
-            showHeatTooltip(block, hourLabel, status, timeStr, e.clientX, e.clientY, false);
+            showHeatTooltip(block, `${siteLabel} • ${hourLabel}`, status, timeStr, e.clientX, e.clientY, false);
         });
 
         block.addEventListener('mousemove', (e) => {
             if (heatTooltip.dataset.pinned === 'true') return;
-            showHeatTooltip(block, hourLabel, status, timeStr, e.clientX, e.clientY, false);
+            showHeatTooltip(block, `${siteLabel} • ${hourLabel}`, status, timeStr, e.clientX, e.clientY, false);
         });
 
         block.addEventListener('mouseleave', () => {
@@ -310,7 +313,14 @@ if (heatmapBlocks.length > 0) {
             }
 
             heatTooltip.dataset.blockIndex = String(index);
-            showHeatTooltip(block, hourLabel, status, timeStr, null, null, true);
+            showHeatTooltip(block, `${siteLabel} • ${hourLabel}`, status, timeStr, null, null, true);
+        });
+
+        block.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                block.click();
+            }
         });
     });
 
@@ -809,5 +819,86 @@ loadingForms.forEach((form) => {
         button.disabled = true;
         button.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Processing...';
     });
+});
+
+const notificationMenu = document.getElementById('notificationMenu');
+const notificationDropdown = notificationMenu
+    ? notificationMenu.closest('.dropdown')?.querySelector('.premium-notification-dropdown')
+    : null;
+
+if (notificationMenu && notificationDropdown) {
+    const syncNotificationDropdown = () => {
+        const isMobile = window.innerWidth < 992;
+        const viewportPadding = isMobile ? 8 : 12;
+        notificationDropdown.style.maxHeight = `${Math.max(260, Math.min(560, window.innerHeight - (isMobile ? 84 : 120)))}px`;
+
+        const notificationList = notificationDropdown.querySelector('.notification-list');
+        if (notificationList) {
+            notificationList.style.maxHeight = `${Math.max(180, Math.min(420, window.innerHeight - (isMobile ? 200 : 240)))}px`;
+        }
+
+        if (isMobile) {
+            notificationDropdown.style.left = `${viewportPadding}px`;
+            notificationDropdown.style.right = `${viewportPadding}px`;
+            notificationDropdown.style.transform = 'none';
+            return;
+        }
+
+        notificationDropdown.style.left = '';
+        notificationDropdown.style.right = '';
+        notificationDropdown.style.transform = '';
+
+        const rect = notificationDropdown.getBoundingClientRect();
+        let shiftX = 0;
+        if (rect.right > window.innerWidth - viewportPadding) {
+            shiftX = (window.innerWidth - viewportPadding) - rect.right;
+        }
+        if (rect.left + shiftX < viewportPadding) {
+            shiftX += viewportPadding - (rect.left + shiftX);
+        }
+        notificationDropdown.style.transform = `translate3d(${shiftX}px, 0, 0)`;
+    };
+
+    const clearNotificationDropdownInlineStyles = () => {
+        notificationDropdown.style.left = '';
+        notificationDropdown.style.right = '';
+        notificationDropdown.style.transform = '';
+    };
+
+    if (notificationMenu.dataset.dropdownBound !== 'true') {
+        notificationMenu.dataset.dropdownBound = 'true';
+        notificationMenu.addEventListener('shown.bs.dropdown', syncNotificationDropdown);
+        notificationMenu.addEventListener('hidden.bs.dropdown', clearNotificationDropdownInlineStyles);
+        window.addEventListener('resize', () => {
+            if (notificationMenu.getAttribute('aria-expanded') === 'true') {
+                syncNotificationDropdown();
+            }
+        });
+        window.addEventListener('scroll', () => {
+            if (notificationMenu.getAttribute('aria-expanded') === 'true') {
+                syncNotificationDropdown();
+            }
+        }, { passive: true });
+    }
+}
+
+document.querySelectorAll('[data-site-favicon]').forEach((image) => {
+    if (image.dataset.faviconBound === 'true') return;
+    image.dataset.faviconBound = 'true';
+
+    const fallbackId = image.dataset.fallbackTarget;
+    const fallback = fallbackId ? document.getElementById(fallbackId) : null;
+    const setFallback = (showFallback) => {
+        if (!fallback) return;
+        image.classList.toggle('d-none', showFallback);
+        fallback.classList.toggle('d-none', !showFallback);
+    };
+
+    image.addEventListener('error', () => setFallback(true));
+    image.addEventListener('load', () => setFallback(false));
+
+    if (!image.getAttribute('src')) {
+        setFallback(true);
+    }
 });
 });

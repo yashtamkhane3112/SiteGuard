@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 
 import requests
 from django.contrib.auth.models import User
+from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -108,6 +109,29 @@ class AuthFlowTests(TestCase):
         dashboard_response = self.client.get(reverse("dashboard"))
         self.assertEqual(dashboard_response.status_code, 302)
         self.assertEqual(dashboard_response.url, "/login/?next=/dashboard/")
+
+    def test_password_reset_page_renders(self):
+        response = self.client.get(reverse("password_reset"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Reset Password")
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_password_reset_request_sends_email_for_known_user(self):
+        User.objects.create_user(
+            username="reset-user",
+            password="StrongPass123!",
+            email="reset@example.com",
+        )
+
+        response = self.client.post(
+            reverse("password_reset"),
+            {"email": "reset@example.com"},
+        )
+
+        self.assertRedirects(response, reverse("password_reset_done"))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("password reset", mail.outbox[0].subject.lower())
 
 
 class AdminStabilityTests(TestCase):

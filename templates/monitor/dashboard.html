@@ -34,7 +34,7 @@
           </div>
 
           <div class="dash-panel mb-4">
-            <label class="panel-label">Add New Website</label>
+            <label class="panel-label" for="websiteUrl">Add New Website</label>
             <form method="POST" action="{% url 'add_website' %}">
               {% csrf_token %}
               <div class="url-check-group">
@@ -83,7 +83,7 @@
           <div class="dash-panel mb-4">
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
               <div>
-                <label class="panel-label">Error Analyzer</label>
+                <span class="panel-label">Error Analyzer</span>
                 <p class="panel-subtitle mb-0">
                   Upload `.txt` or `.log` files to detect recurring exceptions, tracebacks, and HTTP error patterns.
                 </p>
@@ -148,7 +148,21 @@
               <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <div class="d-flex align-items-center gap-3 min-width-0 website-card-primary">
                   <span class="website-favicon-container">
-                    <img src="{{ site.favicon }}" class="website-favicon" alt="" loading="lazy" />
+                    <img
+                      src="{{ site.favicon }}"
+                      class="website-favicon"
+                      alt=""
+                      loading="lazy"
+                      data-site-favicon
+                      data-fallback-target="dashboard-favicon-fallback-{{ site.id }}"
+                    />
+                    <span
+                      class="website-favicon-fallback d-none"
+                      id="dashboard-favicon-fallback-{{ site.id }}"
+                      aria-hidden="true"
+                    >
+                      {{ site.display_domain|first|upper|default:"S" }}
+                    </span>
                   </span>
                   <div class="min-width-0">
                     <h6 class="mb-1 font-mono text-light website-domain">{{ site.display_domain }}</h6>

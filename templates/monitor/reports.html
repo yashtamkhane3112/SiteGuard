@@ -54,6 +54,7 @@
                 <select
                   class="form-select custom-select-dark w-100"
                   id="dateRangeFilter"
+                  aria-label="Select report date range"
                 >
                   <option value="24h" {% if selected_range == '24h' %}selected{% endif %}>Last 24 Hours</option>
                   <option value="7d" {% if selected_range == '7d' %}selected{% endif %}>Last 7 Days</option>
@@ -166,7 +167,13 @@
                     <div class="heatmap-label" title="{{ row.display_domain }}">{{ row.display_domain }}</div>
                     <div class="heatmap-blocks">
                       {% for cell in row.cells %}
-                      <div class="block {{ cell.class }}" title="{{ cell.label }}"></div>
+                      <div
+                        class="block {{ cell.class }}"
+                        title="{{ cell.label }}"
+                        tabindex="0"
+                        role="button"
+                        aria-label="{{ row.display_domain }} {{ cell.label }}"
+                      ></div>
                       {% endfor %}
                     </div>
                   </div>

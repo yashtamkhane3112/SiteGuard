@@ -55,7 +55,7 @@
               <form method="post" class="utility-form-panel utility-submit-form">
                 {% csrf_token %}
                 <input type="hidden" name="utility_action" value="encode" />
-                <label class="form-label text-slate-300 text-sm fw-medium">Encode</label>
+                <label class="form-label text-slate-300 text-sm fw-medium" for="encodeInput">Encode</label>
                 <input
                   type="text"
                   class="form-control custom-input mb-3"
@@ -90,7 +90,7 @@
               <form method="post" class="utility-form-panel utility-submit-form">
                 {% csrf_token %}
                 <input type="hidden" name="utility_action" value="decode" />
-                <label class="form-label text-slate-300 text-sm fw-medium">Decode</label>
+                <label class="form-label text-slate-300 text-sm fw-medium" for="decodeInput">Decode</label>
                 <input
                   type="text"
                   class="form-control custom-input mb-3"
@@ -150,6 +150,7 @@
               <input type="hidden" name="utility_action" value="domain_check" />
               <div class="url-input-wrapper mb-3">
                 <i data-lucide="search" class="url-icon"></i>
+                <label class="visually-hidden" for="domainInput">Domain</label>
                 <input
                   type="text"
                   class="url-input"

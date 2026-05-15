@@ -49,16 +49,16 @@
                     placeholder="Search titles, messages, websites"
                   />
                 </div>
-                <select name="severity" class="form-select custom-input custom-select-dark notification-filter-select">
+                <select name="severity" class="form-select custom-input custom-select-dark notification-filter-select" aria-label="Filter by severity">
                   <option value="">All Severities</option>
                   <option value="critical" {% if selected_severity == 'critical' %}selected{% endif %}>Critical</option>
                   <option value="warning" {% if selected_severity == 'warning' %}selected{% endif %}>Warning</option>
                   <option value="success" {% if selected_severity == 'success' %}selected{% endif %}>Success</option>
                   <option value="info" {% if selected_severity == 'info' %}selected{% endif %}>Info</option>
                 </select>
-                <label class="notification-toggle-chip">
+                <label class="notification-toggle-chip" for="notificationUnreadOnly">
                   <span class="text-white font-mono text-sm fw-medium">Unread Only</span>
-                  <input type="checkbox" name="unread" value="1" {% if unread_only %}checked{% endif %} />
+                  <input id="notificationUnreadOnly" type="checkbox" name="unread" value="1" {% if unread_only %}checked{% endif %} />
                 </label>
                 <button type="submit" class="btn btn-primary-custom">Apply</button>
               </form>

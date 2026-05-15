@@ -66,6 +66,7 @@
                   type="text"
                   class="url-input"
                   id="websiteUrl"
+                  aria-label="Filter monitored websites"
                   placeholder="Filter monitored websites by domain, URL, or status..."
                 />
               </div>
@@ -81,7 +82,21 @@
               data-site-search="{{ site.display_domain|lower }} {{ site.url|lower }} {{ site.status|lower }}"
             >
               <div class="result-icon website-favicon-container">
-                <img src="{{ site.favicon }}" class="website-favicon" alt="" loading="lazy" />
+                <img
+                  src="{{ site.favicon }}"
+                  class="website-favicon"
+                  alt=""
+                  loading="lazy"
+                  data-site-favicon
+                  data-fallback-target="status-favicon-fallback-{{ site.id }}"
+                />
+                <span
+                  class="website-favicon-fallback d-none"
+                  id="status-favicon-fallback-{{ site.id }}"
+                  aria-hidden="true"
+                >
+                  {{ site.display_domain|first|upper|default:"S" }}
+                </span>
               </div>
               <div class="result-details">
                 <div class="result-url">{{ site.display_domain }}</div>

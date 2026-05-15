@@ -1,5 +1,5 @@
 from django import forms
-from django.contrib.auth.forms import PasswordChangeForm, UserCreationForm
+from django.contrib.auth.forms import PasswordChangeForm, PasswordResetForm, SetPasswordForm, UserCreationForm
 from django.contrib.auth.models import User
 from django.core.files.images import get_image_dimensions
 from .models import UploadedLog, UserProfile
@@ -64,6 +64,36 @@ class SignUpForm(UserCreationForm):
                 "id": "id_password2",
             }
         )
+
+
+class SiteGuardPasswordResetForm(PasswordResetForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["email"].widget.attrs.update(
+            {
+                "class": "auth-input",
+                "placeholder": "you@example.com",
+                "autocomplete": "email",
+            }
+        )
+
+
+class SiteGuardSetPasswordForm(SetPasswordForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        placeholders = {
+            "new_password1": "Create a strong password",
+            "new_password2": "Confirm the new password",
+        }
+        for field_name, field in self.fields.items():
+            field.help_text = None
+            field.widget.attrs.update(
+                {
+                    "class": "auth-input",
+                    "placeholder": placeholders.get(field_name, ""),
+                    "autocomplete": "new-password",
+                }
+            )
 
 
 COMMON_TIMEZONES = [
@@ -175,8 +205,11 @@ class AccountSecurityForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for field_name in self.fields:
-            self.fields[field_name].widget.attrs.update({'class': 'custom-toggle-input'})
+        for field_name, field in self.fields.items():
+            field.widget.attrs.update({
+                'class': 'custom-toggle-input',
+                'aria-label': field.label,
+            })
 
 
 class AccountPreferencesForm(forms.ModelForm):
@@ -205,7 +238,10 @@ class AccountPreferencesForm(forms.ModelForm):
             'marketing_emails_enabled',
             'two_factor_enabled',
         ):
-            self.fields[field_name].widget.attrs.update({'class': 'custom-toggle-input'})
+            self.fields[field_name].widget.attrs.update({
+                'class': 'custom-toggle-input',
+                'aria-label': self.fields[field_name].label,
+            })
 
 
 class AccountPasswordChangeForm(PasswordChangeForm):
@@ -242,6 +278,7 @@ class DeleteAccountForm(forms.Form):
         })
         self.fields['confirm_delete'].widget.attrs.update({
             'class': 'form-check-input',
+            'aria-label': 'Confirm permanent account deletion',
         })
         self.fields['confirm_delete'].label = 'I understand this action cannot be undone.'
 

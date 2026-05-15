@@ -32,6 +32,8 @@
         id="notificationMenu"
         data-bs-toggle="dropdown"
         aria-expanded="false"
+        aria-label="Open activity center"
+        aria-haspopup="true"
       >
         <i data-lucide="bell"></i>
         {% if global_unread_notifications_count %}
@@ -41,6 +43,8 @@
       <div
         class="dropdown-menu dropdown-menu-end notification-dropdown premium-notification-dropdown"
         aria-labelledby="notificationMenu"
+        role="dialog"
+        aria-label="Activity Center"
       >
         <div class="notification-dropdown-head">
           <div>

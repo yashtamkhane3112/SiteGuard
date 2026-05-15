@@ -79,7 +79,7 @@
                 <span class="text-white font-mono text-sm fw-medium">Email Alerts</span>
                 <div class="account-help-text">Master switch for account-level monitoring emails.</div>
               </div>
-              <label class="custom-toggle">
+              <label class="custom-toggle" for="{{ preferences_form.email_alerts_enabled.id_for_label }}">
                 {{ preferences_form.email_alerts_enabled }}
                 <span class="toggle-slider"></span>
               </label>
@@ -90,7 +90,7 @@
                 <span class="text-white font-mono text-sm fw-medium">Incident Alerts</span>
                 <div class="account-help-text">Receive updates when incidents are detected or resolved.</div>
               </div>
-              <label class="custom-toggle">
+              <label class="custom-toggle" for="{{ preferences_form.incident_alerts_enabled.id_for_label }}">
                 {{ preferences_form.incident_alerts_enabled }}
                 <span class="toggle-slider"></span>
               </label>
@@ -101,7 +101,7 @@
                 <span class="text-white font-mono text-sm fw-medium">SSL Alerts</span>
                 <div class="account-help-text">Track certificate failures and SSL-related warnings.</div>
               </div>
-              <label class="custom-toggle">
+              <label class="custom-toggle" for="{{ preferences_form.ssl_alerts_enabled.id_for_label }}">
                 {{ preferences_form.ssl_alerts_enabled }}
                 <span class="toggle-slider"></span>
               </label>
@@ -112,7 +112,7 @@
                 <span class="text-white font-mono text-sm fw-medium">Marketing Emails</span>
                 <div class="account-help-text">Optional product updates. Disabled by default.</div>
               </div>
-              <label class="custom-toggle">
+              <label class="custom-toggle" for="{{ preferences_form.marketing_emails_enabled.id_for_label }}">
                 {{ preferences_form.marketing_emails_enabled }}
                 <span class="toggle-slider"></span>
               </label>
@@ -120,14 +120,14 @@
 
             <div class="account-settings-grid">
               <div>
-                <label class="form-label text-slate-300 text-sm fw-medium">{{ preferences_form.timezone.label }}</label>
+                <label class="form-label text-slate-300 text-sm fw-medium" for="{{ preferences_form.timezone.id_for_label }}">{{ preferences_form.timezone.label }}</label>
                 {{ preferences_form.timezone }}
                 {% for error in preferences_form.timezone.errors %}
                 <div class="account-field-error">{{ error }}</div>
                 {% endfor %}
               </div>
               <div>
-                <label class="form-label text-slate-300 text-sm fw-medium">Monitoring Frequency</label>
+                <label class="form-label text-slate-300 text-sm fw-medium" for="{{ preferences_form.monitoring_frequency.id_for_label }}">Monitoring Frequency</label>
                 {{ preferences_form.monitoring_frequency }}
                 <div class="account-help-text">Saved now for future scheduler customization.</div>
                 {% for error in preferences_form.monitoring_frequency.errors %}
@@ -141,7 +141,7 @@
                 <span class="text-white font-mono text-sm fw-medium">Two-Factor Authentication</span>
                 <div class="account-help-text">Preference persists now. Full implementation is coming soon.</div>
               </div>
-              <label class="custom-toggle">
+              <label class="custom-toggle" for="{{ preferences_form.two_factor_enabled.id_for_label }}">
                 {{ preferences_form.two_factor_enabled }}
                 <span class="toggle-slider"></span>
               </label>

@@ -38,6 +38,7 @@
                     id="weeklyExportMenuBtn"
                     data-bs-toggle="dropdown"
                     aria-expanded="false"
+                    aria-label="Open weekly export options"
                   >
                     <i data-lucide="download" class="me-2 size-sm"></i>
                     <span id="weeklyExportBtnText">Export</span>
@@ -184,7 +185,7 @@
                     </div>
                     <span class="status-badge badge-slow">{{ slowest_site.average_response_time }}ms</span>
                   </div>
-                  <p class="text-slate-300 text-sm mb-0 mt-3">Alerts: {{ alert_count }} · Incidents: {{ incident_count }} · Recoveries: {{ recovery_count }}</p>
+                  <p class="text-slate-300 text-sm mb-0 mt-3">Alerts: {{ alert_count }} • Incidents: {{ incident_count }} • Recoveries: {{ recovery_count }}</p>
                   {% else %}
                   <p class="text-slate-300 text-sm mb-0">No valid response-time data this week.</p>
                   {% endif %}
