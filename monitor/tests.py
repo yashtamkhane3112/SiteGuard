@@ -582,7 +582,7 @@ class MonitorStatusSyncTests(TestCase):
 
     @patch("monitor.views.run_single_check")
     def test_check_now_runs_shared_monitoring_logic_and_redirects(self, mock_run_single_check):
-        response = self.client.get(reverse("check_now", args=[self.gmail.id]))
+        response = self.client.post(reverse("check_now", args=[self.gmail.id]))
 
         mock_run_single_check.assert_called_once_with(self.gmail)
         self.assertRedirects(response, reverse("status"))
@@ -833,6 +833,8 @@ class AlertSyncTests(TestCase):
 
         self.assertEqual(Alert.objects.filter(website=self.website, alert_type=Alert.TYPE_SSL).count(), 1)
         self.assertEqual(Incident.objects.filter(website=self.website, incident_type=Incident.TYPE_SSL).count(), 1)
+        self.assertEqual(Alert.objects.filter(website=self.website, alert_type=Alert.TYPE_DOWN).count(), 0)
+        self.assertEqual(Incident.objects.filter(website=self.website, incident_type=Incident.TYPE_OUTAGE).count(), 0)
 
     def test_alerts_page_renders_real_alert_data(self):
         alert = Alert.objects.create(

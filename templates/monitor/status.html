@@ -110,9 +110,10 @@
                   {% else %}
                   <span class="ssl-invalid">SSL: Invalid</span>
                   {% endif %}
-                  <a href="{% url 'check_now' site.id %}" class="check-now-btn">
-                    Check Now
-                  </a>
+                  <form method="post" action="{% url 'check_now' site.id %}" class="m-0">
+                    {% csrf_token %}
+                    <button type="submit" class="check-now-btn">Check Now</button>
+                  </form>
                 </div>
               </div>
             </div>

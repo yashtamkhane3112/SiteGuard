@@ -1,4 +1,9 @@
 document.addEventListener('DOMContentLoaded', function () {
+if (document.documentElement.dataset.siteguardUiInitialized === 'true') {
+    return;
+}
+document.documentElement.dataset.siteguardUiInitialized = 'true';
+
 // Initialize Icons globally
 if (typeof lucide !== 'undefined') {
     lucide.createIcons();
@@ -680,6 +685,8 @@ const searchSuggestionsPanel = document.getElementById('searchSuggestionsPanel')
 
 if (globalSearchInput && searchSuggestionsPanel) {
     let searchTimer = null;
+    let activeSearchController = null;
+    let latestSearchRequestId = 0;
 
     const renderSuggestions = (items, recentSearches = []) => {
         if ((!items || items.length === 0) && (!recentSearches || recentSearches.length === 0)) {
@@ -691,9 +698,10 @@ if (globalSearchInput && searchSuggestionsPanel) {
         const parts = [];
         if (items && items.length) {
             items.forEach((item) => {
+                const metaText = item.meta ? `${item.group} - ${item.meta}` : item.group;
                 parts.push(`
                     <a class="search-suggestion-item" href="${item.url}">
-                        <span>${item.label}<br><span class="search-suggestion-meta">${item.group}${item.meta ? ` • ${item.meta}` : ''}</span></span>
+                        <span>${item.label}<br><span class="search-suggestion-meta">${metaText}</span></span>
                     </a>
                 `);
             });
@@ -717,23 +725,39 @@ if (globalSearchInput && searchSuggestionsPanel) {
         globalSearchInput.addEventListener('input', () => {
             const query = globalSearchInput.value.trim();
             const endpoint = globalSearchInput.dataset.searchSuggestionsUrl;
+            const requestId = ++latestSearchRequestId;
 
             clearTimeout(searchTimer);
             if (!endpoint) return;
+            if (activeSearchController) {
+                activeSearchController.abort();
+            }
 
             searchSuggestionsPanel.innerHTML = '<div class="search-suggestions-state">Loading...</div>';
             searchSuggestionsPanel.classList.remove('d-none');
 
             searchTimer = setTimeout(async () => {
+                activeSearchController = typeof AbortController !== 'undefined' ? new AbortController() : null;
                 try {
                     const response = await fetch(`${endpoint}?q=${encodeURIComponent(query)}`, {
                         headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                        signal: activeSearchController ? activeSearchController.signal : undefined,
                     });
                     const data = await response.json();
+                    if (requestId !== latestSearchRequestId) {
+                        return;
+                    }
                     renderSuggestions(data.results, data.recent_searches);
                 } catch (error) {
+                    if (error && error.name === 'AbortError') {
+                        return;
+                    }
                     searchSuggestionsPanel.innerHTML = '<div class="search-suggestions-state">Search is temporarily unavailable.</div>';
                     searchSuggestionsPanel.classList.remove('d-none');
+                } finally {
+                    if (requestId === latestSearchRequestId) {
+                        activeSearchController = null;
+                    }
                 }
             }, 200);
         });

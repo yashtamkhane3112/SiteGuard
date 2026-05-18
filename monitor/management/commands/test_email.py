@@ -45,13 +45,13 @@ class Command(BaseCommand):
         self.stdout.write(f'Server email: {settings.SERVER_EMAIL}')
 
         if kind == 'password_reset':
-            reset_user, created = User.objects.get_or_create(
-                email=recipient,
-                defaults={
-                    'username': f'smtp-reset-{timezone.now().strftime("%Y%m%d%H%M%S")}',
-                },
-            )
-            if created:
+            reset_user = User.objects.filter(email=recipient).order_by('date_joined', 'id').first()
+            created = reset_user is None
+            if reset_user is None:
+                reset_user = User.objects.create(
+                    username=f'smtp-reset-{timezone.now().strftime("%Y%m%d%H%M%S")}',
+                    email=recipient,
+                )
                 reset_user.set_unusable_password()
                 reset_user.save(update_fields=['password'])
 

@@ -1491,6 +1491,7 @@ def status(request):
 
 
 @login_required
+@require_POST
 def check_now(request, website_id):
     website = get_object_or_404(
         Website,
@@ -1498,8 +1499,19 @@ def check_now(request, website_id):
         user=request.user,
     )
 
-    run_single_check(website)
-    messages.success(request, f"Checked {website.url}")
+    try:
+        run_single_check(website)
+    except Exception:
+        logger.exception(
+            "Manual monitoring check failed.",
+            extra={"website_id": website.id, "user_id": request.user.id},
+        )
+        messages.warning(
+            request,
+            f"Check started for {website.url}, but the verification run did not complete successfully.",
+        )
+    else:
+        messages.success(request, f"Checked {website.url}")
     return redirect('status')
 
 

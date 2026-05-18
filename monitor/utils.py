@@ -1562,6 +1562,20 @@ def sync_ssl_state(website, current_log, ssl_status, *, status_code=None, reason
     if ssl_status not in {"Valid", "Invalid"}:
         return
 
+    if ssl_status == "Invalid":
+        active_non_ssl_incidents = Incident.objects.filter(
+            website=website,
+            is_resolved=False,
+        ).exclude(incident_type=Incident.TYPE_SSL).order_by('-started_at')
+        for incident in active_non_ssl_incidents:
+            resolve_incident(
+                incident,
+                current_log,
+                create_recovery_alert=False,
+                message="Non-SSL incident automatically closed because TLS validation failure is the active condition.",
+                status_code=status_code,
+            )
+
     active_ssl_incident = Incident.objects.filter(
         website=website,
         incident_type=Incident.TYPE_SSL,
@@ -1684,7 +1698,8 @@ def run_single_check(website, timeout=5):
             status=MonitorLog.STATUS_DOWN,
             response_time=0,
         )
-        sync_incident_state(website, previous_log, log, status_code=status_code, reason=reason)
+        if ssl_status != "Invalid":
+            sync_incident_state(website, previous_log, log, status_code=status_code, reason=reason)
         sync_ssl_state(website, log, ssl_status, status_code=status_code, reason=ssl_reason)
         return log, None
 
