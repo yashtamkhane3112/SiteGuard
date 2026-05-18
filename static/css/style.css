@@ -2015,10 +2015,16 @@ body {
     margin-bottom: 0;
 }
 
-#id_old_password,
-#id_new_password1,
-#id_new_password2 {
+#id_old_password {
     padding-left: 16px;
+}
+
+.auth-page-wrapper #id_password,
+.auth-page-wrapper #id_password1,
+.auth-page-wrapper #id_password2,
+.auth-page-wrapper #id_new_password1,
+.auth-page-wrapper #id_new_password2 {
+    padding-left: 58px;
 }
 
 #id_email {
