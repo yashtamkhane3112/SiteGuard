@@ -15,7 +15,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from monitor.emailing import build_password_reset_email_options, get_email_base_url
+from monitor.emailing import build_password_reset_email_options, get_email_base_url, send_siteguard_email
 from monitor.error_analyzer import parse_log_content
 from monitor.models import Alert, Incident, IncidentEvent, MonitorLog, Notification, ParsedError, UploadedLog, UserProfile, Website
 from monitor.utils import (
@@ -27,6 +27,7 @@ from monitor.utils import (
     get_notification_destination,
     get_recent_notifications,
     get_site_status,
+    get_user_account_snapshot,
     normalize_domain_display,
     run_single_check,
     safe_url_decode,
@@ -1515,6 +1516,31 @@ class AccountManagementTests(TestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.email, "account@example.com")
 
+    def test_profile_page_falls_back_cleanly_when_avatar_file_is_missing(self):
+        avatar = SimpleUploadedFile("avatar.png", TEST_PNG_BYTES, content_type="image/png")
+        self.client.post(
+            reverse("profile"),
+            {
+                "profile_action": "update_profile",
+                "username": "account-user",
+                "email": "account@example.com",
+                "avatar": avatar,
+            },
+        )
+
+        self.user.refresh_from_db()
+        avatar_name = self.user.profile.avatar.name
+        self.user.profile.avatar.storage.delete(avatar_name)
+
+        snapshot = get_user_account_snapshot(self.user)
+        response = self.client.get(reverse("profile"))
+
+        self.assertFalse(snapshot["has_avatar"])
+        self.assertEqual(snapshot["avatar_url"], "")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "avatarPreviewFallback")
+        self.assertNotContains(response, avatar_name)
+
     def test_password_change_updates_hash_and_keeps_session_valid(self):
         response = self.client.post(
             reverse("profile"),
@@ -1643,6 +1669,25 @@ class AccountManagementTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Confirm account deletion to continue.")
         self.assertTrue(User.objects.filter(username="account-user").exists())
+
+
+class EmailDiagnosticsTests(TestCase):
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
+        EMAIL_HOST="smtp.gmail.com",
+        EMAIL_HOST_USER="",
+        EMAIL_HOST_PASSWORD="",
+        EMAIL_CONFIGURED=False,
+    )
+    def test_send_siteguard_email_returns_false_when_smtp_is_incomplete(self):
+        sent = send_siteguard_email(
+            subject="Diagnostic test",
+            text_body="Hello",
+            recipients=["user@example.com"],
+            log_context={"flow": "unit_test"},
+        )
+
+        self.assertFalse(sent)
 
 
 class ImmediateMonitoringTests(TestCase):

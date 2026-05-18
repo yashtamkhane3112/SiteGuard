@@ -259,7 +259,7 @@
                     </td>
                     <td class="text-light opacity-75">{{ log.response_time }} ms</td>
                     <td class="text-light opacity-75">OK</td>
-                    <td class="text-light opacity-75">{{ log.checked_at|date:"Y-m-d H:i" }}</td>
+                    <td class="text-light opacity-75 font-mono text-end activity-date-cell">{{ log.checked_at|date:"Y-m-d H:i" }}</td>
                   </tr>
                   {% endfor %}
                   {% else %}

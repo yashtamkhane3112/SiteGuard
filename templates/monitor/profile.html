@@ -43,18 +43,8 @@
           <div class="account-hero-panel mb-4">
             <div class="profile-hero-main">
               <div class="profile-avatar-shell">
-                {% if account_snapshot.profile.avatar %}
-                <div class="profile-avatar-lg profile-avatar-fallback d-none" id="avatarPreviewFallback">{{ account_snapshot.initials }}</div>
-                <img
-                  src="{{ account_snapshot.profile.avatar.url }}"
-                  alt="{{ request.user.username }}"
-                  class="profile-avatar-lg profile-avatar-image"
-                  id="avatarPreview"
-                />
-                {% else %}
-                <div class="profile-avatar-lg profile-avatar-fallback" id="avatarPreviewFallback">{{ account_snapshot.initials }}</div>
-                <img src="" alt="{{ request.user.username }}" class="profile-avatar-lg profile-avatar-image d-none" id="avatarPreview" />
-                {% endif %}
+                <div class="profile-avatar-lg profile-avatar-fallback {% if account_snapshot.has_avatar %}d-none{% endif %}" id="avatarPreviewFallback">{{ account_snapshot.initials }}</div>
+                <img src="{% if account_snapshot.has_avatar %}{{ account_snapshot.avatar_url }}{% endif %}" alt="{{ request.user.username }}" class="profile-avatar-lg profile-avatar-image {% if not account_snapshot.has_avatar %}d-none{% endif %}" id="avatarPreview" data-avatar-image data-fallback-target="avatarPreviewFallback" />
               </div>
               <div class="flex-grow-1 min-width-0">
                 <h3 class="text-white fw-bold mb-1">{{ request.user.username }}</h3>
@@ -135,7 +125,13 @@
 
               <div class="account-form-full">
                 <label class="form-label text-slate-300 text-sm fw-medium" for="{{ profile_form.avatar.id_for_label }}">{{ profile_form.avatar.label }}</label>
-                {{ profile_form.avatar }}
+                <div class="account-file-upload">
+                  {{ profile_form.avatar }}
+                  <div class="account-file-upload-shell">
+                    <label class="account-file-upload-btn" for="{{ profile_form.avatar.id_for_label }}">Choose Avatar</label>
+                    <span class="account-file-upload-name" id="avatarFileName">{% if account_snapshot.has_avatar %}Current avatar on file{% else %}No file selected{% endif %}</span>
+                  </div>
+                </div>
                 <div class="account-help-text">Image only. Maximum 2 MB. Supports JPG, PNG, GIF, and WebP.</div>
                 {% for error in profile_form.avatar.errors %}
                 <div class="account-field-error">{{ error }}</div>
@@ -320,6 +316,7 @@
       const avatarInput = document.getElementById("id_avatar");
       const avatarPreview = document.getElementById("avatarPreview");
       const avatarFallback = document.getElementById("avatarPreviewFallback");
+      const avatarFileName = document.getElementById("avatarFileName");
 
       let avatarPreviewUrl = null;
 
@@ -333,6 +330,9 @@
           }
 
           if (!file) {
+            if (avatarFileName) {
+              avatarFileName.textContent = originalSrc ? "Current avatar on file" : "No file selected";
+            }
             if (originalSrc) {
               avatarPreview.src = originalSrc;
               avatarPreview.classList.remove("d-none");
@@ -348,6 +348,9 @@
 
           if (!avatarPreview.dataset.originalSrc) {
             avatarPreview.dataset.originalSrc = originalSrc;
+          }
+          if (avatarFileName) {
+            avatarFileName.textContent = file.name;
           }
           avatarPreviewUrl = URL.createObjectURL(file);
           avatarPreview.src = avatarPreviewUrl;

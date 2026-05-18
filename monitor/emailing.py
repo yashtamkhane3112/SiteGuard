@@ -1,5 +1,6 @@
 import logging
 import ipaddress
+import smtplib
 from urllib.parse import urlparse
 
 from django.conf import settings
@@ -122,6 +123,28 @@ def build_password_reset_email_options(request=None):
     return options
 
 
+def get_email_diagnostics():
+    backend = getattr(settings, "EMAIL_BACKEND", "") or ""
+    host = getattr(settings, "EMAIL_HOST", "") or ""
+    using_smtp = backend == "django.core.mail.backends.smtp.EmailBackend"
+    using_gmail = "gmail" in host.lower()
+    return {
+        "backend": backend,
+        "host": host,
+        "port": getattr(settings, "EMAIL_PORT", None),
+        "use_tls": getattr(settings, "EMAIL_USE_TLS", False),
+        "use_ssl": getattr(settings, "EMAIL_USE_SSL", False),
+        "timeout": getattr(settings, "EMAIL_TIMEOUT", None),
+        "configured": getattr(settings, "EMAIL_CONFIGURED", False),
+        "host_user_present": bool(getattr(settings, "EMAIL_HOST_USER", "")),
+        "host_password_present": bool(getattr(settings, "EMAIL_HOST_PASSWORD", "")),
+        "from_email": getattr(settings, "DEFAULT_FROM_EMAIL", ""),
+        "base_url": get_canonical_base_url(),
+        "using_smtp": using_smtp,
+        "using_gmail": using_gmail,
+    }
+
+
 def send_siteguard_email(
     *,
     subject,
@@ -132,10 +155,24 @@ def send_siteguard_email(
     log_context=None,
 ):
     recipient_list = [recipient.strip() for recipient in (recipients or []) if recipient and recipient.strip()]
+    email_diagnostics = get_email_diagnostics()
     if not recipient_list:
         logger.warning(
             "Email send skipped because no recipients were provided.",
-            extra={"email_context": log_context or {}},
+            extra={"email_context": {**(log_context or {}), "diagnostics": email_diagnostics}},
+        )
+        return False
+
+    if email_diagnostics["using_smtp"] and not email_diagnostics["configured"]:
+        logger.warning(
+            "SMTP email send skipped because production email settings are incomplete.",
+            extra={
+                "email_context": {
+                    "recipients": recipient_list,
+                    **(log_context or {}),
+                    "diagnostics": email_diagnostics,
+                }
+            },
         )
         return False
 
@@ -161,11 +198,20 @@ def send_siteguard_email(
                     "subject": final_subject,
                     "recipients": recipient_list,
                     **(log_context or {}),
+                    "diagnostics": email_diagnostics,
                 }
             },
         )
         return True
-    except Exception:
+    except Exception as exc:
+        warning_message = None
+        if isinstance(exc, smtplib.SMTPAuthenticationError):
+            warning_message = "SMTP authentication failed. Gmail SMTP usually requires an app password and a verified sender."
+        elif isinstance(exc, smtplib.SMTPConnectError):
+            warning_message = "SMTP connection failed. Verify Render egress access, SMTP host, port, and TLS settings."
+        elif isinstance(exc, TimeoutError):
+            warning_message = "SMTP request timed out before the provider completed the send."
+
         logger.exception(
             "Email send failed.",
             extra={
@@ -173,6 +219,8 @@ def send_siteguard_email(
                     "subject": final_subject,
                     "recipients": recipient_list,
                     **(log_context or {}),
+                    "diagnostics": email_diagnostics,
+                    "warning": warning_message or "",
                 }
             },
         )

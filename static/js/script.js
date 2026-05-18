@@ -902,4 +902,28 @@ document.querySelectorAll('[data-site-favicon]').forEach((image) => {
         setFallback(true);
     }
 });
+
+document.querySelectorAll('[data-avatar-image]').forEach((image) => {
+    if (image.dataset.avatarBound === 'true') return;
+    image.dataset.avatarBound = 'true';
+
+    const fallbackId = image.dataset.fallbackTarget;
+    const fallback = fallbackId ? document.getElementById(fallbackId) : null;
+    const setFallback = (showFallback) => {
+        if (!fallback) return;
+        image.classList.toggle('d-none', showFallback);
+        fallback.classList.toggle('d-none', !showFallback);
+        fallback.setAttribute('aria-hidden', showFallback ? 'false' : 'true');
+    };
+
+    image.addEventListener('error', () => {
+        image.removeAttribute('src');
+        setFallback(true);
+    });
+    image.addEventListener('load', () => setFallback(false));
+
+    if (!image.getAttribute('src')) {
+        setFallback(true);
+    }
+});
 });

@@ -40,6 +40,7 @@ NOTIFICATION_DEDUP_WINDOW = timedelta(minutes=30)
 NOTIFICATION_RETENTION_DAYS = 45
 WEEKLY_REPORT_TITLE_RE = re.compile(r"Weekly report ready for (?P<week>\d{4}-W\d{2})")
 logger = logging.getLogger(__name__)
+_logged_missing_media_names = set()
 
 
 def get_site_status(log):
@@ -449,15 +450,60 @@ def get_user_initials(user):
     return username[:2].upper()
 
 
+def get_resolved_media_url(file_field, *, log_label="media"):
+    if not file_field:
+        return ""
+
+    file_name = (getattr(file_field, "name", "") or "").strip()
+    if not file_name:
+        return ""
+
+    try:
+        storage = file_field.storage
+        if hasattr(storage, "exists") and not storage.exists(file_name):
+            if file_name not in _logged_missing_media_names:
+                _logged_missing_media_names.add(file_name)
+                logger.warning(
+                    "Media asset is missing from storage; rendering fallback instead.",
+                    extra={
+                        "media_context": {
+                            "label": log_label,
+                            "file_name": file_name,
+                            "storage_backend": f"{storage.__class__.__module__}.{storage.__class__.__name__}",
+                            "media_root": str(getattr(settings, "MEDIA_ROOT", "")),
+                            "media_url": getattr(settings, "MEDIA_URL", ""),
+                        }
+                    },
+                )
+            return ""
+        return file_field.url
+    except Exception:
+        if file_name not in _logged_missing_media_names:
+            _logged_missing_media_names.add(file_name)
+            logger.exception(
+                "Media asset could not be resolved; rendering fallback instead.",
+                extra={
+                    "media_context": {
+                        "label": log_label,
+                        "file_name": file_name,
+                    }
+                },
+            )
+        return ""
+
+
 def get_user_account_snapshot(user):
     profile = get_or_create_user_profile(user)
     websites_qs = Website.objects.filter(user=user)
     incidents_qs = Incident.objects.filter(website__user=user)
     alerts_qs = Alert.objects.filter(website__user=user)
+    avatar_url = get_resolved_media_url(getattr(profile, "avatar", None), log_label="profile_avatar")
 
     return {
         'profile': profile,
         'initials': get_user_initials(user),
+        'avatar_url': avatar_url,
+        'has_avatar': bool(avatar_url),
         'member_since': user.date_joined,
         'last_login': user.last_login,
         'account_status': 'Active' if user.is_active else 'Inactive',

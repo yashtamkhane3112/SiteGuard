@@ -1912,6 +1912,13 @@ body {
     text-transform: uppercase;
 }
 
+.user-avatar-text,
+.profile-avatar-fallback {
+    background: linear-gradient(135deg, rgba(116, 48, 232, 0.95), rgba(59, 130, 246, 0.72));
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow: 0 10px 24px rgba(0,0,0,0.2);
+}
+
 .account-hero-panel {
     display: flex;
     flex-direction: column;
@@ -2032,7 +2039,51 @@ body {
 }
 
 #id_avatar {
-    padding: 12px;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.account-file-upload {
+    position: relative;
+}
+
+.account-file-upload-shell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    min-height: 52px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.025);
+}
+
+.account-file-upload-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    padding: 0 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(168, 85, 247, 0.22);
+    background: rgba(116, 48, 232, 0.16);
+    color: #f5f3ff;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.account-file-upload-name {
+    min-width: 0;
+    color: #cbd5e1;
+    font-size: 0.84rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
 }
 
 @media (max-width: 992px) {
@@ -3093,10 +3144,18 @@ input[type="checkbox"]:focus-visible {
 .alert-metric-card {
     min-height: 126px;
     padding: 24px 22px !important;
+    overflow: hidden;
 }
 
 .alert-metric-card .stat-value-lg {
     line-height: 1.08;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.alert-metric-card > div {
+    min-width: 0;
+    width: 100%;
 }
 
 .alerts-page .filter-bar,
@@ -3107,6 +3166,11 @@ input[type="checkbox"]:focus-visible {
 
 .alert-settings-card {
     padding: 18px !important;
+}
+
+.activity-date-cell {
+    white-space: nowrap;
+    width: 1%;
 }
 
 .alert-settings-card .d-flex.justify-content-between.align-items-start.gap-3.flex-wrap {

@@ -128,10 +128,9 @@
     </div>
 
     <a href="{% url 'profile' %}" class="text-decoration-none">
-      {% if account_snapshot and account_snapshot.profile.avatar %}
-      <img src="{{ account_snapshot.profile.avatar.url }}" alt="{{ request.user.username }}" class="user-avatar user-avatar-image" />
-      {% else %}
-      <div class="user-avatar user-avatar-text" title="Profile Settings">{% if account_snapshot %}{{ account_snapshot.initials }}{% else %}U{% endif %}</div>
+      <div class="user-avatar user-avatar-text {% if account_snapshot and account_snapshot.has_avatar %}d-none{% endif %}" id="headerAvatarFallback" title="Profile Settings" aria-hidden="{% if account_snapshot and account_snapshot.has_avatar %}true{% else %}false{% endif %}">{% if account_snapshot %}{{ account_snapshot.initials }}{% else %}U{% endif %}</div>
+      {% if account_snapshot and account_snapshot.has_avatar %}
+      <img src="{{ account_snapshot.avatar_url }}" alt="{{ request.user.username }}" class="user-avatar user-avatar-image" id="headerAvatarImage" data-avatar-image data-fallback-target="headerAvatarFallback" />
       {% endif %}
     </a>
   </div>
