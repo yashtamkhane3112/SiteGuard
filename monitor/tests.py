@@ -15,7 +15,7 @@ from django.core.management import call_command
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test.client import RequestFactory
 from django.test import TestCase, override_settings
-from django.urls import reverse
+from django.urls import resolve, reverse
 from django.utils import timezone
 
 from monitor.emailing import build_password_reset_email_options, get_email_base_url, send_siteguard_email
@@ -1486,6 +1486,40 @@ class AccountManagementTests(TestCase):
         self.assertEqual(self.user.username, "updated-user")
         self.assertEqual(self.user.email, "updated@example.com")
         self.assertTrue(bool(self.user.profile.avatar))
+        snapshot = get_user_account_snapshot(self.user)
+        self.assertTrue(snapshot["has_avatar"])
+        self.assertTrue(snapshot["avatar_url"].startswith("/media/avatars/"))
+
+    def test_profile_avatar_renders_after_upload_and_refresh(self):
+        avatar = SimpleUploadedFile("avatar.png", TEST_PNG_BYTES, content_type="image/png")
+
+        self.client.post(
+            reverse("profile"),
+            {
+                "profile_action": "update_profile",
+                "username": "account-user",
+                "email": "account@example.com",
+                "avatar": avatar,
+            },
+        )
+
+        self.user.refresh_from_db()
+        snapshot = get_user_account_snapshot(self.user)
+        response = self.client.get(reverse("profile"))
+
+        self.assertTrue(snapshot["has_avatar"])
+        self.assertContains(response, snapshot["avatar_url"])
+        self.assertContains(response, 'id="avatarPreview"')
+        self.assertContains(response, 'id="headerAvatarImage"')
+        image_response = self.client.get(snapshot["avatar_url"])
+        self.assertEqual(image_response.status_code, 200)
+
+    @override_settings(DEBUG=False)
+    def test_media_urlpatterns_remain_available_when_debug_is_false(self):
+        match = resolve("/media/avatars/example.png")
+
+        self.assertEqual(match.func.__name__, "serve_media")
+        self.assertEqual(match.kwargs["path"], "avatars/example.png")
 
     def test_profile_update_rejects_invalid_avatar_payload(self):
         avatar = SimpleUploadedFile("avatar.png", b"not-an-image", content_type="image/png")
