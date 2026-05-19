@@ -147,10 +147,7 @@ LOGIN_REDIRECT_URL = "/dashboard/"
 LOGOUT_REDIRECT_URL = "/login/"
 
 SITE_NAME = config("SITE_NAME", default="SiteGuard").strip() or "SiteGuard"
-EMAIL_BACKEND = config(
-    "EMAIL_BACKEND",
-    default="django.core.mail.backends.console.EmailBackend" if DEBUG else "django.core.mail.backends.smtp.EmailBackend",
-)
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = config("EMAIL_HOST", default="smtp.gmail.com")
 EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
 EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
@@ -184,10 +181,7 @@ CRON_SECRET = config("CRON_SECRET", default="")
 APP_BASE_URL = app_base_url
 CANONICAL_BASE_URL = app_base_url
 EMAIL_CONFIGURED = bool(
-    EMAIL_BACKEND and (
-        EMAIL_BACKEND != "django.core.mail.backends.smtp.EmailBackend"
-        or (EMAIL_HOST and EMAIL_HOST_USER and EMAIL_HOST_PASSWORD)
-    )
+    EMAIL_HOST and EMAIL_HOST_USER and EMAIL_HOST_PASSWORD and DEFAULT_FROM_EMAIL
 )
 
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")

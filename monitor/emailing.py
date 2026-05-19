@@ -15,6 +15,20 @@ from django.utils.encoding import force_bytes
 logger = logging.getLogger("siteguard.email")
 
 
+def _smtp_is_configured():
+    backend = getattr(settings, "EMAIL_BACKEND", "") or ""
+    if backend != "django.core.mail.backends.smtp.EmailBackend":
+        return bool(backend and getattr(settings, "DEFAULT_FROM_EMAIL", ""))
+    return all(
+        (
+            getattr(settings, "EMAIL_HOST", "") or "",
+            getattr(settings, "EMAIL_HOST_USER", "") or "",
+            getattr(settings, "EMAIL_HOST_PASSWORD", "") or "",
+            getattr(settings, "DEFAULT_FROM_EMAIL", "") or "",
+        )
+    )
+
+
 def _clean_subject(subject):
     return " ".join((subject or "").splitlines()).strip()
 
@@ -127,21 +141,20 @@ def get_email_diagnostics():
     backend = getattr(settings, "EMAIL_BACKEND", "") or ""
     host = getattr(settings, "EMAIL_HOST", "") or ""
     using_smtp = backend == "django.core.mail.backends.smtp.EmailBackend"
-    using_gmail = "gmail" in host.lower()
     return {
         "backend": backend,
-        "host": host,
+        "smtp_host": host,
         "port": getattr(settings, "EMAIL_PORT", None),
         "use_tls": getattr(settings, "EMAIL_USE_TLS", False),
         "use_ssl": getattr(settings, "EMAIL_USE_SSL", False),
         "timeout": getattr(settings, "EMAIL_TIMEOUT", None),
-        "configured": getattr(settings, "EMAIL_CONFIGURED", False),
+        "configured": _smtp_is_configured(),
         "host_user_present": bool(getattr(settings, "EMAIL_HOST_USER", "")),
         "host_password_present": bool(getattr(settings, "EMAIL_HOST_PASSWORD", "")),
+        "sender_email": get_sender_email_address(),
         "from_email": getattr(settings, "DEFAULT_FROM_EMAIL", ""),
         "base_url": get_canonical_base_url(),
         "using_smtp": using_smtp,
-        "using_gmail": using_gmail,
     }
 
 
@@ -153,6 +166,7 @@ def send_siteguard_email(
     html_body=None,
     from_email=None,
     log_context=None,
+    raise_on_error=False,
 ):
     recipient_list = [recipient.strip() for recipient in (recipients or []) if recipient and recipient.strip()]
     email_diagnostics = get_email_diagnostics()
@@ -211,6 +225,8 @@ def send_siteguard_email(
             warning_message = "SMTP connection failed. Verify Render egress access, SMTP host, port, and TLS settings."
         elif isinstance(exc, TimeoutError):
             warning_message = "SMTP request timed out before the provider completed the send."
+        email_diagnostics["exception_type"] = exc.__class__.__name__
+        email_diagnostics["exception_message"] = str(exc)
 
         logger.exception(
             "Email send failed.",
@@ -224,6 +240,8 @@ def send_siteguard_email(
                 }
             },
         )
+        if raise_on_error:
+            raise
         return False
 
 

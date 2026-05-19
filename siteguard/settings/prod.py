@@ -5,7 +5,7 @@ from .base import *  # noqa: F401,F403
 
 
 DEBUG = False
-EMAIL_BACKEND = config("EMAIL_BACKEND", default="").strip() or "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
 if SECRET_KEY == "django-insecure-siteguard-dev-only-change-me":
     raise ImproperlyConfigured("SECRET_KEY must be set in production.")

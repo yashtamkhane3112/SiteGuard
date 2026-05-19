@@ -10,7 +10,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from monitor.emailing import build_password_reset_preview_url, get_email_base_url, send_siteguard_email
+from monitor.emailing import build_password_reset_preview_url, get_email_base_url, get_email_diagnostics, send_siteguard_email
 from monitor.forms import SiteGuardPasswordResetForm
 
 
@@ -43,6 +43,7 @@ class Command(BaseCommand):
         self.stdout.write(f'Resolved email base URL: {get_email_base_url() or "(not set)"}')
         self.stdout.write(f'Default from email: {settings.DEFAULT_FROM_EMAIL}')
         self.stdout.write(f'Server email: {settings.SERVER_EMAIL}')
+        self.stdout.write(f'Email diagnostics: {get_email_diagnostics()}')
 
         if kind == 'password_reset':
             reset_user = User.objects.filter(email=recipient).order_by('date_joined', 'id').first()
@@ -101,14 +102,19 @@ class Command(BaseCommand):
             )
             html_body = None
 
-        sent = send_siteguard_email(
-            subject=subject,
-            text_body=text_body,
-            html_body=html_body,
-            recipients=[recipient],
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            log_context={'flow': 'management_test_email', 'kind': kind},
-        )
+        try:
+            sent = send_siteguard_email(
+                subject=subject,
+                text_body=text_body,
+                html_body=html_body,
+                recipients=[recipient],
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                log_context={'flow': 'management_test_email', 'kind': kind},
+                raise_on_error=True,
+            )
+        except Exception as exc:
+            self.stdout.write(self.style.ERROR(f'Email failed with SMTP error: {exc.__class__.__name__}: {exc}'))
+            return
         if sent:
             self.stdout.write(self.style.SUCCESS(f'Test email sent to {recipient}'))
         else:
