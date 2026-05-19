@@ -128,6 +128,14 @@ def get_email_diagnostics():
     host = getattr(settings, "EMAIL_HOST", "") or ""
     using_smtp = backend == "django.core.mail.backends.smtp.EmailBackend"
     using_gmail = "gmail" in host.lower()
+    smtp_ready = all(
+        (
+            host,
+            getattr(settings, "EMAIL_HOST_USER", "") or "",
+            getattr(settings, "EMAIL_HOST_PASSWORD", "") or "",
+            getattr(settings, "DEFAULT_FROM_EMAIL", "") or "",
+        )
+    )
     return {
         "backend": backend,
         "host": host,
@@ -135,7 +143,7 @@ def get_email_diagnostics():
         "use_tls": getattr(settings, "EMAIL_USE_TLS", False),
         "use_ssl": getattr(settings, "EMAIL_USE_SSL", False),
         "timeout": getattr(settings, "EMAIL_TIMEOUT", None),
-        "configured": getattr(settings, "EMAIL_CONFIGURED", False),
+        "configured": bool(backend and (not using_smtp or smtp_ready)),
         "host_user_present": bool(getattr(settings, "EMAIL_HOST_USER", "")),
         "host_password_present": bool(getattr(settings, "EMAIL_HOST_PASSWORD", "")),
         "from_email": getattr(settings, "DEFAULT_FROM_EMAIL", ""),
@@ -153,6 +161,7 @@ def send_siteguard_email(
     html_body=None,
     from_email=None,
     log_context=None,
+    raise_on_error=False,
 ):
     recipient_list = [recipient.strip() for recipient in (recipients or []) if recipient and recipient.strip()]
     email_diagnostics = get_email_diagnostics()
@@ -224,6 +233,8 @@ def send_siteguard_email(
                 }
             },
         )
+        if raise_on_error:
+            raise
         return False
 
 

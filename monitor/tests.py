@@ -1,13 +1,16 @@
 from datetime import timedelta
+import io
 import os
 import shutil
 import tempfile
 import base64
+import smtplib
 
 from unittest.mock import Mock, patch
 
 import requests
 from django.contrib.auth.models import User
+from django.core.management import call_command
 from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test.client import RequestFactory
@@ -1688,6 +1691,62 @@ class EmailDiagnosticsTests(TestCase):
         )
 
         self.assertFalse(sent)
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
+        EMAIL_HOST="smtp.gmail.com",
+        EMAIL_HOST_USER="user@example.com",
+        EMAIL_HOST_PASSWORD="secret",
+        DEFAULT_FROM_EMAIL="SiteGuard Alerts <user@example.com>",
+        EMAIL_CONFIGURED=False,
+    )
+    @patch("monitor.emailing.EmailMultiAlternatives.send", return_value=1)
+    def test_send_siteguard_email_uses_live_smtp_settings_when_cached_flag_is_false(self, mock_send):
+        sent = send_siteguard_email(
+            subject="Diagnostic test",
+            text_body="Hello",
+            recipients=["user@example.com"],
+            log_context={"flow": "unit_test"},
+        )
+
+        self.assertTrue(sent)
+        mock_send.assert_called_once_with(fail_silently=False)
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
+        EMAIL_HOST="smtp.gmail.com",
+        EMAIL_HOST_USER="user@example.com",
+        EMAIL_HOST_PASSWORD="secret",
+        DEFAULT_FROM_EMAIL="SiteGuard Alerts <user@example.com>",
+        EMAIL_CONFIGURED=False,
+    )
+    @patch("monitor.emailing.EmailMultiAlternatives.send", side_effect=smtplib.SMTPAuthenticationError(535, b"bad creds"))
+    def test_send_siteguard_email_can_surface_smtp_exception_for_test_flow(self, _mock_send):
+        with self.assertRaises(smtplib.SMTPAuthenticationError):
+            send_siteguard_email(
+                subject="Diagnostic test",
+                text_body="Hello",
+                recipients=["user@example.com"],
+                log_context={"flow": "unit_test"},
+                raise_on_error=True,
+            )
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
+        EMAIL_HOST="smtp.gmail.com",
+        EMAIL_HOST_USER="user@example.com",
+        EMAIL_HOST_PASSWORD="secret",
+        DEFAULT_FROM_EMAIL="SiteGuard Alerts <user@example.com>",
+        EMAIL_CONFIGURED=False,
+    )
+    @patch("monitor.emailing.EmailMultiAlternatives.send", side_effect=smtplib.SMTPConnectError(421, "unavailable"))
+    def test_test_email_command_surfaces_real_smtp_error(self, _mock_send):
+        stdout = io.StringIO()
+        call_command("test_email", "user@example.com", stdout=stdout)
+        output = stdout.getvalue()
+        self.assertIn("SMTP diagnostics:", output)
+        self.assertIn("'configured': True", output)
+        self.assertIn("SMTPConnectError", output)
 
 
 class ImmediateMonitoringTests(TestCase):
