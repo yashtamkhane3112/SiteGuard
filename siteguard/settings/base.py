@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "monitor",
+    "anymail",
 ]
 
 MIDDLEWARE = [
@@ -63,6 +64,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    
 ]
 
 ROOT_URLCONF = "siteguard.urls"
@@ -145,50 +147,50 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/dashboard/"
 LOGOUT_REDIRECT_URL = "/login/"
-
 SITE_NAME = config("SITE_NAME", default="SiteGuard").strip() or "SiteGuard"
-EMAIL_BACKEND = config(
-    "EMAIL_BACKEND",
-    default="django.core.mail.backends.console.EmailBackend" if DEBUG else "django.core.mail.backends.smtp.EmailBackend",
-)
-EMAIL_HOST = config("EMAIL_HOST", default="smtp.gmail.com")
-EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
-EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
-EMAIL_USE_SSL = config("EMAIL_USE_SSL", default=False, cast=bool)
-EMAIL_TIMEOUT = config("EMAIL_TIMEOUT", default=15, cast=int)
-EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="").strip()
-EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="").strip()
-EMAIL_SENDER_NAME = config("EMAIL_SENDER_NAME", default=f"{SITE_NAME} Alerts").strip() or f"{SITE_NAME} Alerts"
-EMAIL_SUBJECT_PREFIX = config("EMAIL_SUBJECT_PREFIX", default="[SiteGuard] ").strip()
+RESEND_API_KEY = config("RESEND_API_KEY", default="").strip()
+ANYMAIL = {
+    "RESEND_API_KEY": RESEND_API_KEY,
+}
+EMAIL_BACKEND = "anymail.backends.resend.EmailBackend"
+
+EMAIL_SENDER_NAME = config(
+    "EMAIL_SENDER_NAME",
+    default=f"{SITE_NAME} Alerts",
+).strip() or f"{SITE_NAME} Alerts"
+
+DEFAULT_FROM_EMAIL = config(
+    "DEFAULT_FROM_EMAIL",
+    default=f"{EMAIL_SENDER_NAME} <onboarding@resend.dev>",
+).strip()
+
+SERVER_EMAIL = config(
+    "SERVER_EMAIL",
+    default=DEFAULT_FROM_EMAIL,
+).strip()
+
+SUPPORT_EMAIL = config(
+    "SUPPORT_EMAIL",
+    default="nightmare960457@gmail.com",
+).strip()
+
+EMAIL_SUBJECT_PREFIX = config(
+    "EMAIL_SUBJECT_PREFIX",
+    default="[SiteGuard] ",
+).strip()
+
 if EMAIL_SUBJECT_PREFIX and not EMAIL_SUBJECT_PREFIX.endswith(" "):
     EMAIL_SUBJECT_PREFIX = f"{EMAIL_SUBJECT_PREFIX} "
-_default_sender_address = EMAIL_HOST_USER or "noreply@siteguard.local"
-_default_from_email = formataddr((EMAIL_SENDER_NAME, _default_sender_address))
-DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default=_default_from_email).strip()
-SERVER_EMAIL = config("SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
-SUPPORT_EMAIL = config("SUPPORT_EMAIL", default=EMAIL_HOST_USER or _default_sender_address).strip()
-PASSWORD_RESET_TIMEOUT = config("PASSWORD_RESET_TIMEOUT", default=86400, cast=int)
 
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-USE_X_FORWARDED_HOST = True
-
-SECURE_BROWSER_XSS_FILTER = True
-SECURE_CONTENT_TYPE_NOSNIFF = True
-X_FRAME_OPTIONS = "DENY"
-REFERRER_POLICY = "same-origin"
-
-APPEND_SLASH = True
-
+PASSWORD_RESET_TIMEOUT = config(
+    "PASSWORD_RESET_TIMEOUT",
+    default=86400,
+    cast=int,
+)
 BOOTSTRAP_ADMIN_ENABLED = config("BOOTSTRAP_ADMIN_ENABLED", default=DEBUG, cast=bool)
-CRON_SECRET = config("CRON_SECRET", default="")
+
 APP_BASE_URL = app_base_url
 CANONICAL_BASE_URL = app_base_url
-EMAIL_CONFIGURED = bool(
-    EMAIL_BACKEND and (
-        EMAIL_BACKEND != "django.core.mail.backends.smtp.EmailBackend"
-        or (EMAIL_HOST and EMAIL_HOST_USER and EMAIL_HOST_PASSWORD)
-    )
-)
 
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")
 DJANGO_LOG_LEVEL = config("DJANGO_LOG_LEVEL", default="INFO")

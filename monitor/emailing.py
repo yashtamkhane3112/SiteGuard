@@ -1,6 +1,5 @@
 import logging
 import ipaddress
-import smtplib
 from urllib.parse import urlparse
 
 from django.conf import settings
@@ -125,31 +124,17 @@ def build_password_reset_email_options(request=None):
 
 def get_email_diagnostics():
     backend = getattr(settings, "EMAIL_BACKEND", "") or ""
-    host = getattr(settings, "EMAIL_HOST", "") or ""
-    using_smtp = backend == "django.core.mail.backends.smtp.EmailBackend"
-    using_gmail = "gmail" in host.lower()
-    smtp_ready = all(
-        (
-            host,
-            getattr(settings, "EMAIL_HOST_USER", "") or "",
-            getattr(settings, "EMAIL_HOST_PASSWORD", "") or "",
-            getattr(settings, "DEFAULT_FROM_EMAIL", "") or "",
-        )
-    )
+    provider = "resend" if backend == "anymail.backends.resend.EmailBackend" else "unknown"
+    api_key_present = bool(getattr(settings, "RESEND_API_KEY", "") or getattr(settings, "ANYMAIL", {}).get("RESEND_API_KEY"))
     return {
         "backend": backend,
-        "host": host,
-        "port": getattr(settings, "EMAIL_PORT", None),
-        "use_tls": getattr(settings, "EMAIL_USE_TLS", False),
-        "use_ssl": getattr(settings, "EMAIL_USE_SSL", False),
-        "timeout": getattr(settings, "EMAIL_TIMEOUT", None),
-        "configured": bool(backend and (not using_smtp or smtp_ready)),
-        "host_user_present": bool(getattr(settings, "EMAIL_HOST_USER", "")),
-        "host_password_present": bool(getattr(settings, "EMAIL_HOST_PASSWORD", "")),
+        "provider": provider,
+        "configured": bool(backend and api_key_present and getattr(settings, "DEFAULT_FROM_EMAIL", "")),
+        "sender_email": get_sender_email_address(),
         "from_email": getattr(settings, "DEFAULT_FROM_EMAIL", ""),
+        "api_key_present": api_key_present,
         "base_url": get_canonical_base_url(),
-        "using_smtp": using_smtp,
-        "using_gmail": using_gmail,
+        "delivery_attempt_result": "not_started",
     }
 
 
@@ -166,15 +151,17 @@ def send_siteguard_email(
     recipient_list = [recipient.strip() for recipient in (recipients or []) if recipient and recipient.strip()]
     email_diagnostics = get_email_diagnostics()
     if not recipient_list:
+        email_diagnostics["delivery_attempt_result"] = "skipped_no_recipients"
         logger.warning(
             "Email send skipped because no recipients were provided.",
             extra={"email_context": {**(log_context or {}), "diagnostics": email_diagnostics}},
         )
         return False
 
-    if email_diagnostics["using_smtp"] and not email_diagnostics["configured"]:
+    if not email_diagnostics["configured"]:
+        email_diagnostics["delivery_attempt_result"] = "skipped_not_configured"
         logger.warning(
-            "SMTP email send skipped because production email settings are incomplete.",
+            "Email send skipped because provider configuration is incomplete.",
             extra={
                 "email_context": {
                     "recipients": recipient_list,
@@ -187,7 +174,7 @@ def send_siteguard_email(
 
     final_subject = prefix_email_subject(subject)
     final_from_email = from_email or getattr(settings, "DEFAULT_FROM_EMAIL", "")
-    connection = get_connection(timeout=getattr(settings, "EMAIL_TIMEOUT", None))
+    connection = get_connection()
     message = EmailMultiAlternatives(
         subject=final_subject,
         body=text_body,
@@ -200,6 +187,7 @@ def send_siteguard_email(
 
     try:
         message.send(fail_silently=False)
+        email_diagnostics["delivery_attempt_result"] = "sent"
         logger.info(
             "Email sent successfully.",
             extra={
@@ -213,13 +201,8 @@ def send_siteguard_email(
         )
         return True
     except Exception as exc:
-        warning_message = None
-        if isinstance(exc, smtplib.SMTPAuthenticationError):
-            warning_message = "SMTP authentication failed. Gmail SMTP usually requires an app password and a verified sender."
-        elif isinstance(exc, smtplib.SMTPConnectError):
-            warning_message = "SMTP connection failed. Verify Render egress access, SMTP host, port, and TLS settings."
-        elif isinstance(exc, TimeoutError):
-            warning_message = "SMTP request timed out before the provider completed the send."
+        warning_message = "Email provider request timed out before the provider completed delivery." if isinstance(exc, TimeoutError) else ""
+        email_diagnostics["delivery_attempt_result"] = f"failed:{exc.__class__.__name__}"
 
         logger.exception(
             "Email send failed.",

@@ -4,11 +4,11 @@ import os
 import shutil
 import tempfile
 import base64
-import smtplib
 
 from unittest.mock import Mock, patch
 
 import requests
+from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.core import mail
@@ -16,7 +16,9 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test.client import RequestFactory
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils.encoding import force_bytes
 from django.utils import timezone
+from django.utils.http import urlsafe_base64_encode
 
 from monitor.emailing import build_password_reset_email_options, get_email_base_url, send_siteguard_email
 from monitor.error_analyzer import parse_log_content
@@ -124,6 +126,54 @@ class AuthFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Reset Password")
+
+    def test_login_page_renders_password_toggle(self):
+        response = self.client.get(reverse("login"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-password-toggle', count=1)
+        self.assertContains(response, 'aria-controls="id_password"', html=False)
+
+    def test_signup_page_renders_independent_password_toggles(self):
+        response = self.client.get(reverse("signup"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-password-toggle', count=2)
+        self.assertContains(response, 'aria-controls="id_password1"', html=False)
+        self.assertContains(response, 'aria-controls="id_password2"', html=False)
+
+    def test_password_reset_confirm_page_renders_password_toggles(self):
+        user = User.objects.create_user(
+            username="reset-confirm-user",
+            password="StrongPass123!",
+            email="confirm@example.com",
+        )
+        uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+
+        response = self.client.get(reverse("password_reset_confirm", args=[uidb64, token]), follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-password-toggle', count=2)
+        self.assertContains(response, 'aria-controls="id_new_password1"', html=False)
+        self.assertContains(response, 'aria-controls="id_new_password2"', html=False)
+
+    def test_profile_page_renders_password_toggles_for_account_flows(self):
+        user = User.objects.create_user(
+            username="profile-user",
+            password="StrongPass123!",
+            email="profile@example.com",
+        )
+        self.client.login(username="profile-user", password="StrongPass123!")
+
+        response = self.client.get(reverse("profile"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-password-toggle', count=4)
+        self.assertContains(response, 'aria-controls="id_old_password"', html=False)
+        self.assertContains(response, 'aria-controls="id_new_password1"', html=False)
+        self.assertContains(response, 'aria-controls="id_new_password2"', html=False)
+        self.assertContains(response, 'aria-controls="id_password"', html=False)
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     def test_password_reset_request_sends_email_for_known_user(self):
@@ -1676,13 +1726,12 @@ class AccountManagementTests(TestCase):
 
 class EmailDiagnosticsTests(TestCase):
     @override_settings(
-        EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
-        EMAIL_HOST="smtp.gmail.com",
-        EMAIL_HOST_USER="",
-        EMAIL_HOST_PASSWORD="",
-        EMAIL_CONFIGURED=False,
+        EMAIL_BACKEND="anymail.backends.resend.EmailBackend",
+        RESEND_API_KEY="",
+        ANYMAIL={"RESEND_API_KEY": ""},
+        DEFAULT_FROM_EMAIL="SiteGuard Alerts <user@example.com>",
     )
-    def test_send_siteguard_email_returns_false_when_smtp_is_incomplete(self):
+    def test_send_siteguard_email_returns_false_when_provider_is_not_configured(self):
         sent = send_siteguard_email(
             subject="Diagnostic test",
             text_body="Hello",
@@ -1693,15 +1742,13 @@ class EmailDiagnosticsTests(TestCase):
         self.assertFalse(sent)
 
     @override_settings(
-        EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
-        EMAIL_HOST="smtp.gmail.com",
-        EMAIL_HOST_USER="user@example.com",
-        EMAIL_HOST_PASSWORD="secret",
+        EMAIL_BACKEND="anymail.backends.resend.EmailBackend",
+        RESEND_API_KEY="re_test_key",
+        ANYMAIL={"RESEND_API_KEY": "re_test_key"},
         DEFAULT_FROM_EMAIL="SiteGuard Alerts <user@example.com>",
-        EMAIL_CONFIGURED=False,
     )
     @patch("monitor.emailing.EmailMultiAlternatives.send", return_value=1)
-    def test_send_siteguard_email_uses_live_smtp_settings_when_cached_flag_is_false(self, mock_send):
+    def test_send_siteguard_email_uses_resend_configuration_when_present(self, mock_send):
         sent = send_siteguard_email(
             subject="Diagnostic test",
             text_body="Hello",
@@ -1713,16 +1760,14 @@ class EmailDiagnosticsTests(TestCase):
         mock_send.assert_called_once_with(fail_silently=False)
 
     @override_settings(
-        EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
-        EMAIL_HOST="smtp.gmail.com",
-        EMAIL_HOST_USER="user@example.com",
-        EMAIL_HOST_PASSWORD="secret",
+        EMAIL_BACKEND="anymail.backends.resend.EmailBackend",
+        RESEND_API_KEY="re_test_key",
+        ANYMAIL={"RESEND_API_KEY": "re_test_key"},
         DEFAULT_FROM_EMAIL="SiteGuard Alerts <user@example.com>",
-        EMAIL_CONFIGURED=False,
     )
-    @patch("monitor.emailing.EmailMultiAlternatives.send", side_effect=smtplib.SMTPAuthenticationError(535, b"bad creds"))
-    def test_send_siteguard_email_can_surface_smtp_exception_for_test_flow(self, _mock_send):
-        with self.assertRaises(smtplib.SMTPAuthenticationError):
+    @patch("monitor.emailing.EmailMultiAlternatives.send", side_effect=RuntimeError("provider auth failed"))
+    def test_send_siteguard_email_can_surface_provider_exception_for_test_flow(self, _mock_send):
+        with self.assertRaises(RuntimeError):
             send_siteguard_email(
                 subject="Diagnostic test",
                 text_body="Hello",
@@ -1732,21 +1777,20 @@ class EmailDiagnosticsTests(TestCase):
             )
 
     @override_settings(
-        EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
-        EMAIL_HOST="smtp.gmail.com",
-        EMAIL_HOST_USER="user@example.com",
-        EMAIL_HOST_PASSWORD="secret",
+        EMAIL_BACKEND="anymail.backends.resend.EmailBackend",
+        RESEND_API_KEY="re_test_key",
+        ANYMAIL={"RESEND_API_KEY": "re_test_key"},
         DEFAULT_FROM_EMAIL="SiteGuard Alerts <user@example.com>",
-        EMAIL_CONFIGURED=False,
     )
-    @patch("monitor.emailing.EmailMultiAlternatives.send", side_effect=smtplib.SMTPConnectError(421, "unavailable"))
-    def test_test_email_command_surfaces_real_smtp_error(self, _mock_send):
+    @patch("monitor.emailing.EmailMultiAlternatives.send", side_effect=RuntimeError("provider unavailable"))
+    def test_test_email_command_surfaces_real_provider_error(self, _mock_send):
         stdout = io.StringIO()
         call_command("test_email", "user@example.com", stdout=stdout)
         output = stdout.getvalue()
-        self.assertIn("SMTP diagnostics:", output)
+        self.assertIn("Email diagnostics:", output)
+        self.assertIn("'provider': 'resend'", output)
         self.assertIn("'configured': True", output)
-        self.assertIn("SMTPConnectError", output)
+        self.assertIn("RuntimeError", output)
 
 
 class ImmediateMonitoringTests(TestCase):

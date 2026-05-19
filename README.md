@@ -49,17 +49,16 @@ python manage.py migrate
 python manage.py runserver
 ```
 
-For real local email delivery instead of console output, keep `EMAIL_BACKEND` blank in `.env` and set Gmail SMTP values for `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL`, and `SERVER_EMAIL`. Local development will auto-switch to SMTP only when the Gmail credentials exist; otherwise it safely falls back to the console backend.
+For real local email delivery, set `RESEND_API_KEY`, `DEFAULT_FROM_EMAIL`, and optionally `SERVER_EMAIL` in `.env`. SiteGuard now sends mail through Resend only, using `django-anymail`.
 
-Gmail local setup:
+Resend local setup:
 
-1. Enable 2-Step Verification on the Gmail sender account.
-2. Create a Google App Password for Mail.
-3. Put the Gmail address in `EMAIL_HOST_USER`.
-4. Put the App Password in `EMAIL_HOST_PASSWORD`.
-5. Set `DEFAULT_FROM_EMAIL` and `SERVER_EMAIL` to the same Gmail sender identity.
-6. Local password reset emails use the active request host while `DEBUG=True`, so start the app on the exact host you want in the email, such as `http://127.0.0.1:8000` or `http://localhost:8000`.
-7. Keep `APP_BASE_URL` pointed at your production HTTPS origin for Render production mail.
+1. Create a Resend API key with sending access.
+2. Verify the sender domain or use an approved Resend test sender while validating setup.
+3. Set `RESEND_API_KEY` in `.env`.
+4. Set `DEFAULT_FROM_EMAIL` and `SERVER_EMAIL` to the sender identity you want Resend to use.
+5. Local password reset emails use the active request host while `DEBUG=True`, so start the app on the exact host you want in the email, such as `http://127.0.0.1:8000` or `http://localhost:8000`.
+6. Keep `APP_BASE_URL` pointed at your production HTTPS origin for Render production mail.
 
 Local email verification:
 
@@ -115,7 +114,7 @@ Required production variables:
 - `ALLOWED_HOSTS`
 - `CSRF_TRUSTED_ORIGINS`
 - `APP_BASE_URL`
-- SMTP variables for production mail delivery: `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL`
+- Resend mail variables: `RESEND_API_KEY`, `DEFAULT_FROM_EMAIL`
 - `CRON_SECRET`
 - `DJANGO_SETTINGS_MODULE=siteguard.settings.prod`
 

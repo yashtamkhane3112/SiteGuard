@@ -93,8 +93,9 @@
                 />
                 <button
                   type="button"
-                  id="togglePassword1"
                   class="auth-input-icon-right auth-toggle-btn"
+                  data-password-toggle
+                  aria-controls="{{ form.password1.id_for_label }}"
                 >
                   <span data-password-icon aria-hidden="true"><i data-lucide="eye"></i></span>
                 </button>
@@ -118,8 +119,9 @@
                 />
                 <button
                   type="button"
-                  id="togglePassword2"
                   class="auth-input-icon-right auth-toggle-btn"
+                  data-password-toggle
+                  aria-controls="{{ form.password2.id_for_label }}"
                 >
                   <span data-password-icon aria-hidden="true"><i data-lucide="eye"></i></span>
                 </button>

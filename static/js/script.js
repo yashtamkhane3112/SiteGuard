@@ -79,14 +79,19 @@ document.querySelectorAll('.count-section').forEach(section => {
 });
 
 // 4. Password Visibility Toggle (Auth Pages)
-function bindToggle(toggleId, inputId) {
-    const toggle = document.getElementById(toggleId);
-    const input = document.getElementById(inputId);
+function bindToggle(toggleOrId, inputId) {
+    const toggle = typeof toggleOrId === 'string' ? document.getElementById(toggleOrId) : toggleOrId;
+    const resolvedInputId = inputId || toggle?.getAttribute('aria-controls') || '';
+    const input = resolvedInputId
+        ? document.getElementById(resolvedInputId)
+        : toggle?.parentElement?.querySelector('input[type="password"], input[type="text"]');
     const icon = toggle ? (toggle.querySelector('[data-password-icon]') || toggle) : null;
 
-    if (!toggle || !input || toggle.dataset.bound === 'true') return;
-    toggle.dataset.bound = 'true';
-    toggle.setAttribute('aria-controls', inputId);
+    if (!toggle || !input || toggle.dataset.passwordToggleBound === 'true') return;
+    toggle.dataset.passwordToggleBound = 'true';
+    if (input.id && !toggle.getAttribute('aria-controls')) {
+        toggle.setAttribute('aria-controls', input.id);
+    }
 
     const syncToggleState = () => {
         const isVisible = input.type === 'text';
@@ -105,7 +110,19 @@ function bindToggle(toggleId, inputId) {
     };
 
     const toggleVisibility = () => {
+        const selectionStart = typeof input.selectionStart === 'number' ? input.selectionStart : null;
+        const selectionEnd = typeof input.selectionEnd === 'number' ? input.selectionEnd : null;
         input.type = input.type === 'password' ? 'text' : 'password';
+        if (document.activeElement === toggle) {
+            input.focus({ preventScroll: true });
+        }
+        if (selectionStart !== null && selectionEnd !== null) {
+            try {
+                input.setSelectionRange(selectionStart, selectionEnd);
+            } catch (_error) {
+                // Browsers may reject restoring selection after a type swap.
+            }
+        }
         syncToggleState();
         if (window.lucide) {
             lucide.createIcons();
@@ -126,6 +143,10 @@ function bindToggle(toggleId, inputId) {
     });
 }
 window.bindToggle = bindToggle;
+
+document.querySelectorAll('[data-password-toggle]').forEach((toggle) => {
+    bindToggle(toggle);
+});
 
 function animateCounter(counter) {
     if (!counter || counter.dataset.counterAnimated === 'true') return;

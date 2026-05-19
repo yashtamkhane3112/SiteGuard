@@ -198,7 +198,13 @@
                 {% for field in password_form %}
                 <div>
                   <label class="form-label text-slate-300 text-sm fw-medium" for="{{ field.id_for_label }}">{{ field.label }}</label>
-                  {{ field }}
+                  <div class="auth-input-wrapper password-toggle-field">
+                    <i data-lucide="lock" class="auth-input-icon"></i>
+                    {{ field }}
+                    <button type="button" class="auth-input-icon-right auth-toggle-btn" data-password-toggle aria-controls="{{ field.id_for_label }}">
+                      <span data-password-icon aria-hidden="true"><i data-lucide="eye"></i></span>
+                    </button>
+                  </div>
                   {% for error in field.errors %}
                   <div class="account-field-error">{{ error }}</div>
                   {% endfor %}
@@ -280,7 +286,13 @@
 
               <div>
                 <label class="form-label text-slate-300 text-sm fw-medium" for="{{ delete_account_form.password.id_for_label }}">{{ delete_account_form.password.label }}</label>
-                {{ delete_account_form.password }}
+                <div class="auth-input-wrapper password-toggle-field">
+                  <i data-lucide="lock" class="auth-input-icon"></i>
+                  {{ delete_account_form.password }}
+                  <button type="button" class="auth-input-icon-right auth-toggle-btn" data-password-toggle aria-controls="{{ delete_account_form.password.id_for_label }}">
+                    <span data-password-icon aria-hidden="true"><i data-lucide="eye"></i></span>
+                  </button>
+                </div>
                 {% for error in delete_account_form.password.errors %}
                 <div class="account-field-error">{{ error }}</div>
                 {% endfor %}

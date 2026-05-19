@@ -21,10 +21,7 @@ Set these on the Render web service and cron job:
 - `CSRF_TRUSTED_ORIGINS=https://<render-hostname>`
 - `APP_BASE_URL=https://<render-hostname>`
 - `CRON_SECRET=<long random secret>`
-- `EMAIL_HOST=<smtp host>`
-- `EMAIL_PORT=<smtp port>`
-- `EMAIL_HOST_USER=<smtp username>`
-- `EMAIL_HOST_PASSWORD=<smtp password>`
+- `RESEND_API_KEY=<resend api key>`
 - `DEFAULT_FROM_EMAIL=SiteGuard Alerts <noreply@your-domain>`
 
 Recommended:
@@ -33,18 +30,11 @@ Recommended:
 - `BOOTSTRAP_ADMIN_ENABLED=False`
 - `LOG_LEVEL=INFO`
 - `DJANGO_LOG_LEVEL=INFO`
-- `EMAIL_TIMEOUT=15`
-- `EMAIL_USE_TLS=True`
-- `EMAIL_USE_SSL=False`
 - `SERVER_EMAIL=SiteGuard Alerts <noreply@your-domain>`
 - `SUPPORT_EMAIL=support@your-domain`
 - `EMAIL_SENDER_NAME=SiteGuard Alerts`
 - `EMAIL_SUBJECT_PREFIX=[SiteGuard] `
 - `SITE_NAME=SiteGuard`
-
-Optional email settings:
-
-- `EMAIL_BACKEND`
 
 ## Render Service Configuration
 

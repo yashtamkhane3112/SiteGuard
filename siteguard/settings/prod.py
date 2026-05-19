@@ -5,7 +5,6 @@ from .base import *  # noqa: F401,F403
 
 
 DEBUG = False
-EMAIL_BACKEND = config("EMAIL_BACKEND", default="").strip() or "django.core.mail.backends.smtp.EmailBackend"
 
 if SECRET_KEY == "django-insecure-siteguard-dev-only-change-me":
     raise ImproperlyConfigured("SECRET_KEY must be set in production.")
@@ -41,6 +40,3 @@ if not APP_BASE_URL:
 parsed_app_base = urlparse(APP_BASE_URL)
 if parsed_app_base.scheme != "https" or not parsed_app_base.netloc:
     raise ImproperlyConfigured("APP_BASE_URL must be a valid HTTPS URL in production.")
-
-if EMAIL_USE_TLS and EMAIL_USE_SSL:
-    raise ImproperlyConfigured("EMAIL_USE_TLS and EMAIL_USE_SSL cannot both be enabled.")
