@@ -310,6 +310,7 @@ class AccountPasswordChangeForm(PasswordChangeForm):
                 'class': 'form-control custom-input',
                 'placeholder': placeholders.get(field_name, ''),
                 'autocomplete': 'current-password' if field_name == 'old_password' else 'new-password',
+                'spellcheck': 'false',
             })
 
 

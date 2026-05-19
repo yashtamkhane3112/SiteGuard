@@ -16,7 +16,7 @@
     />
     <link rel="stylesheet" href="{% static 'css/style.css' %}" />
   </head>
-  <body>
+  <body class="profile-page">
     <div class="dashboard-layout">
       {% include "monitor/partials/app_sidebar.html" with active_page="profile" sidebar_tip_title="Pro Tip" sidebar_tip_body="Enable alerts to get notified instantly when your sites go down." %}
 
@@ -198,7 +198,13 @@
                 {% for field in password_form %}
                 <div>
                   <label class="form-label text-slate-300 text-sm fw-medium" for="{{ field.id_for_label }}">{{ field.label }}</label>
-                  {{ field }}
+                  <div class="password-toggle-field">
+                    <i data-lucide="lock" class="auth-input-icon" aria-hidden="true"></i>
+                    {{ field }}
+                    <button type="button" class="auth-input-icon-right auth-toggle-btn" data-password-toggle-target="{{ field.id_for_label }}" aria-label="Show password" aria-controls="{{ field.id_for_label }}" aria-pressed="false">
+                      <span data-password-icon aria-hidden="true"><i data-lucide="eye"></i></span>
+                    </button>
+                  </div>
                   {% for error in field.errors %}
                   <div class="account-field-error">{{ error }}</div>
                   {% endfor %}

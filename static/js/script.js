@@ -78,15 +78,15 @@ document.querySelectorAll('.count-section').forEach(section => {
     statObserver.observe(section);
 });
 
-// 4. Password Visibility Toggle (Auth Pages)
-function bindToggle(toggleId, inputId) {
-    const toggle = document.getElementById(toggleId);
-    const input = document.getElementById(inputId);
+// 4. Password Visibility Toggle
+function bindToggle(toggleRef, inputRef) {
+    const toggle = typeof toggleRef === 'string' ? document.getElementById(toggleRef) : toggleRef;
+    const input = typeof inputRef === 'string' ? document.getElementById(inputRef) : inputRef;
     const icon = toggle ? (toggle.querySelector('[data-password-icon]') || toggle) : null;
 
     if (!toggle || !input || toggle.dataset.bound === 'true') return;
     toggle.dataset.bound = 'true';
-    toggle.setAttribute('aria-controls', inputId);
+    toggle.setAttribute('aria-controls', input.id);
 
     const syncToggleState = () => {
         const isVisible = input.type === 'text';
@@ -423,6 +423,9 @@ if (exportBtn) {
 bindToggle('togglePassword', 'id_password');
 bindToggle('togglePassword1', 'id_password1');
 bindToggle('togglePassword2', 'id_password2');
+document.querySelectorAll('[data-password-toggle-target]').forEach((toggle) => {
+    bindToggle(toggle, toggle.dataset.passwordToggleTarget);
+});
 
 const mobileToggle = document.getElementById('mobileToggle');
 const sidebar = document.getElementById('sidebar');

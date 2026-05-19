@@ -81,7 +81,7 @@
 
             <div class="mb-3">
               <label class="form-label auth-label" for="{{ form.password1.id_for_label }}">Password</label>
-              <div class="auth-input-wrapper">
+              <div class="auth-input-wrapper password-toggle-field">
                 <i data-lucide="lock" class="auth-input-icon"></i>
                 <input
                   type="password"
@@ -95,6 +95,7 @@
                   type="button"
                   id="togglePassword1"
                   class="auth-input-icon-right auth-toggle-btn"
+                  data-password-toggle-target="id_password1"
                 >
                   <span data-password-icon aria-hidden="true"><i data-lucide="eye"></i></span>
                 </button>
@@ -106,7 +107,7 @@
 
             <div class="mb-4">
               <label class="form-label auth-label" for="{{ form.password2.id_for_label }}">Confirm Password</label>
-              <div class="auth-input-wrapper">
+              <div class="auth-input-wrapper password-toggle-field">
                 <i data-lucide="lock" class="auth-input-icon"></i>
                 <input
                   type="password"
@@ -120,6 +121,7 @@
                   type="button"
                   id="togglePassword2"
                   class="auth-input-icon-right auth-toggle-btn"
+                  data-password-toggle-target="id_password2"
                 >
                   <span data-password-icon aria-hidden="true"><i data-lucide="eye"></i></span>
                 </button>

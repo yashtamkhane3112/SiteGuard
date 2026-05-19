@@ -47,7 +47,7 @@
                 <div class="stat-icon-box bg-critical-light text-critical">
                   <i data-lucide="bell-ring"></i>
                 </div>
-                <div>
+                <div class="alert-metric-copy">
                   <h2 class="stat-value-lg counter m-0" data-target="{{ active_alerts }}" data-suffix="">0</h2>
                   <span class="text-white text-sm fw-bold">Active Alerts</span>
                   <p class="text-slate-300 text-xs m-0 mt-2">Unread production-impacting signals still awaiting acknowledgement.</p>
@@ -59,7 +59,7 @@
                 <div class="stat-icon-box bg-recovery-light text-recovery">
                   <i data-lucide="check-check"></i>
                 </div>
-                <div>
+                <div class="alert-metric-copy">
                   <h2 class="stat-value-lg counter m-0" data-target="{{ recovery_alerts }}" data-suffix="">0</h2>
                   <span class="text-white text-sm fw-bold">Recovery Alerts</span>
                   <p class="text-slate-300 text-xs m-0 mt-2">Closed loops confirming a site returned to its expected operating state.</p>
@@ -71,7 +71,7 @@
                 <div class="stat-icon-box bg-warning-light text-warning">
                   <i data-lucide="alert-octagon"></i>
                 </div>
-                <div>
+                <div class="alert-metric-copy">
                   <h2 class="stat-value-lg counter m-0" data-target="{{ failed_alerts }}" data-suffix="">0</h2>
                   <span class="text-white text-sm fw-bold">Failed Alerts</span>
                   <p class="text-slate-300 text-xs m-0 mt-2">Delivery attempts that need operator attention or a manual retry.</p>
@@ -83,7 +83,7 @@
                 <div class="stat-icon-box bg-panel-light text-white">
                   <i data-lucide="gauge"></i>
                 </div>
-                <div>
+                <div class="alert-metric-copy">
                   <h2 class="stat-value-lg m-0 text-white">{{ average_response_impact }}ms</h2>
                   <span class="text-white text-sm fw-bold">Avg Response Impact</span>
                   <p class="text-slate-300 text-xs m-0 mt-2">Average response-time effect attached to generated alerts in this workspace.</p>

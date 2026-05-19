@@ -143,6 +143,37 @@ body { animation: pageLoad 0.5s cubic-bezier(0.165, 0.84, 0.44, 1) forwards; }
 .auth-input:focus { background: rgba(0,0,0,0.4); border-color: #a855f7; color: #fff; outline: none; box-shadow: 0 0 0 4px rgba(116, 48, 232, 0.2); }
 .auth-input::placeholder { color: #475569; }
 
+.password-toggle-field {
+    position: relative;
+}
+
+.password-toggle-field .auth-input-icon {
+    left: 18px;
+}
+
+.password-toggle-field .auth-input-icon-right {
+    right: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.password-toggle-field .auth-input-icon-right [data-password-icon],
+.password-toggle-field .auth-input-icon-right i,
+.password-toggle-field .auth-input-icon-right svg {
+    width: 18px;
+    height: 18px;
+    display: block;
+}
+
+.auth-page-wrapper .password-toggle-field .auth-input,
+.profile-page .password-toggle-field .custom-input {
+    min-height: 52px;
+    line-height: 1.4;
+    padding-left: 54px;
+    padding-right: 54px;
+}
+
 .auth-footer-text { color: #94a3b8; font-size: 0.9rem; }
 .auth-footer-text a { color: #a855f7; text-decoration: none; font-weight: 600; transition: color 0.3s ease; }
 .auth-footer-text a:hover { color: #d8b4fe; }
@@ -2022,18 +2053,6 @@ body {
     margin-bottom: 0;
 }
 
-#id_old_password {
-    padding-left: 16px;
-}
-
-.auth-page-wrapper #id_password,
-.auth-page-wrapper #id_password1,
-.auth-page-wrapper #id_password2,
-.auth-page-wrapper #id_new_password1,
-.auth-page-wrapper #id_new_password2 {
-    padding-left: 58px;
-}
-
 #id_email {
     padding-left: 45px;
 }
@@ -3145,6 +3164,8 @@ input[type="checkbox"]:focus-visible {
     min-height: 126px;
     padding: 24px 22px !important;
     overflow: hidden;
+    align-items: center;
+    gap: 18px;
 }
 
 .alert-metric-card .stat-value-lg {
@@ -3153,9 +3174,24 @@ input[type="checkbox"]:focus-visible {
     word-break: break-word;
 }
 
-.alert-metric-card > div {
+.alert-metric-card .stat-icon-box {
+    flex: 0 0 56px;
+    width: 56px;
+    height: 56px;
+    align-self: center;
+}
+
+.alert-metric-copy {
+    flex: 1 1 0;
     min-width: 0;
-    width: 100%;
+    width: auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.alert-metric-copy > * {
+    min-width: 0;
 }
 
 .alerts-page .filter-bar,
