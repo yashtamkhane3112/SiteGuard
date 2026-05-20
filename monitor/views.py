@@ -6,6 +6,7 @@ from hmac import compare_digest
 from io import StringIO
 
 from django.conf import settings as django_settings
+from django.contrib.auth import views as auth_views
 from django.shortcuts import get_object_or_404, redirect, render
 from django.http import Http404, HttpResponse, JsonResponse
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout, update_session_auth_hash
@@ -30,6 +31,7 @@ from .forms import (
     DeleteAccountForm,
     LoginForm,
     ProfileUpdateForm,
+    SiteGuardPasswordResetForm,
     SignUpForm,
     UploadedLogForm,
 )
@@ -65,6 +67,7 @@ from .utils import (
 )
 
 logger = logging.getLogger(__name__)
+password_reset_logger = logging.getLogger("siteguard.email")
 
 TIMESTAMP_RE = re.compile(
     r'(?P<stamp>('
@@ -79,6 +82,46 @@ CONFIDENCE_COPY = {
     'medium': 'Medium confidence',
     'low': 'Low confidence',
 }
+
+
+class SiteGuardPasswordResetView(auth_views.PasswordResetView):
+    form_class = SiteGuardPasswordResetForm
+    template_name = "registration/password_reset_form.html"
+    email_template_name = "registration/password_reset_email.txt"
+    subject_template_name = "registration/password_reset_subject.txt"
+
+    def form_valid(self, form):
+        password_reset_logger.info(
+            "Password reset view received a valid form submission.",
+            extra={
+                "email_context": {
+                    "flow": "password_reset",
+                    "stage": "view_form_valid",
+                    "view_class": self.__class__.__name__,
+                    "form_class": form.__class__.__name__,
+                    "submitted_email": form.cleaned_data.get("email", ""),
+                    "path": self.request.path,
+                }
+            },
+        )
+        return super().form_valid(form)
+
+    def form_invalid(self, form):
+        password_reset_logger.warning(
+            "Password reset view rejected an invalid form submission.",
+            extra={
+                "email_context": {
+                    "flow": "password_reset",
+                    "stage": "view_form_invalid",
+                    "view_class": self.__class__.__name__,
+                    "form_class": form.__class__.__name__,
+                    "submitted_email": form.data.get("email", ""),
+                    "errors": form.errors.get_json_data(),
+                    "path": self.request.path,
+                }
+            },
+        )
+        return super().form_invalid(form)
 
 
 def _auth_user_table_ready():

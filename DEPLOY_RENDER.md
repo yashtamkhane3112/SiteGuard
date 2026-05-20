@@ -21,10 +21,8 @@ Set these on the Render web service and cron job:
 - `CSRF_TRUSTED_ORIGINS=https://<render-hostname>`
 - `APP_BASE_URL=https://<render-hostname>`
 - `CRON_SECRET=<long random secret>`
-- `EMAIL_HOST=<smtp host>`
-- `EMAIL_PORT=<smtp port>`
-- `EMAIL_HOST_USER=<smtp username>`
-- `EMAIL_HOST_PASSWORD=<smtp password>`
+- `BREVO_API_KEY=<brevo api key>`
+- `BREVO_API_URL=https://api.brevo.com/v3/smtp/email`
 - `DEFAULT_FROM_EMAIL=SiteGuard Alerts <noreply@your-domain>`
 
 Recommended:
@@ -34,8 +32,6 @@ Recommended:
 - `LOG_LEVEL=INFO`
 - `DJANGO_LOG_LEVEL=INFO`
 - `EMAIL_TIMEOUT=15`
-- `EMAIL_USE_TLS=True`
-- `EMAIL_USE_SSL=False`
 - `SERVER_EMAIL=SiteGuard Alerts <noreply@your-domain>`
 - `SUPPORT_EMAIL=support@your-domain`
 - `EMAIL_SENDER_NAME=SiteGuard Alerts`
@@ -123,7 +119,7 @@ Then verify:
 - login GET and POST
 - `/health/`
 - password reset request creates an email with `https://<render-hostname>/reset/...`
-- alert retry sends a real operational email from the configured sender identity
+- alert retry sends a real operational email through the configured Brevo API sender identity
 
 ## Local Production Checks
 
