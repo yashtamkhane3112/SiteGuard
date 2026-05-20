@@ -1,8 +1,10 @@
 asgiref==3.11.1
 certifi==2026.4.22
 charset-normalizer==3.4.7
+cloudinary==1.44.2
 Django==5.0.4
 django-anymail==15.0
+django-cloudinary-storage==0.3.0
 dnspython==2.7.0
 gunicorn==23.0.0
 idna==3.15
