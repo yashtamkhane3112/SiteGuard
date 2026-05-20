@@ -20,6 +20,7 @@ from django.utils import timezone
 
 from monitor.emailing import build_password_reset_email_options, get_email_base_url, send_siteguard_email
 from monitor.error_analyzer import parse_log_content
+from monitor.forms import SiteGuardPasswordResetForm
 from monitor.models import Alert, Incident, IncidentEvent, MonitorLog, Notification, ParsedError, UploadedLog, UserProfile, Website
 from monitor.utils import (
     analyze_domain,
@@ -36,6 +37,7 @@ from monitor.utils import (
     safe_url_decode,
     safe_url_encode,
 )
+from monitor.views import SiteGuardPasswordResetView
 
 
 TEST_PNG_BYTES = base64.b64decode(
@@ -124,6 +126,12 @@ class AuthFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Reset Password")
+
+    def test_password_reset_route_uses_custom_view_and_form(self):
+        match = resolve(reverse("password_reset"))
+
+        self.assertIs(match.func.view_class, SiteGuardPasswordResetView)
+        self.assertIs(match.func.view_class.form_class, SiteGuardPasswordResetForm)
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     def test_password_reset_request_sends_email_for_known_user(self):

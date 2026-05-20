@@ -1,7 +1,7 @@
 from django.urls import path
 from django.contrib.auth import views as auth_views
 from . import views
-from .forms import SiteGuardPasswordResetForm, SiteGuardSetPasswordForm
+from .forms import SiteGuardSetPasswordForm
 
 urlpatterns = [
     path('', views.index, name='index'),
@@ -12,12 +12,7 @@ urlpatterns = [
     path('logout/', views.logout_view, name='logout'),
     path(
         'password-reset/',
-        auth_views.PasswordResetView.as_view(
-            template_name='registration/password_reset_form.html',
-            email_template_name='registration/password_reset_email.txt',
-            subject_template_name='registration/password_reset_subject.txt',
-            form_class=SiteGuardPasswordResetForm,
-        ),
+        views.SiteGuardPasswordResetView.as_view(),
         name='password_reset',
     ),
     path(

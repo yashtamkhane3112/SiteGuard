@@ -131,6 +131,23 @@ def _send_via_brevo_api(*, subject, text_body, html_body, recipients, from_email
         recipients=recipients,
         from_email=from_email,
     )
+    logger.info(
+        "Brevo API request starting.",
+        extra={
+            "email_context": {
+                "flow": "email_send",
+                "stage": "brevo_api_request_start",
+                "subject": subject,
+                "recipients": recipients,
+                "from_email": from_email,
+                "api_url": _get_brevo_api_url(),
+                "timeout": timeout,
+                "payload_recipient_count": len(payload.get("to", [])),
+                "has_html_body": bool(html_body),
+                "has_text_body": bool(text_body),
+            }
+        },
+    )
     response = requests.post(
         _get_brevo_api_url(),
         headers={
@@ -150,6 +167,20 @@ def _send_via_brevo_api(*, subject, text_body, html_body, recipients, from_email
         ) from exc
 
     response_payload = response.json() if response.content else {}
+    logger.info(
+        "Brevo API response received.",
+        extra={
+            "email_context": {
+                "flow": "email_send",
+                "stage": "brevo_api_response",
+                "subject": subject,
+                "recipients": recipients,
+                "status_code": response.status_code,
+                "message_id": response_payload.get("messageId", ""),
+                "response_keys": sorted(response_payload.keys()),
+            }
+        },
+    )
     return response_payload.get("messageId", "")
 
 
@@ -298,6 +329,18 @@ def send_siteguard_email(
 ):
     recipient_list = [recipient.strip() for recipient in (recipients or []) if recipient and recipient.strip()]
     email_diagnostics = get_email_diagnostics()
+    logger.info(
+        "send_siteguard_email called.",
+        extra={
+            "email_context": {
+                "subject": prefix_email_subject(subject),
+                "recipients": recipient_list,
+                **(log_context or {}),
+                "stage": "send_siteguard_email_entry",
+                "diagnostics": email_diagnostics,
+            }
+        },
+    )
     if not recipient_list:
         logger.warning(
             "Email send skipped because no recipients were provided.",
@@ -366,8 +409,12 @@ def send_siteguard_email(
             warning_message = "Brevo API request failed. Verify Render egress access, HTTPS connectivity, and provider availability."
         elif isinstance(exc, TimeoutError):
             warning_message = "Email request timed out before the provider completed the send."
+        failed_stage = "brevo_api_request"
+        if not _using_brevo_api():
+            failed_stage = "django_email_backend"
         email_diagnostics["exception_type"] = exc.__class__.__name__
         email_diagnostics["exception_message"] = str(exc)
+        email_diagnostics["failed_stage"] = failed_stage
 
         logger.exception(
             "Email send failed.",

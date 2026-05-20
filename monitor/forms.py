@@ -1,11 +1,20 @@
+import logging
+
 from django import forms
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import PasswordChangeForm, PasswordResetForm, SetPasswordForm, UserCreationForm
 from django.contrib.auth.models import User
+from django.contrib.auth.tokens import default_token_generator
+from django.contrib.sites.shortcuts import get_current_site
 from django.core.files.images import get_image_dimensions
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 
 from .emailing import build_password_reset_email_options, render_email_template, send_siteguard_email
 from .models import UploadedLog, UserProfile
+
+password_reset_logger = logging.getLogger("siteguard.email")
 
 
 class LoginForm(forms.Form):
@@ -81,6 +90,55 @@ class SiteGuardPasswordResetForm(PasswordResetForm):
             }
         )
 
+    def clean_email(self):
+        email = self.cleaned_data.get("email", "")
+        password_reset_logger.info(
+            "Password reset form email validated.",
+            extra={
+                "email_context": {
+                    "flow": "password_reset",
+                    "stage": "form_validation",
+                    "form_class": self.__class__.__name__,
+                    "submitted_email": email,
+                }
+            },
+        )
+        return email
+
+    def get_users(self, email):
+        user_model = get_user_model()
+        email_field_name = user_model.get_email_field_name()
+        exact_matches = list(
+            user_model._default_manager.filter(**{f"{email_field_name}__iexact": email}).order_by("id")
+        )
+        eligible_users = list(super().get_users(email))
+
+        password_reset_logger.info(
+            "Password reset user lookup completed.",
+            extra={
+                "email_context": {
+                    "flow": "password_reset",
+                    "stage": "user_lookup",
+                    "form_class": self.__class__.__name__,
+                    "submitted_email": email,
+                    "email_field": email_field_name,
+                    "matched_users_count": len(exact_matches),
+                    "eligible_users_count": len(eligible_users),
+                    "matched_users": [
+                        {
+                            "id": user.id,
+                            "username": user.get_username(),
+                            "email": getattr(user, email_field_name, ""),
+                            "is_active": user.is_active,
+                            "has_usable_password": user.has_usable_password(),
+                        }
+                        for user in exact_matches
+                    ],
+                }
+            },
+        )
+        return iter(eligible_users)
+
     def save(self, *args, **kwargs):
         email_options = build_password_reset_email_options(request=kwargs.get("request"))
         if not kwargs.get("from_email"):
@@ -93,7 +151,85 @@ class SiteGuardPasswordResetForm(PasswordResetForm):
             kwargs["domain_override"] = email_options["domain_override"]
         if "use_https" in email_options:
             kwargs["use_https"] = email_options["use_https"]
-        return super().save(*args, **kwargs)
+        domain_override = kwargs.get("domain_override")
+        request = kwargs.get("request")
+        use_https = kwargs.get("use_https", False)
+        token_generator = kwargs.get("token_generator", default_token_generator)
+        extra_email_context = kwargs.get("extra_email_context")
+        subject_template_name = kwargs.get(
+            "subject_template_name",
+            "registration/password_reset_subject.txt",
+        )
+        email_template_name = kwargs.get(
+            "email_template_name",
+            "registration/password_reset_email.html",
+        )
+        html_email_template_name = kwargs.get("html_email_template_name")
+        from_email = kwargs.get("from_email")
+        email = self.cleaned_data["email"]
+
+        if not domain_override:
+            current_site = get_current_site(request)
+            site_name = current_site.name
+            domain = current_site.domain
+        else:
+            site_name = domain = domain_override
+
+        email_field_name = get_user_model().get_email_field_name()
+        sent_count = 0
+        for user in self.get_users(email):
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            token = token_generator.make_token(user)
+            user_email = getattr(user, email_field_name)
+            password_reset_logger.info(
+                "Password reset token generated.",
+                extra={
+                    "email_context": {
+                        "flow": "password_reset",
+                        "stage": "token_generation",
+                        "user_id": user.pk,
+                        "username": user.get_username(),
+                        "email": user_email,
+                        "is_active": user.is_active,
+                        "uid": uid,
+                        "token_preview": token[:12],
+                        "token_length": len(token),
+                    }
+                },
+            )
+            context = {
+                "email": user_email,
+                "domain": domain,
+                "site_name": site_name,
+                "uid": uid,
+                "user": user,
+                "token": token,
+                "protocol": "https" if use_https else "http",
+                **(extra_email_context or {}),
+            }
+            self.send_mail(
+                subject_template_name,
+                email_template_name,
+                context,
+                from_email,
+                user_email,
+                html_email_template_name=html_email_template_name,
+            )
+            sent_count += 1
+
+        if sent_count == 0:
+            password_reset_logger.warning(
+                "Password reset stopped before email send because no eligible users were found.",
+                extra={
+                    "email_context": {
+                        "flow": "password_reset",
+                        "stage": "pre_send_stop",
+                        "submitted_email": email,
+                        "form_class": self.__class__.__name__,
+                    }
+                },
+            )
+        return None
 
     def send_mail(
         self,
@@ -116,6 +252,23 @@ class SiteGuardPasswordResetForm(PasswordResetForm):
             render_email_template(html_email_template_name, merged_context)
             if html_email_template_name
             else None
+        )
+        password_reset_logger.info(
+            "Password reset email generation completed; entering send_siteguard_email.",
+            extra={
+                "email_context": {
+                    "flow": "password_reset",
+                    "stage": "send_mail_entry",
+                    "form_class": self.__class__.__name__,
+                    "recipient": to_email,
+                    "user_id": getattr(context.get("user"), "pk", None),
+                    "uid": context.get("uid", ""),
+                    "token_preview": str(context.get("token", ""))[:12],
+                    "token_length": len(str(context.get("token", ""))),
+                    "subject": subject,
+                    "html_template": html_email_template_name or "",
+                }
+            },
         )
         self._last_send_succeeded = send_siteguard_email(
             subject=subject,
