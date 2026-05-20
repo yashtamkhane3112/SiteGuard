@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from urllib.parse import urlparse
 from email.utils import formataddr
@@ -52,6 +51,8 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "monitor",
+    "cloudinary",
+    "cloudinary_storage",
 ]
 
 MIDDLEWARE = [
@@ -123,9 +124,16 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+CLOUDINARY_STORAGE = {
+    "CLOUD_NAME": config("CLOUDINARY_CLOUD_NAME", default="").strip(),
+    "API_KEY": config("CLOUDINARY_API_KEY", default="").strip(),
+    "API_SECRET": config("CLOUDINARY_API_SECRET", default="").strip(),
+}
+
 STORAGES = {
     "default": {
-        "BACKEND": "django.core.files.storage.FileSystemStorage",
+        "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
     },
     "staticfiles": {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
@@ -135,8 +143,6 @@ WHITENOISE_MAX_AGE = config("WHITENOISE_MAX_AGE", default=31536000, cast=int)
 WHITENOISE_USE_FINDERS = DEBUG
 
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
-MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 FILE_UPLOAD_PERMISSIONS = 0o644
 FILE_UPLOAD_DIRECTORY_PERMISSIONS = 0o755
 

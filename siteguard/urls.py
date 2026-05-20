@@ -16,6 +16,7 @@ Including another URLconf
 """
 from django.conf import settings
 from django.contrib import admin
+from django.http import Http404
 from django.urls import include, path, re_path
 from django.views.static import serve
 
@@ -24,14 +25,17 @@ handler500 = 'monitor.views.custom_500'
 
 
 def serve_media(request, path):
-    return serve(request, path, document_root=settings.MEDIA_ROOT)
+    media_root = getattr(settings, "MEDIA_ROOT", None)
+    if not media_root:
+        raise Http404("Media storage is not served from the local filesystem.")
+    return serve(request, path, document_root=media_root)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('monitor.urls')),
 ]
 
-if settings.MEDIA_URL and settings.MEDIA_ROOT:
+if settings.MEDIA_URL and getattr(settings, "MEDIA_ROOT", None):
     media_prefix = settings.MEDIA_URL.lstrip("/")
     urlpatterns += [
         re_path(

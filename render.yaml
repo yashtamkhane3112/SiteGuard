@@ -50,6 +50,12 @@ services:
         value: "[SiteGuard] "
       - key: SITE_NAME
         value: SiteGuard
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
 
   - type: cron
     name: siteguard-monitor
@@ -103,3 +109,9 @@ services:
         value: "[SiteGuard] "
       - key: SITE_NAME
         value: SiteGuard
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
