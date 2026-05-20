@@ -147,14 +147,15 @@ LOGIN_REDIRECT_URL = "/dashboard/"
 LOGOUT_REDIRECT_URL = "/login/"
 
 SITE_NAME = config("SITE_NAME", default="SiteGuard").strip() or "SiteGuard"
-EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-EMAIL_HOST = config("EMAIL_HOST", default="smtp.gmail.com")
+EMAIL_HOST = config("EMAIL_HOST", default="smtp-relay.brevo.com").strip()
 EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
 EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
 EMAIL_USE_SSL = config("EMAIL_USE_SSL", default=False, cast=bool)
 EMAIL_TIMEOUT = config("EMAIL_TIMEOUT", default=15, cast=int)
-EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="").strip()
-EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="").strip()
+BREVO_SMTP_LOGIN = config("BREVO_SMTP_LOGIN", default="").strip()
+BREVO_SMTP_PASSWORD = config("BREVO_SMTP_PASSWORD", default="").strip()
+EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="").strip() or BREVO_SMTP_LOGIN
+EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="").strip() or BREVO_SMTP_PASSWORD
 EMAIL_SENDER_NAME = config("EMAIL_SENDER_NAME", default=f"{SITE_NAME} Alerts").strip() or f"{SITE_NAME} Alerts"
 EMAIL_SUBJECT_PREFIX = config("EMAIL_SUBJECT_PREFIX", default="[SiteGuard] ").strip()
 if EMAIL_SUBJECT_PREFIX and not EMAIL_SUBJECT_PREFIX.endswith(" "):
@@ -164,6 +165,13 @@ _default_from_email = formataddr((EMAIL_SENDER_NAME, _default_sender_address))
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default=_default_from_email).strip()
 SERVER_EMAIL = config("SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
 SUPPORT_EMAIL = config("SUPPORT_EMAIL", default=EMAIL_HOST_USER or _default_sender_address).strip()
+configured_email_backend = config("EMAIL_BACKEND", default="").strip()
+if configured_email_backend:
+    EMAIL_BACKEND = configured_email_backend
+elif DEBUG and not (EMAIL_HOST and EMAIL_HOST_USER and EMAIL_HOST_PASSWORD):
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 PASSWORD_RESET_TIMEOUT = config("PASSWORD_RESET_TIMEOUT", default=86400, cast=int)
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

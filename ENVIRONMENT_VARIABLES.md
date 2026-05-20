@@ -12,6 +12,8 @@
 - `EMAIL_PORT`
 - `EMAIL_HOST_USER`
 - `EMAIL_HOST_PASSWORD`
+- `BREVO_SMTP_LOGIN`
+- `BREVO_SMTP_PASSWORD`
 - `DEFAULT_FROM_EMAIL`
 
 ## Optional
@@ -36,27 +38,26 @@ Default production SQLite path is `data/siteguard.sqlite3` unless `SQLITE_PATH` 
 Notes:
 
 - `APP_BASE_URL` must be a valid HTTPS URL in production because password reset emails and operational links are generated from it.
-- Local development auto-selects `django.core.mail.backends.smtp.EmailBackend` when `EMAIL_HOST_USER` and `EMAIL_HOST_PASSWORD` are present. If either credential is missing, it falls back to `django.core.mail.backends.console.EmailBackend`.
+- Local development auto-selects `django.core.mail.backends.smtp.EmailBackend` when SMTP credentials are present. It accepts either `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` or `BREVO_SMTP_LOGIN` / `BREVO_SMTP_PASSWORD`. If credentials are missing, it falls back to `django.core.mail.backends.console.EmailBackend`.
 - You can still force a specific backend by setting `EMAIL_BACKEND` explicitly.
 - Password reset emails use the active local request host during `DEBUG=True` development flows, so local forgot-password links stay on `127.0.0.1`, `localhost`, or the host you are actively using.
 - Production password reset and operational email links use `APP_BASE_URL` / `CANONICAL_BASE_URL`, which must stay HTTPS on Render.
 
-## Local Gmail SMTP Setup
+## Local Brevo SMTP Setup
 
-For real local mail delivery with Gmail:
+For real local mail delivery with Brevo:
 
-1. Enable 2-Step Verification on the Gmail account you want to send from.
-2. Create a Google App Password for `Mail`.
+1. Create a Brevo SMTP key for the sender identity you want to use.
 3. Copy `.env.example` to `.env`.
 4. Set:
-   - `EMAIL_HOST=smtp.gmail.com`
+   - `EMAIL_HOST=smtp-relay.brevo.com`
    - `EMAIL_PORT=587`
    - `EMAIL_USE_TLS=True`
-   - `EMAIL_HOST_USER=<your gmail address>`
-   - `EMAIL_HOST_PASSWORD=<your 16-character app password>`
-   - `DEFAULT_FROM_EMAIL=SiteGuard Alerts <your gmail address>`
-   - `SERVER_EMAIL=SiteGuard Alerts <your gmail address>`
-   - `SUPPORT_EMAIL=<your gmail address>`
+   - `BREVO_SMTP_LOGIN=<your brevo smtp login>` or `EMAIL_HOST_USER=<your brevo smtp login>`
+   - `BREVO_SMTP_PASSWORD=<your brevo smtp password>` or `EMAIL_HOST_PASSWORD=<your brevo smtp password>`
+   - `DEFAULT_FROM_EMAIL=SiteGuard Alerts <your verified sender>`
+   - `SERVER_EMAIL=SiteGuard Alerts <your verified sender>`
+   - `SUPPORT_EMAIL=<your support email>`
 5. Leave `EMAIL_BACKEND` blank unless you need to force a backend manually.
 6. For local forgot-password testing, open the site on the exact host you want reflected in the email link, such as `http://127.0.0.1:8000` or `http://localhost:8000`.
 

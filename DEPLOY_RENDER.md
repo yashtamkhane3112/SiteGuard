@@ -21,10 +21,10 @@ Set these on the Render web service and cron job:
 - `CSRF_TRUSTED_ORIGINS=https://<render-hostname>`
 - `APP_BASE_URL=https://<render-hostname>`
 - `CRON_SECRET=<long random secret>`
-- `EMAIL_HOST=<smtp host>`
+- `EMAIL_HOST=smtp-relay.brevo.com`
 - `EMAIL_PORT=<smtp port>`
-- `EMAIL_HOST_USER=<smtp username>`
-- `EMAIL_HOST_PASSWORD=<smtp password>`
+- `EMAIL_HOST_USER=<smtp username>` or `BREVO_SMTP_LOGIN=<smtp username>`
+- `EMAIL_HOST_PASSWORD=<smtp password>` or `BREVO_SMTP_PASSWORD=<smtp password>`
 - `DEFAULT_FROM_EMAIL=SiteGuard Alerts <noreply@your-domain>`
 
 Recommended:

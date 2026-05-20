@@ -15,6 +15,29 @@ from django.utils.encoding import force_bytes
 logger = logging.getLogger("siteguard.email")
 
 
+def _get_smtp_login():
+    return (
+        getattr(settings, "EMAIL_HOST_USER", "") or getattr(settings, "BREVO_SMTP_LOGIN", "") or ""
+    ).strip()
+
+
+def _get_smtp_password():
+    return (
+        getattr(settings, "EMAIL_HOST_PASSWORD", "") or getattr(settings, "BREVO_SMTP_PASSWORD", "") or ""
+    ).strip()
+
+
+def _get_smtp_provider(host):
+    normalized_host = (host or "").strip().lower()
+    if "brevo" in normalized_host:
+        return "brevo"
+    if "gmail" in normalized_host or "googlemail" in normalized_host:
+        return "gmail"
+    if not normalized_host:
+        return "unknown"
+    return "custom"
+
+
 def _smtp_is_configured():
     backend = getattr(settings, "EMAIL_BACKEND", "") or ""
     if backend != "django.core.mail.backends.smtp.EmailBackend":
@@ -22,8 +45,8 @@ def _smtp_is_configured():
     return all(
         (
             getattr(settings, "EMAIL_HOST", "") or "",
-            getattr(settings, "EMAIL_HOST_USER", "") or "",
-            getattr(settings, "EMAIL_HOST_PASSWORD", "") or "",
+            _get_smtp_login(),
+            _get_smtp_password(),
             getattr(settings, "DEFAULT_FROM_EMAIL", "") or "",
         )
     )
@@ -141,16 +164,27 @@ def get_email_diagnostics():
     backend = getattr(settings, "EMAIL_BACKEND", "") or ""
     host = getattr(settings, "EMAIL_HOST", "") or ""
     using_smtp = backend == "django.core.mail.backends.smtp.EmailBackend"
+    raw_email_host_user = (getattr(settings, "EMAIL_HOST_USER", "") or "").strip()
+    raw_email_host_password = (getattr(settings, "EMAIL_HOST_PASSWORD", "") or "").strip()
+    raw_brevo_login = (getattr(settings, "BREVO_SMTP_LOGIN", "") or "").strip()
+    raw_brevo_password = (getattr(settings, "BREVO_SMTP_PASSWORD", "") or "").strip()
+    login_source = "brevo_alias" if raw_brevo_login and not raw_email_host_user else "email_host_user"
+    password_source = "brevo_alias" if raw_brevo_password and not raw_email_host_password else "email_host_password"
     return {
         "backend": backend,
+        "smtp_provider": _get_smtp_provider(host),
         "smtp_host": host,
         "port": getattr(settings, "EMAIL_PORT", None),
         "use_tls": getattr(settings, "EMAIL_USE_TLS", False),
         "use_ssl": getattr(settings, "EMAIL_USE_SSL", False),
         "timeout": getattr(settings, "EMAIL_TIMEOUT", None),
         "configured": _smtp_is_configured(),
-        "host_user_present": bool(getattr(settings, "EMAIL_HOST_USER", "")),
-        "host_password_present": bool(getattr(settings, "EMAIL_HOST_PASSWORD", "")),
+        "host_user_present": bool(_get_smtp_login()),
+        "host_password_present": bool(_get_smtp_password()),
+        "brevo_login_present": bool(raw_brevo_login),
+        "brevo_password_present": bool(raw_brevo_password),
+        "smtp_login_source": login_source,
+        "smtp_password_source": password_source,
         "sender_email": get_sender_email_address(),
         "from_email": getattr(settings, "DEFAULT_FROM_EMAIL", ""),
         "base_url": get_canonical_base_url(),
@@ -192,7 +226,15 @@ def send_siteguard_email(
 
     final_subject = prefix_email_subject(subject)
     final_from_email = from_email or getattr(settings, "DEFAULT_FROM_EMAIL", "")
-    connection = get_connection(timeout=getattr(settings, "EMAIL_TIMEOUT", None))
+    connection = get_connection(
+        host=getattr(settings, "EMAIL_HOST", "") or None,
+        port=getattr(settings, "EMAIL_PORT", None),
+        username=_get_smtp_login() or None,
+        password=_get_smtp_password() or None,
+        use_tls=getattr(settings, "EMAIL_USE_TLS", False),
+        use_ssl=getattr(settings, "EMAIL_USE_SSL", False),
+        timeout=getattr(settings, "EMAIL_TIMEOUT", None),
+    )
     message = EmailMultiAlternatives(
         subject=final_subject,
         body=text_body,
@@ -220,7 +262,7 @@ def send_siteguard_email(
     except Exception as exc:
         warning_message = None
         if isinstance(exc, smtplib.SMTPAuthenticationError):
-            warning_message = "SMTP authentication failed. Gmail SMTP usually requires an app password and a verified sender."
+            warning_message = "SMTP authentication failed. Verify the configured SMTP login, password, and approved sender identity for the active provider."
         elif isinstance(exc, smtplib.SMTPConnectError):
             warning_message = "SMTP connection failed. Verify Render egress access, SMTP host, port, and TLS settings."
         elif isinstance(exc, TimeoutError):

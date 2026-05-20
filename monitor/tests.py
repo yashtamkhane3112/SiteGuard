@@ -1711,7 +1711,7 @@ class AccountManagementTests(TestCase):
 class EmailDiagnosticsTests(TestCase):
     @override_settings(
         EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
-        EMAIL_HOST="smtp.gmail.com",
+        EMAIL_HOST="smtp-relay.brevo.com",
         EMAIL_HOST_USER="",
         EMAIL_HOST_PASSWORD="",
         EMAIL_CONFIGURED=False,
@@ -1728,7 +1728,7 @@ class EmailDiagnosticsTests(TestCase):
 
     @override_settings(
         EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
-        EMAIL_HOST="smtp.gmail.com",
+        EMAIL_HOST="smtp-relay.brevo.com",
         EMAIL_HOST_USER="user@example.com",
         EMAIL_HOST_PASSWORD="secret",
         DEFAULT_FROM_EMAIL="SiteGuard Alerts <user@example.com>",
@@ -1748,7 +1748,7 @@ class EmailDiagnosticsTests(TestCase):
 
     @override_settings(
         EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
-        EMAIL_HOST="smtp.gmail.com",
+        EMAIL_HOST="smtp-relay.brevo.com",
         EMAIL_HOST_USER="user@example.com",
         EMAIL_HOST_PASSWORD="secret",
         DEFAULT_FROM_EMAIL="SiteGuard Alerts <user@example.com>",
@@ -1767,7 +1767,7 @@ class EmailDiagnosticsTests(TestCase):
 
     @override_settings(
         EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
-        EMAIL_HOST="smtp.gmail.com",
+        EMAIL_HOST="smtp-relay.brevo.com",
         EMAIL_HOST_USER="user@example.com",
         EMAIL_HOST_PASSWORD="secret",
         DEFAULT_FROM_EMAIL="SiteGuard Alerts <user@example.com>",
@@ -1780,7 +1780,29 @@ class EmailDiagnosticsTests(TestCase):
         output = stdout.getvalue()
         self.assertIn("Email diagnostics:", output)
         self.assertIn("'configured': True", output)
+        self.assertIn("'smtp_provider': 'brevo'", output)
         self.assertIn("SMTPConnectError", output)
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
+        EMAIL_HOST="smtp-relay.brevo.com",
+        EMAIL_HOST_USER="",
+        EMAIL_HOST_PASSWORD="",
+        BREVO_SMTP_LOGIN="brevo-login",
+        BREVO_SMTP_PASSWORD="brevo-password",
+        DEFAULT_FROM_EMAIL="SiteGuard Alerts <sender@example.com>",
+    )
+    @patch("monitor.emailing.EmailMultiAlternatives.send", return_value=1)
+    def test_send_siteguard_email_accepts_brevo_alias_credentials(self, mock_send):
+        sent = send_siteguard_email(
+            subject="Diagnostic test",
+            text_body="Hello",
+            recipients=["user@example.com"],
+            log_context={"flow": "unit_test"},
+        )
+
+        self.assertTrue(sent)
+        mock_send.assert_called_once_with(fail_silently=False)
 
 
 class ImmediateMonitoringTests(TestCase):
