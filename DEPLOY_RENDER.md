@@ -24,6 +24,9 @@ Set these on the Render web service and cron job:
 - `BREVO_API_KEY=<brevo api key>`
 - `BREVO_API_URL=https://api.brevo.com/v3/smtp/email`
 - `DEFAULT_FROM_EMAIL=SiteGuard Alerts <noreply@your-domain>`
+- `CLOUDINARY_CLOUD_NAME=<cloud name>`
+- `CLOUDINARY_API_KEY=<api key>`
+- `CLOUDINARY_API_SECRET=<api secret>`
 
 Recommended:
 
