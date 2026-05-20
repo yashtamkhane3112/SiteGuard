@@ -49,13 +49,13 @@ python manage.py migrate
 python manage.py runserver
 ```
 
-For real local email delivery instead of console output, keep `EMAIL_BACKEND` blank in `.env` and set SMTP values for `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`, `DEFAULT_FROM_EMAIL`, and `SERVER_EMAIL`. The project now defaults to Brevo SMTP (`smtp-relay.brevo.com:587` with TLS) and accepts either `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` or `BREVO_SMTP_LOGIN` / `BREVO_SMTP_PASSWORD`. Local development auto-switches to SMTP only when credentials exist; otherwise it safely falls back to the console backend.
+For real local email delivery instead of console output, keep `EMAIL_BACKEND` blank in `.env` and set Brevo API values for `BREVO_API_KEY`, `DEFAULT_FROM_EMAIL`, and `SERVER_EMAIL`. The project now defaults to the Brevo Transactional Email HTTPS API (`https://api.brevo.com/v3/smtp/email`). Local development auto-switches to the API only when the key exists; otherwise it safely falls back to the console backend.
 
-Brevo local setup:
+Brevo API local setup:
 
-1. Create a Brevo SMTP key and note the SMTP login and password.
-2. Put the Brevo SMTP login in `BREVO_SMTP_LOGIN` or `EMAIL_HOST_USER`.
-3. Put the Brevo SMTP password in `BREVO_SMTP_PASSWORD` or `EMAIL_HOST_PASSWORD`.
+1. Create a Brevo API key.
+2. Put the key in `BREVO_API_KEY`.
+3. Optionally keep `BREVO_API_URL=https://api.brevo.com/v3/smtp/email`.
 4. Set `DEFAULT_FROM_EMAIL` and `SERVER_EMAIL` to the same verified sender identity.
 6. Local password reset emails use the active request host while `DEBUG=True`, so start the app on the exact host you want in the email, such as `http://127.0.0.1:8000` or `http://localhost:8000`.
 7. Keep `APP_BASE_URL` pointed at your production HTTPS origin for Render production mail.
@@ -114,7 +114,7 @@ Required production variables:
 - `ALLOWED_HOSTS`
 - `CSRF_TRUSTED_ORIGINS`
 - `APP_BASE_URL`
-- SMTP variables for production mail delivery: `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `BREVO_SMTP_LOGIN`, `BREVO_SMTP_PASSWORD`, `DEFAULT_FROM_EMAIL`
+- Brevo API variables for production mail delivery: `BREVO_API_KEY`, `BREVO_API_URL`, `DEFAULT_FROM_EMAIL`
 - `CRON_SECRET`
 - `DJANGO_SETTINGS_MODULE=siteguard.settings.prod`
 

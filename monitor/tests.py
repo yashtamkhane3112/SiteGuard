@@ -1710,13 +1710,11 @@ class AccountManagementTests(TestCase):
 
 class EmailDiagnosticsTests(TestCase):
     @override_settings(
-        EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
-        EMAIL_HOST="smtp-relay.brevo.com",
-        EMAIL_HOST_USER="",
-        EMAIL_HOST_PASSWORD="",
-        EMAIL_CONFIGURED=False,
+        EMAIL_BACKEND="brevo_api",
+        BREVO_API_KEY="",
+        DEFAULT_FROM_EMAIL="SiteGuard Alerts <sender@example.com>",
     )
-    def test_send_siteguard_email_returns_false_when_smtp_is_incomplete(self):
+    def test_send_siteguard_email_returns_false_when_brevo_api_is_incomplete(self):
         sent = send_siteguard_email(
             subject="Diagnostic test",
             text_body="Hello",
@@ -1727,15 +1725,18 @@ class EmailDiagnosticsTests(TestCase):
         self.assertFalse(sent)
 
     @override_settings(
-        EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
-        EMAIL_HOST="smtp-relay.brevo.com",
-        EMAIL_HOST_USER="user@example.com",
-        EMAIL_HOST_PASSWORD="secret",
+        EMAIL_BACKEND="brevo_api",
+        BREVO_API_KEY="brevo-api-key",
         DEFAULT_FROM_EMAIL="SiteGuard Alerts <user@example.com>",
-        EMAIL_CONFIGURED=False,
     )
-    @patch("monitor.emailing.EmailMultiAlternatives.send", return_value=1)
-    def test_send_siteguard_email_uses_live_smtp_settings_when_cached_flag_is_false(self, mock_send):
+    @patch("monitor.emailing.requests.post")
+    def test_send_siteguard_email_uses_brevo_api_transport(self, mock_post):
+        mock_post.return_value = Mock(
+            status_code=201,
+            content=b'{"messageId":"<brevo-message-id>"}',
+            json=Mock(return_value={"messageId": "<brevo-message-id>"}),
+            raise_for_status=Mock(),
+        )
         sent = send_siteguard_email(
             subject="Diagnostic test",
             text_body="Hello",
@@ -1744,19 +1745,18 @@ class EmailDiagnosticsTests(TestCase):
         )
 
         self.assertTrue(sent)
-        mock_send.assert_called_once_with(fail_silently=False)
+        mock_post.assert_called_once()
+        self.assertEqual(mock_post.call_args.kwargs["headers"]["api-key"], "brevo-api-key")
+        self.assertEqual(mock_post.call_args.kwargs["json"]["textContent"], "Hello")
 
     @override_settings(
-        EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
-        EMAIL_HOST="smtp-relay.brevo.com",
-        EMAIL_HOST_USER="user@example.com",
-        EMAIL_HOST_PASSWORD="secret",
+        EMAIL_BACKEND="brevo_api",
+        BREVO_API_KEY="brevo-api-key",
         DEFAULT_FROM_EMAIL="SiteGuard Alerts <user@example.com>",
-        EMAIL_CONFIGURED=False,
     )
-    @patch("monitor.emailing.EmailMultiAlternatives.send", side_effect=smtplib.SMTPAuthenticationError(535, b"bad creds"))
-    def test_send_siteguard_email_can_surface_smtp_exception_for_test_flow(self, _mock_send):
-        with self.assertRaises(smtplib.SMTPAuthenticationError):
+    @patch("monitor.emailing.requests.post", side_effect=requests.Timeout("timed out"))
+    def test_send_siteguard_email_can_surface_brevo_timeout_for_test_flow(self, _mock_post):
+        with self.assertRaises(requests.Timeout):
             send_siteguard_email(
                 subject="Diagnostic test",
                 text_body="Hello",
@@ -1766,43 +1766,43 @@ class EmailDiagnosticsTests(TestCase):
             )
 
     @override_settings(
-        EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
-        EMAIL_HOST="smtp-relay.brevo.com",
-        EMAIL_HOST_USER="user@example.com",
-        EMAIL_HOST_PASSWORD="secret",
+        EMAIL_BACKEND="brevo_api",
+        BREVO_API_KEY="brevo-api-key",
         DEFAULT_FROM_EMAIL="SiteGuard Alerts <user@example.com>",
-        EMAIL_CONFIGURED=False,
     )
-    @patch("monitor.emailing.EmailMultiAlternatives.send", side_effect=smtplib.SMTPConnectError(421, "unavailable"))
-    def test_test_email_command_surfaces_real_smtp_error(self, _mock_send):
+    @patch("monitor.emailing.requests.post", side_effect=requests.Timeout("timed out"))
+    def test_test_email_command_surfaces_real_brevo_error(self, _mock_post):
         stdout = io.StringIO()
         call_command("test_email", "user@example.com", stdout=stdout)
         output = stdout.getvalue()
         self.assertIn("Email diagnostics:", output)
         self.assertIn("'configured': True", output)
-        self.assertIn("'smtp_provider': 'brevo'", output)
-        self.assertIn("SMTPConnectError", output)
+        self.assertIn("'provider': 'brevo_api'", output)
+        self.assertIn("Timeout", output)
 
     @override_settings(
-        EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend",
-        EMAIL_HOST="smtp-relay.brevo.com",
-        EMAIL_HOST_USER="",
-        EMAIL_HOST_PASSWORD="",
-        BREVO_SMTP_LOGIN="brevo-login",
-        BREVO_SMTP_PASSWORD="brevo-password",
+        EMAIL_BACKEND="brevo_api",
+        BREVO_API_KEY="brevo-api-key",
         DEFAULT_FROM_EMAIL="SiteGuard Alerts <sender@example.com>",
     )
-    @patch("monitor.emailing.EmailMultiAlternatives.send", return_value=1)
-    def test_send_siteguard_email_accepts_brevo_alias_credentials(self, mock_send):
+    @patch("monitor.emailing.requests.post")
+    def test_send_siteguard_email_uses_html_content_for_brevo_api_requests(self, mock_post):
+        mock_post.return_value = Mock(
+            status_code=201,
+            content=b'{"messageId":"<brevo-message-id>"}',
+            json=Mock(return_value={"messageId": "<brevo-message-id>"}),
+            raise_for_status=Mock(),
+        )
         sent = send_siteguard_email(
             subject="Diagnostic test",
             text_body="Hello",
+            html_body="<p>Hello</p>",
             recipients=["user@example.com"],
             log_context={"flow": "unit_test"},
         )
 
         self.assertTrue(sent)
-        mock_send.assert_called_once_with(fail_silently=False)
+        self.assertEqual(mock_post.call_args.kwargs["json"]["htmlContent"], "<p>Hello</p>")
 
 
 class ImmediateMonitoringTests(TestCase):

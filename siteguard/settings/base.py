@@ -147,6 +147,8 @@ LOGIN_REDIRECT_URL = "/dashboard/"
 LOGOUT_REDIRECT_URL = "/login/"
 
 SITE_NAME = config("SITE_NAME", default="SiteGuard").strip() or "SiteGuard"
+BREVO_API_KEY = config("BREVO_API_KEY", default="").strip()
+BREVO_API_URL = config("BREVO_API_URL", default="https://api.brevo.com/v3/smtp/email").strip()
 EMAIL_HOST = config("EMAIL_HOST", default="smtp-relay.brevo.com").strip()
 EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
 EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
@@ -168,10 +170,10 @@ SUPPORT_EMAIL = config("SUPPORT_EMAIL", default=EMAIL_HOST_USER or _default_send
 configured_email_backend = config("EMAIL_BACKEND", default="").strip()
 if configured_email_backend:
     EMAIL_BACKEND = configured_email_backend
-elif DEBUG and not (EMAIL_HOST and EMAIL_HOST_USER and EMAIL_HOST_PASSWORD):
+elif DEBUG and not BREVO_API_KEY:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 else:
-    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_BACKEND = "brevo_api"
 PASSWORD_RESET_TIMEOUT = config("PASSWORD_RESET_TIMEOUT", default=86400, cast=int)
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
@@ -189,7 +191,21 @@ CRON_SECRET = config("CRON_SECRET", default="")
 APP_BASE_URL = app_base_url
 CANONICAL_BASE_URL = app_base_url
 EMAIL_CONFIGURED = bool(
-    EMAIL_HOST and EMAIL_HOST_USER and EMAIL_HOST_PASSWORD and DEFAULT_FROM_EMAIL
+    DEFAULT_FROM_EMAIL and (
+        BREVO_API_KEY
+        or (
+            EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend"
+            and EMAIL_HOST
+            and EMAIL_HOST_USER
+            and EMAIL_HOST_PASSWORD
+        )
+        or EMAIL_BACKEND in {
+            "django.core.mail.backends.console.EmailBackend",
+            "django.core.mail.backends.locmem.EmailBackend",
+            "django.core.mail.backends.filebased.EmailBackend",
+            "django.core.mail.backends.dummy.EmailBackend",
+        }
+    )
 )
 
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")

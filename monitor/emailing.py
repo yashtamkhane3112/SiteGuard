@@ -1,55 +1,156 @@
-import logging
 import ipaddress
-import smtplib
+import logging
+from email.utils import parseaddr
 from urllib.parse import urlparse
 
+import requests
 from django.conf import settings
 from django.contrib.auth.tokens import default_token_generator
-from django.core.mail import EmailMultiAlternatives, get_connection
-from django.urls import reverse
+from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
-from django.utils.http import urlsafe_base64_encode
+from django.urls import reverse
 from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 
 
 logger = logging.getLogger("siteguard.email")
 
-
-def _get_smtp_login():
-    return (
-        getattr(settings, "EMAIL_HOST_USER", "") or getattr(settings, "BREVO_SMTP_LOGIN", "") or ""
-    ).strip()
-
-
-def _get_smtp_password():
-    return (
-        getattr(settings, "EMAIL_HOST_PASSWORD", "") or getattr(settings, "BREVO_SMTP_PASSWORD", "") or ""
-    ).strip()
+DJANGO_FALLBACK_BACKENDS = {
+    "django.core.mail.backends.console.EmailBackend",
+    "django.core.mail.backends.locmem.EmailBackend",
+    "django.core.mail.backends.filebased.EmailBackend",
+    "django.core.mail.backends.dummy.EmailBackend",
+    "django.core.mail.backends.smtp.EmailBackend",
+}
 
 
-def _get_smtp_provider(host):
-    normalized_host = (host or "").strip().lower()
-    if "brevo" in normalized_host:
-        return "brevo"
-    if "gmail" in normalized_host or "googlemail" in normalized_host:
-        return "gmail"
-    if not normalized_host:
-        return "unknown"
-    return "custom"
+class BrevoAPITransportError(Exception):
+    pass
+
+
+def _get_email_backend():
+    return (getattr(settings, "EMAIL_BACKEND", "") or "").strip()
+
+
+def _using_brevo_api():
+    return _get_email_backend() == "brevo_api"
+
+
+def _using_smtp_fallback():
+    return _get_email_backend() == "django.core.mail.backends.smtp.EmailBackend"
+
+
+def _get_brevo_api_key():
+    return (getattr(settings, "BREVO_API_KEY", "") or "").strip()
+
+
+def _get_brevo_api_url():
+    return (getattr(settings, "BREVO_API_URL", "") or "https://api.brevo.com/v3/smtp/email").strip()
+
+
+def _parse_sender(from_email):
+    name, email = parseaddr((from_email or "").strip())
+    return {
+        "name": (name or getattr(settings, "EMAIL_SENDER_NAME", "") or getattr(settings, "SITE_NAME", "SiteGuard")).strip(),
+        "email": email.strip(),
+    }
+
+
+def _build_brevo_recipients(recipients):
+    payload = []
+    for recipient in recipients:
+        name, email = parseaddr((recipient or "").strip())
+        if not email:
+            continue
+        recipient_payload = {"email": email.strip()}
+        if name.strip():
+            recipient_payload["name"] = name.strip()
+        payload.append(recipient_payload)
+    return payload
+
+
+def _brevo_api_is_configured():
+    sender = _parse_sender(getattr(settings, "DEFAULT_FROM_EMAIL", "") or "")
+    return bool(_get_brevo_api_key() and sender["email"])
 
 
 def _smtp_is_configured():
-    backend = getattr(settings, "EMAIL_BACKEND", "") or ""
-    if backend != "django.core.mail.backends.smtp.EmailBackend":
-        return bool(backend and getattr(settings, "DEFAULT_FROM_EMAIL", ""))
     return all(
         (
             getattr(settings, "EMAIL_HOST", "") or "",
-            _get_smtp_login(),
-            _get_smtp_password(),
+            getattr(settings, "EMAIL_HOST_USER", "") or "",
+            getattr(settings, "EMAIL_HOST_PASSWORD", "") or "",
             getattr(settings, "DEFAULT_FROM_EMAIL", "") or "",
         )
     )
+
+
+def _email_transport_is_configured():
+    if _using_brevo_api():
+        return _brevo_api_is_configured()
+    if _using_smtp_fallback():
+        return _smtp_is_configured()
+    return bool(_get_email_backend() and getattr(settings, "DEFAULT_FROM_EMAIL", ""))
+
+
+def _get_email_provider():
+    if _using_brevo_api():
+        return "brevo_api"
+    if _using_smtp_fallback():
+        host = (getattr(settings, "EMAIL_HOST", "") or "").strip().lower()
+        if "brevo" in host:
+            return "brevo_smtp"
+        if "gmail" in host or "googlemail" in host:
+            return "gmail_smtp"
+        if not host:
+            return "smtp"
+        return "custom_smtp"
+    if _get_email_backend():
+        return "django_backend"
+    return "unknown"
+
+
+def _build_brevo_payload(*, subject, text_body, html_body, recipients, from_email):
+    payload = {
+        "sender": _parse_sender(from_email),
+        "to": _build_brevo_recipients(recipients),
+        "subject": subject,
+    }
+    if html_body:
+        payload["htmlContent"] = html_body
+    elif text_body:
+        payload["textContent"] = text_body
+    return payload
+
+
+def _send_via_brevo_api(*, subject, text_body, html_body, recipients, from_email, timeout):
+    payload = _build_brevo_payload(
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+        recipients=recipients,
+        from_email=from_email,
+    )
+    response = requests.post(
+        _get_brevo_api_url(),
+        headers={
+            "accept": "application/json",
+            "api-key": _get_brevo_api_key(),
+            "content-type": "application/json",
+        },
+        json=payload,
+        timeout=timeout,
+    )
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        response_text = (response.text or "").strip()
+        raise BrevoAPITransportError(
+            f"Brevo API returned HTTP {response.status_code}: {response_text[:500]}"
+        ) from exc
+
+    response_payload = response.json() if response.content else {}
+    return response_payload.get("messageId", "")
 
 
 def _clean_subject(subject):
@@ -67,10 +168,7 @@ def prefix_email_subject(subject):
 
 
 def get_sender_email_address():
-    sender = getattr(settings, "DEFAULT_FROM_EMAIL", "") or ""
-    if "<" in sender and ">" in sender:
-        return sender.rsplit("<", 1)[-1].split(">", 1)[0].strip()
-    return sender.strip()
+    return _parse_sender(getattr(settings, "DEFAULT_FROM_EMAIL", "") or "")["email"]
 
 
 def get_support_email():
@@ -161,34 +259,30 @@ def build_password_reset_email_options(request=None):
 
 
 def get_email_diagnostics():
-    backend = getattr(settings, "EMAIL_BACKEND", "") or ""
-    host = getattr(settings, "EMAIL_HOST", "") or ""
-    using_smtp = backend == "django.core.mail.backends.smtp.EmailBackend"
-    raw_email_host_user = (getattr(settings, "EMAIL_HOST_USER", "") or "").strip()
-    raw_email_host_password = (getattr(settings, "EMAIL_HOST_PASSWORD", "") or "").strip()
-    raw_brevo_login = (getattr(settings, "BREVO_SMTP_LOGIN", "") or "").strip()
-    raw_brevo_password = (getattr(settings, "BREVO_SMTP_PASSWORD", "") or "").strip()
-    login_source = "brevo_alias" if raw_brevo_login and not raw_email_host_user else "email_host_user"
-    password_source = "brevo_alias" if raw_brevo_password and not raw_email_host_password else "email_host_password"
     return {
-        "backend": backend,
-        "smtp_provider": _get_smtp_provider(host),
-        "smtp_host": host,
+        "backend": _get_email_backend(),
+        "provider": _get_email_provider(),
+        "transport": "https_api" if _using_brevo_api() else "django_backend",
+        "api_url": _get_brevo_api_url() if _using_brevo_api() else "",
+        "api_key_present": bool(_get_brevo_api_key()),
+        "smtp_provider": _get_email_provider(),
+        "smtp_host": getattr(settings, "EMAIL_HOST", "") or "",
         "port": getattr(settings, "EMAIL_PORT", None),
         "use_tls": getattr(settings, "EMAIL_USE_TLS", False),
         "use_ssl": getattr(settings, "EMAIL_USE_SSL", False),
         "timeout": getattr(settings, "EMAIL_TIMEOUT", None),
-        "configured": _smtp_is_configured(),
-        "host_user_present": bool(_get_smtp_login()),
-        "host_password_present": bool(_get_smtp_password()),
-        "brevo_login_present": bool(raw_brevo_login),
-        "brevo_password_present": bool(raw_brevo_password),
-        "smtp_login_source": login_source,
-        "smtp_password_source": password_source,
+        "configured": _email_transport_is_configured(),
+        "host_user_present": bool(getattr(settings, "EMAIL_HOST_USER", "")),
+        "host_password_present": bool(getattr(settings, "EMAIL_HOST_PASSWORD", "")),
+        "brevo_login_present": bool(getattr(settings, "BREVO_SMTP_LOGIN", "")),
+        "brevo_password_present": bool(getattr(settings, "BREVO_SMTP_PASSWORD", "")),
+        "smtp_login_source": "email_host_user",
+        "smtp_password_source": "email_host_password",
         "sender_email": get_sender_email_address(),
         "from_email": getattr(settings, "DEFAULT_FROM_EMAIL", ""),
         "base_url": get_canonical_base_url(),
-        "using_smtp": using_smtp,
+        "using_smtp": _using_smtp_fallback(),
+        "using_brevo_api": _using_brevo_api(),
     }
 
 
@@ -211,9 +305,10 @@ def send_siteguard_email(
         )
         return False
 
-    if email_diagnostics["using_smtp"] and not email_diagnostics["configured"]:
+    if not email_diagnostics["configured"]:
+        provider_label = "Brevo API" if _using_brevo_api() else "email backend"
         logger.warning(
-            "SMTP email send skipped because production email settings are incomplete.",
+            f"{provider_label} email send skipped because production email settings are incomplete.",
             extra={
                 "email_context": {
                     "recipients": recipient_list,
@@ -226,33 +321,35 @@ def send_siteguard_email(
 
     final_subject = prefix_email_subject(subject)
     final_from_email = from_email or getattr(settings, "DEFAULT_FROM_EMAIL", "")
-    connection = get_connection(
-        host=getattr(settings, "EMAIL_HOST", "") or None,
-        port=getattr(settings, "EMAIL_PORT", None),
-        username=_get_smtp_login() or None,
-        password=_get_smtp_password() or None,
-        use_tls=getattr(settings, "EMAIL_USE_TLS", False),
-        use_ssl=getattr(settings, "EMAIL_USE_SSL", False),
-        timeout=getattr(settings, "EMAIL_TIMEOUT", None),
-    )
-    message = EmailMultiAlternatives(
-        subject=final_subject,
-        body=text_body,
-        from_email=final_from_email,
-        to=recipient_list,
-        connection=connection,
-    )
-    if html_body:
-        message.attach_alternative(html_body, "text/html")
 
     try:
-        message.send(fail_silently=False)
+        if _using_brevo_api():
+            message_id = _send_via_brevo_api(
+                subject=final_subject,
+                text_body=text_body,
+                html_body=html_body,
+                recipients=recipient_list,
+                from_email=final_from_email,
+                timeout=getattr(settings, "EMAIL_TIMEOUT", None),
+            )
+        else:
+            message = EmailMultiAlternatives(
+                subject=final_subject,
+                body=text_body,
+                from_email=final_from_email,
+                to=recipient_list,
+            )
+            if html_body:
+                message.attach_alternative(html_body, "text/html")
+            message.send(fail_silently=False)
+            message_id = ""
         logger.info(
             "Email sent successfully.",
             extra={
                 "email_context": {
                     "subject": final_subject,
                     "recipients": recipient_list,
+                    "provider_message_id": message_id,
                     **(log_context or {}),
                     "diagnostics": email_diagnostics,
                 }
@@ -261,12 +358,14 @@ def send_siteguard_email(
         return True
     except Exception as exc:
         warning_message = None
-        if isinstance(exc, smtplib.SMTPAuthenticationError):
-            warning_message = "SMTP authentication failed. Verify the configured SMTP login, password, and approved sender identity for the active provider."
-        elif isinstance(exc, smtplib.SMTPConnectError):
-            warning_message = "SMTP connection failed. Verify Render egress access, SMTP host, port, and TLS settings."
+        if isinstance(exc, requests.Timeout):
+            warning_message = "Brevo API request timed out before the provider completed the send."
+        elif isinstance(exc, BrevoAPITransportError):
+            warning_message = "Brevo API rejected the email request. Verify the API key, sender identity, and request payload."
+        elif isinstance(exc, requests.RequestException):
+            warning_message = "Brevo API request failed. Verify Render egress access, HTTPS connectivity, and provider availability."
         elif isinstance(exc, TimeoutError):
-            warning_message = "SMTP request timed out before the provider completed the send."
+            warning_message = "Email request timed out before the provider completed the send."
         email_diagnostics["exception_type"] = exc.__class__.__name__
         email_diagnostics["exception_message"] = str(exc)
 

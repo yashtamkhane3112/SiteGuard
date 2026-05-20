@@ -8,20 +8,14 @@
 - `CSRF_TRUSTED_ORIGINS`
 - `APP_BASE_URL`
 - `CRON_SECRET`
-- `EMAIL_HOST`
-- `EMAIL_PORT`
-- `EMAIL_HOST_USER`
-- `EMAIL_HOST_PASSWORD`
-- `BREVO_SMTP_LOGIN`
-- `BREVO_SMTP_PASSWORD`
+- `BREVO_API_KEY`
 - `DEFAULT_FROM_EMAIL`
 
 ## Optional
 
 - `EMAIL_BACKEND`
-- `EMAIL_USE_TLS`
-- `EMAIL_USE_SSL`
 - `EMAIL_TIMEOUT`
+- `BREVO_API_URL`
 - `SERVER_EMAIL`
 - `SUPPORT_EMAIL`
 - `EMAIL_SENDER_NAME`
@@ -38,23 +32,20 @@ Default production SQLite path is `data/siteguard.sqlite3` unless `SQLITE_PATH` 
 Notes:
 
 - `APP_BASE_URL` must be a valid HTTPS URL in production because password reset emails and operational links are generated from it.
-- Local development auto-selects `django.core.mail.backends.smtp.EmailBackend` when SMTP credentials are present. It accepts either `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` or `BREVO_SMTP_LOGIN` / `BREVO_SMTP_PASSWORD`. If credentials are missing, it falls back to `django.core.mail.backends.console.EmailBackend`.
+- Local development auto-selects the Brevo Transactional Email HTTPS API when `BREVO_API_KEY` is present. If the API key is missing, it falls back to `django.core.mail.backends.console.EmailBackend`.
 - You can still force a specific backend by setting `EMAIL_BACKEND` explicitly.
 - Password reset emails use the active local request host during `DEBUG=True` development flows, so local forgot-password links stay on `127.0.0.1`, `localhost`, or the host you are actively using.
 - Production password reset and operational email links use `APP_BASE_URL` / `CANONICAL_BASE_URL`, which must stay HTTPS on Render.
 
-## Local Brevo SMTP Setup
+## Local Brevo API Setup
 
-For real local mail delivery with Brevo:
+For real local mail delivery with the Brevo Transactional Email API:
 
-1. Create a Brevo SMTP key for the sender identity you want to use.
+1. Create a Brevo API key for the sender identity you want to use.
 3. Copy `.env.example` to `.env`.
 4. Set:
-   - `EMAIL_HOST=smtp-relay.brevo.com`
-   - `EMAIL_PORT=587`
-   - `EMAIL_USE_TLS=True`
-   - `BREVO_SMTP_LOGIN=<your brevo smtp login>` or `EMAIL_HOST_USER=<your brevo smtp login>`
-   - `BREVO_SMTP_PASSWORD=<your brevo smtp password>` or `EMAIL_HOST_PASSWORD=<your brevo smtp password>`
+   - `BREVO_API_KEY=<your brevo api key>`
+   - `BREVO_API_URL=https://api.brevo.com/v3/smtp/email`
    - `DEFAULT_FROM_EMAIL=SiteGuard Alerts <your verified sender>`
    - `SERVER_EMAIL=SiteGuard Alerts <your verified sender>`
    - `SUPPORT_EMAIL=<your support email>`
