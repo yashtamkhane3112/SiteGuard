@@ -21,6 +21,7 @@ Set these on the Render web service and cron job:
 - `CSRF_TRUSTED_ORIGINS=https://<render-hostname>`
 - `APP_BASE_URL=https://<render-hostname>`
 - `CRON_SECRET=<long random secret>`
+- `EMAIL_BACKEND=brevo_api`
 - `BREVO_API_KEY=<brevo api key>`
 - `BREVO_API_URL=https://api.brevo.com/v3/smtp/email`
 - `DEFAULT_FROM_EMAIL=SiteGuard Alerts <noreply@your-domain>`
@@ -40,10 +41,26 @@ Recommended:
 - `EMAIL_SENDER_NAME=SiteGuard Alerts`
 - `EMAIL_SUBJECT_PREFIX=[SiteGuard] `
 - `SITE_NAME=SiteGuard`
+- `AI_FEATURES_ENABLED=False`
+- `AI_PROVIDER=gemini`
+- `GEMINI_MODEL=gemini-1.5-flash`
+- `AI_REQUEST_TIMEOUT=20`
+- `AI_MAX_TOKENS=900`
+- `AI_RETRY_ATTEMPTS=2`
+- `AI_RETRY_BACKOFF_SECONDS=0.5`
 
-Optional email settings:
+Optional AI operational intelligence on the web service only:
 
-- `EMAIL_BACKEND`
+- `AI_FEATURES_ENABLED=True`
+- `GEMINI_API_KEY=<google ai studio api key>`
+
+OpenAI remains available as a non-default provider by setting:
+
+- `AI_PROVIDER=openai`
+- `OPENAI_API_KEY=<openai api key>`
+- `OPENAI_MODEL=<openai model>`
+
+Do not add AI provider credentials to the monitor cron job unless a future command explicitly needs them. Monitoring must remain independent from AI generation.
 
 ## Render Service Configuration
 

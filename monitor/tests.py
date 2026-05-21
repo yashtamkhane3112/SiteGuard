@@ -13,6 +13,7 @@ from django.contrib.auth.models import User
 from django.core import mail
 from django.core.management import call_command
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import IntegrityError, transaction
 from django.test.client import RequestFactory
 from django.test import TestCase, override_settings
 from django.urls import resolve, reverse
@@ -21,7 +22,12 @@ from django.utils import timezone
 from monitor.emailing import build_password_reset_email_options, get_email_base_url, send_siteguard_email
 from monitor.error_analyzer import parse_log_content
 from monitor.forms import SiteGuardPasswordResetForm
-from monitor.models import Alert, Incident, IncidentEvent, MonitorLog, Notification, ParsedError, UploadedLog, UserProfile, Website
+from monitor.ai.prompts.builders import build_ai_instructions, build_report_prompt, sanitize_text
+from monitor.ai.providers.base import AIProviderError
+from monitor.ai.providers.gemini_provider import GeminiProvider
+from monitor.ai.providers.registry import get_default_provider
+from monitor.ai.services.analysis import generate_report_analysis, get_report_ai_state
+from monitor.models import AIAnalysisCache, Alert, Incident, IncidentEvent, MonitorLog, Notification, ParsedError, UploadedLog, UserProfile, Website
 from monitor.utils import (
     analyze_domain,
     build_notification_activity_center,
@@ -36,8 +42,9 @@ from monitor.utils import (
     run_single_check,
     safe_url_decode,
     safe_url_encode,
+    sync_incident_state,
 )
-from monitor.views import SiteGuardPasswordResetView
+from monitor.views import SiteGuardPasswordResetView, build_reports_context
 
 
 TEST_PNG_BYTES = base64.b64decode(
@@ -241,6 +248,9 @@ class AuthFlowTests(TestCase):
 
 class AdminStabilityTests(TestCase):
     def setUp(self):
+        self.temp_media_root = tempfile.mkdtemp()
+        self.media_override = override_settings(MEDIA_ROOT=self.temp_media_root)
+        self.media_override.enable()
         self.admin_user = User.objects.create_superuser(
             username="admin-user",
             email="admin@example.com",
@@ -272,6 +282,10 @@ class AdminStabilityTests(TestCase):
             message="example.com is DOWN",
         )
 
+    def tearDown(self):
+        self.media_override.disable()
+        shutil.rmtree(self.temp_media_root, ignore_errors=True)
+
     def test_admin_alert_and_parsed_error_changelists_render(self):
         alert_response = self.client.get(reverse("admin:monitor_alert_changelist"))
         parsed_error_response = self.client.get(reverse("admin:monitor_parsederror_changelist"))
@@ -282,13 +296,91 @@ class AdminStabilityTests(TestCase):
         self.assertContains(parsed_error_response, "ValueError")
 
 
+class OperationsDashboardTests(TestCase):
+    def setUp(self):
+        self.temp_media_root = tempfile.mkdtemp()
+        self.media_override = override_settings(MEDIA_ROOT=self.temp_media_root)
+        self.media_override.enable()
+        self.internal_user = User.objects.create_superuser(
+            username="ops-admin",
+            email="ops@example.com",
+            password="StrongPass123!",
+        )
+        self.regular_user = User.objects.create_user(
+            username="member-user",
+            password="StrongPass123!",
+            email="member@example.com",
+        )
+        self.website = Website.objects.create(user=self.regular_user, url="https://example.com")
+        MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=124.6)
+        Alert.objects.create(
+            website=self.website,
+            alert_type=Alert.TYPE_DOWN,
+            status=Alert.STATUS_FAILED,
+            sent_to="member@example.com",
+            message="example.com alert delivery failed",
+        )
+        upload = UploadedLog.objects.create(
+            user=self.regular_user,
+            filename="runtime.log",
+            file=SimpleUploadedFile("runtime.log", b"ValueError: invalid payload", content_type="text/plain"),
+            processed=True,
+        )
+        ParsedError.objects.create(
+            uploaded_log=upload,
+            error_type="ValueError",
+            raw_line="ValueError: invalid payload",
+            count=3,
+            first_seen_line=22,
+            last_seen_line=24,
+            category=ParsedError.CATEGORY_DJANGO,
+            severity=ParsedError.SEVERITY_HIGH,
+        )
+
+    def tearDown(self):
+        self.media_override.disable()
+        shutil.rmtree(self.temp_media_root, ignore_errors=True)
+
+    def test_operations_dashboard_requires_internal_access(self):
+        self.client.login(username="member-user", password="StrongPass123!")
+
+        response = self.client.get(reverse("operations_dashboard"))
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_operations_dashboard_renders_internal_snapshot(self):
+        self.client.login(username="ops-admin", password="StrongPass123!")
+
+        response = self.client.get(reverse("operations_dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Operational Health")
+        self.assertContains(response, "Core Services")
+        self.assertContains(response, "Recent Monitor Execution History")
+        self.assertContains(response, "Recent Exception Summaries")
+        self.assertContains(response, "example.com")
+
+    def test_favicon_route_redirects_to_static_asset(self):
+        response = self.client.get("/favicon.ico")
+
+        self.assertEqual(response.status_code, 301)
+        self.assertEqual(response["Location"], "/static/favicon.svg")
+
+
 class ErrorAnalyzerTests(TestCase):
     def setUp(self):
+        self.temp_media_root = tempfile.mkdtemp()
+        self.media_override = override_settings(MEDIA_ROOT=self.temp_media_root)
+        self.media_override.enable()
         self.user = User.objects.create_user(
             username="analyzer-user",
             password="StrongPass123!",
         )
         self.client.login(username="analyzer-user", password="StrongPass123!")
+
+    def tearDown(self):
+        self.media_override.disable()
+        shutil.rmtree(self.temp_media_root, ignore_errors=True)
 
     def test_parse_log_content_classifies_category_severity_and_line_ranges(self):
         parsed = parse_log_content(
@@ -401,6 +493,76 @@ class ErrorAnalyzerTests(TestCase):
         self.assertTrue(response.context["error_analytics"]["has_data"])
         self.assertContains(response, "Error Analytics")
         self.assertContains(response, "HTTP 404")
+
+    def test_error_analyzer_results_include_ai_explain_panel(self):
+        uploaded_log = UploadedLog.objects.create(
+            user=self.user,
+            filename="server.log",
+            file=SimpleUploadedFile("server.log", b"TimeoutError: upstream timed out", content_type="text/plain"),
+            processed=True,
+        )
+        ParsedError.objects.create(
+            uploaded_log=uploaded_log,
+            error_type="TimeoutError",
+            raw_line="TimeoutError: upstream timed out",
+            count=3,
+            first_seen_line=1,
+            category=ParsedError.CATEGORY_TIMEOUT,
+            severity=ParsedError.SEVERITY_HIGH,
+        )
+
+        response = self.client.get(reverse("error_log_results", args=[uploaded_log.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("ai_error_state", response.context)
+        self.assertContains(response, "Explain with AI")
+
+    @override_settings(AI_FEATURES_ENABLED=True, GEMINI_API_KEY="test-key", GEMINI_MODEL="test-model")
+    @patch("monitor.ai.providers.gemini_provider.requests.post")
+    def test_error_analyzer_ai_generation_caches_result(self, mock_post):
+        uploaded_log = UploadedLog.objects.create(
+            user=self.user,
+            filename="server.log",
+            file=SimpleUploadedFile("server.log", b"TimeoutError: upstream timed out", content_type="text/plain"),
+            processed=True,
+        )
+        ParsedError.objects.create(
+            uploaded_log=uploaded_log,
+            error_type="TimeoutError",
+            raw_line="TimeoutError: upstream timed out",
+            count=3,
+            first_seen_line=1,
+            category=ParsedError.CATEGORY_TIMEOUT,
+            severity=ParsedError.SEVERITY_HIGH,
+        )
+        mock_post.return_value = Mock(
+            status_code=200,
+            raise_for_status=Mock(),
+            json=Mock(return_value={
+                "candidates": [{
+                    "content": {
+                        "parts": [{
+                            "text": (
+                                '{"summary":"Timeouts are recurring.","outage_narrative":"Most frequent issue is upstream timeout.",'
+                                '"availability_interpretation":"","latency_interpretation":"",'
+                                '"suggested_fixes":["Recommendation: inspect upstream timeout budget."],'
+                                '"trends":["Timeout category dominates this upload."],'
+                                '"recurring_patterns":["Repeated TimeoutError signature."],'
+                                '"risk_indicators":["Risk: upstream dependency may be unstable."],'
+                                '"root_cause_hints":["Likely upstream saturation or network delay."]}'
+                            )
+                        }]
+                    }
+                }]
+            }),
+        )
+
+        response = self.client.post(reverse("generate_error_upload_ai_analysis", args=[uploaded_log.id]))
+
+        self.assertRedirects(response, reverse("error_log_results", args=[uploaded_log.id]))
+        cache = AIAnalysisCache.objects.get(user=self.user, scope=AIAnalysisCache.SCOPE_ERROR_UPLOAD)
+        self.assertEqual(cache.status, AIAnalysisCache.STATUS_READY)
+        self.assertEqual(cache.content["summary"], "Timeouts are recurring.")
 
 
 class MonitorEmailAlertTests(TestCase):
@@ -657,6 +819,39 @@ class IncidentSyncTests(TestCase):
         self.assertEqual(incident.title, "Complete Outage")
         self.assertEqual(incident.events.count(), 1)
         self.assertEqual(incident.events.first().event_type, IncidentEvent.TYPE_DETECTED)
+
+    def test_incidents_page_includes_read_only_ai_analysis_controls(self):
+        Incident.objects.create(
+            website=self.website,
+            title="Complete Outage",
+            incident_type=Incident.TYPE_OUTAGE,
+            status=Incident.STATUS_DOWN,
+            started_at=timezone.now(),
+            latest_response_time=0,
+        )
+
+        response = self.client.get(reverse("incidents"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "AI Incident Analysis")
+        self.assertContains(response, "Analyze Incident")
+
+    @override_settings(AI_FEATURES_ENABLED=False)
+    def test_incident_ai_generation_gracefully_handles_disabled_ai(self):
+        incident = Incident.objects.create(
+            website=self.website,
+            title="Complete Outage",
+            incident_type=Incident.TYPE_OUTAGE,
+            status=Incident.STATUS_DOWN,
+            started_at=timezone.now(),
+            latest_response_time=0,
+        )
+
+        response = self.client.post(reverse("generate_incident_ai_analysis", args=[incident.id]))
+
+        self.assertRedirects(response, reverse("incidents"))
+        cache = AIAnalysisCache.objects.get(user=self.user, scope=AIAnalysisCache.SCOPE_INCIDENT)
+        self.assertEqual(cache.status, AIAnalysisCache.STATUS_DISABLED)
 
     @patch("monitor.utils.requests.get")
     @patch("monitor.utils.check_ssl_status", return_value="Valid")
@@ -927,8 +1122,8 @@ class MonitoringIntegrityTests(TestCase):
         alert.refresh_from_db()
         self.assertEqual(alert.website, self.website)
 
-    def test_cleanup_resolves_duplicate_active_incidents_per_website_and_type(self):
-        first = Incident.objects.create(
+    def test_active_incident_uniqueness_constraint_blocks_duplicate_active_incidents(self):
+        Incident.objects.create(
             website=self.website,
             title="Complete Outage",
             incident_type=Incident.TYPE_OUTAGE,
@@ -936,25 +1131,110 @@ class MonitoringIntegrityTests(TestCase):
             started_at=timezone.now(),
             latest_response_time=0,
         )
-        second = Incident.objects.create(
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Incident.objects.create(
+                    website=self.website,
+                    title="Complete Outage",
+                    incident_type=Incident.TYPE_OUTAGE,
+                    status=Incident.STATUS_DOWN,
+                    started_at=timezone.now() + timedelta(minutes=1),
+                    latest_response_time=0,
+                )
+
+        self.assertEqual(
+            Incident.objects.filter(
+                website=self.website,
+                incident_type=Incident.TYPE_OUTAGE,
+                is_resolved=False,
+            ).count(),
+            1,
+        )
+
+    def test_resolved_incidents_do_not_block_new_active_incident_for_same_type(self):
+        Incident.objects.create(
+            website=self.website,
+            title="Complete Outage",
+            incident_type=Incident.TYPE_OUTAGE,
+            status=Incident.STATUS_RESOLVED,
+            started_at=timezone.now() - timedelta(hours=1),
+            resolved_at=timezone.now() - timedelta(minutes=30),
+            is_resolved=True,
+            latest_response_time=0,
+        )
+
+        created = Incident.objects.create(
             website=self.website,
             title="Complete Outage",
             incident_type=Incident.TYPE_OUTAGE,
             status=Incident.STATUS_DOWN,
-            started_at=timezone.now() + timedelta(minutes=1),
+            started_at=timezone.now(),
             latest_response_time=0,
+        )
+
+        self.assertFalse(created.is_resolved)
+        self.assertEqual(
+            Incident.objects.filter(
+                website=self.website,
+                incident_type=Incident.TYPE_OUTAGE,
+                is_resolved=False,
+            ).count(),
+            1,
+        )
+
+    def test_sync_incident_state_reuses_existing_active_incident_when_create_hits_integrity_race(self):
+        current_log = MonitorLog.objects.create(
+            website=self.website,
+            status=MonitorLog.STATUS_DOWN,
+            response_time=0,
+        )
+        existing_incident = Incident.objects.create(
+            website=self.website,
+            title="Complete Outage",
+            incident_type=Incident.TYPE_OUTAGE,
+            status=Incident.STATUS_DOWN,
+            started_at=current_log.checked_at - timedelta(minutes=1),
+            latest_response_time=0,
+        )
+
+        with patch("monitor.utils.Incident.objects.create", side_effect=IntegrityError):
+            sync_incident_state(self.website, None, current_log, status_code=503, reason="HTTP 503 returned.")
+
+        unresolved = list(
+            Incident.objects.filter(
+                website=self.website,
+                incident_type=Incident.TYPE_OUTAGE,
+                is_resolved=False,
+            )
+        )
+        self.assertEqual(len(unresolved), 1)
+        self.assertEqual(unresolved[0].id, existing_incident.id)
+        self.assertEqual(
+            IncidentEvent.objects.filter(
+                incident=existing_incident,
+                event_type=IncidentEvent.TYPE_DETECTED,
+            ).count(),
+            0,
+        )
+
+    def test_cleanup_normalizes_active_incident_fields_without_weakening_uniqueness(self):
+        incident = Incident.objects.create(
+            website=self.website,
+            title="Wrong title",
+            incident_type=Incident.TYPE_OUTAGE,
+            status=Incident.STATUS_RESOLVED,
+            started_at=timezone.now(),
+            latest_response_time=2500.889,
         )
 
         cleanup_monitoring_state(user=self.user)
 
-        unresolved = Incident.objects.filter(
-            website=self.website,
-            incident_type=Incident.TYPE_OUTAGE,
-            is_resolved=False,
-        )
-        self.assertEqual(unresolved.count(), 1)
-        resolved_duplicate = Incident.objects.get(pk=first.pk)
-        self.assertTrue(resolved_duplicate.is_resolved or second.is_resolved)
+        incident.refresh_from_db()
+        self.assertEqual(incident.title, "Complete Outage")
+        self.assertEqual(incident.status, Incident.STATUS_DOWN)
+        self.assertFalse(incident.is_resolved)
+        self.assertEqual(incident.latest_response_time, 2500.89)
 
     def test_dashboard_counts_only_unresolved_incidents(self):
         Incident.objects.create(
@@ -1136,7 +1416,112 @@ class ReportingViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context["has_monitoring_data"])
         self.assertTrue(all(value == 0 for value in response.context["chart_data"]["uptime_trend"]))
-        self.assertContains(response, "No monitoring data yet")
+
+    def test_reports_page_includes_ai_operational_intelligence_panel(self):
+        response = self.client.get(reverse("reports"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("ai_report_state", response.context)
+        self.assertContains(response, "AI Operational Intelligence")
+        self.assertContains(response, "Generate AI Summary")
+
+    @override_settings(AI_FEATURES_ENABLED=False)
+    def test_ai_report_generation_falls_back_when_disabled(self):
+        response = self.client.post(reverse("generate_report_ai_analysis"), {"range": "7d"})
+
+        self.assertRedirects(response, f"{reverse('reports')}?range=7d")
+        cache = AIAnalysisCache.objects.get(user=self.user, scope=AIAnalysisCache.SCOPE_REPORT)
+        self.assertEqual(cache.status, AIAnalysisCache.STATUS_DISABLED)
+        self.assertEqual(cache.content, {})
+
+    @override_settings(AI_FEATURES_ENABLED=True, GEMINI_API_KEY="test-key", GEMINI_MODEL="test-model")
+    @patch("monitor.ai.providers.gemini_provider.requests.post")
+    def test_ai_report_generation_caches_provider_result(self, mock_post):
+        mock_post.return_value = Mock(
+            status_code=200,
+            raise_for_status=Mock(),
+            json=Mock(return_value={
+                "candidates": [{
+                    "content": {
+                        "parts": [{
+                            "text": (
+                                '{"summary":"Latency was elevated.","outage_narrative":"No sustained outage.",'
+                                '"availability_interpretation":"Availability remained acceptable.",'
+                                '"latency_interpretation":"p95 latency needs review.",'
+                                '"suggested_fixes":["Recommendation: inspect upstream saturation."],'
+                                '"trends":["Latency increased late in the window."],'
+                                '"recurring_patterns":["Repeated slow checks."],'
+                                '"risk_indicators":["Risk: slow checks may become outages."],'
+                                '"root_cause_hints":["Likely upstream saturation based on latency profile."]}'
+                            )
+                        }]
+                    }
+                }]
+            }),
+        )
+
+        response = self.client.post(reverse("generate_report_ai_analysis"), {"range": "7d"})
+
+        self.assertRedirects(response, f"{reverse('reports')}?range=7d")
+        cache = AIAnalysisCache.objects.get(user=self.user, scope=AIAnalysisCache.SCOPE_REPORT)
+        self.assertEqual(cache.status, AIAnalysisCache.STATUS_READY)
+        self.assertEqual(cache.content["summary"], "Latency was elevated.")
+        self.assertEqual(cache.provider, "gemini")
+        self.assertEqual(mock_post.call_count, 1)
+
+        context = build_reports_context(self.user, "7d")
+        generate_report_analysis(self.user, context)
+        self.assertEqual(mock_post.call_count, 1)
+
+    @override_settings(AI_FEATURES_ENABLED=True, GEMINI_API_KEY="test-key", GEMINI_MODEL="test-model")
+    @patch("monitor.ai.providers.gemini_provider.requests.post", side_effect=requests.Timeout("timed out"))
+    def test_ai_provider_failure_is_cached_without_breaking_reports(self, _mock_post):
+        response = self.client.post(reverse("generate_report_ai_analysis"), {"range": "7d"})
+
+        self.assertRedirects(response, f"{reverse('reports')}?range=7d")
+        cache = AIAnalysisCache.objects.get(user=self.user, scope=AIAnalysisCache.SCOPE_REPORT)
+        self.assertEqual(cache.status, AIAnalysisCache.STATUS_FAILED)
+        report_response = self.client.get(reverse("reports"))
+        self.assertEqual(report_response.status_code, 200)
+        self.assertContains(report_response, "AI analysis unavailable")
+
+    @override_settings(AI_FEATURES_ENABLED=True, GEMINI_API_KEY="test-key", GEMINI_MODEL="test-model", AI_RETRY_ATTEMPTS=0)
+    @patch("monitor.ai.providers.gemini_provider.requests.post", side_effect=requests.Timeout("timed out"))
+    def test_ai_provider_failure_preserves_existing_ready_cache(self, mock_post):
+        context = build_reports_context(self.user, "7d")
+        cache = AIAnalysisCache.objects.create(
+            user=self.user,
+            scope=AIAnalysisCache.SCOPE_REPORT,
+            scope_key="range:7d",
+            input_hash="previous-hash",
+            status=AIAnalysisCache.STATUS_READY,
+            provider="gemini",
+            model_name="test-model",
+            content={"summary": "Previously generated insight."},
+        )
+
+        result = generate_report_analysis(self.user, context, force=True)
+        cache.refresh_from_db()
+
+        self.assertEqual(result.id, cache.id)
+        self.assertEqual(cache.status, AIAnalysisCache.STATUS_READY)
+        self.assertEqual(cache.content["summary"], "Previously generated insight.")
+        self.assertEqual(mock_post.call_count, 1)
+
+    @override_settings(AI_PROVIDER="openai", OPENAI_API_KEY="test-key", OPENAI_MODEL="openai-test-model")
+    def test_ai_provider_selection_can_use_openai(self):
+        provider = get_default_provider()
+
+        self.assertEqual(provider.provider_name, "openai")
+        self.assertEqual(provider.model, "openai-test-model")
+
+    def test_ai_prompt_builder_sanitizes_sensitive_values(self):
+        sanitized = sanitize_text("token=secret123 user@example.com password:abc")
+        prompt = build_report_prompt({"line": sanitized})
+
+        self.assertNotIn("secret123", prompt)
+        self.assertNotIn("user@example.com", prompt)
+        self.assertIn("[email]", prompt)
 
     def test_reports_chart_data_generation_has_expected_length(self):
         MonitorLog.objects.create(
@@ -1200,6 +1585,146 @@ class ReportingViewsTests(TestCase):
         self.assertGreaterEqual(response.context["incident_count"], 1)
         self.assertTrue(response.context["history"])
         self.assertContains(response, "Unified Operational History")
+
+
+class GeminiProviderParsingTests(TestCase):
+    def setUp(self):
+        self.provider = GeminiProvider()
+
+    def _gemini_success_response(self, summary="Recovered after retry."):
+        return Mock(
+            status_code=200,
+            raise_for_status=Mock(),
+            json=Mock(return_value={
+                "candidates": [{
+                    "content": {
+                        "parts": [{
+                            "text": (
+                                '{"summary":"' + summary + '","outage_narrative":"",'
+                                '"availability_interpretation":"","latency_interpretation":"",'
+                                '"suggested_fixes":[],"trends":[],"recurring_patterns":[],'
+                                '"risk_indicators":[],"root_cause_hints":[]}'
+                            )
+                        }]
+                    }
+                }]
+            }),
+        )
+
+    def _gemini_error_response(self, status_code):
+        response = Mock(status_code=status_code)
+        error = requests.HTTPError(f"{status_code} error")
+        error.response = response
+        response.raise_for_status = Mock(side_effect=error)
+        return response
+
+    def test_gemini_parser_accepts_fenced_json(self):
+        content = self.provider._parse_json_output(
+            '```json\n'
+            '{"summary":"DNS instability.","suggested_fixes":["Recommendation: verify DNS provider health."]}'
+            '\n```'
+        )
+
+        self.assertEqual(content["summary"], "DNS instability.")
+        self.assertEqual(content["suggested_fixes"], ["Recommendation: verify DNS provider health."])
+        self.assertIn("root_cause_hints", content)
+
+    def test_gemini_parser_accepts_wrapped_json(self):
+        content = self.provider._parse_json_output(
+            'Here is the operational analysis:\n\n'
+            '{"summary":"Latency increased.","trends":["Latency degradation is recurring."]}'
+            '\n\nThis suggests further investigation.'
+        )
+
+        self.assertEqual(content["summary"], "Latency increased.")
+        self.assertEqual(content["trends"], ["Latency degradation is recurring."])
+
+    def test_gemini_parser_rejects_malformed_json(self):
+        with self.assertRaisesMessage(AIProviderError, "Gemini response was not valid JSON."):
+            self.provider._parse_json_output('```json\n{"summary": "broken",\n```')
+
+    def test_gemini_parser_normalizes_partial_json(self):
+        content = self.provider._parse_json_output('{"summary":"Partial but usable."}')
+
+        self.assertEqual(content["summary"], "Partial but usable.")
+        self.assertEqual(content["outage_narrative"], "")
+        self.assertEqual(content["suggested_fixes"], [])
+
+    def test_gemini_parser_rejects_non_json_output(self):
+        with self.assertRaisesMessage(AIProviderError, "Gemini response was not valid JSON."):
+            self.provider._parse_json_output("The service looks mostly healthy.")
+
+    def test_gemini_prompt_explicitly_rejects_markdown(self):
+        instructions = build_ai_instructions()
+
+        self.assertIn("Return ONLY valid JSON", instructions)
+        self.assertIn("No markdown", instructions)
+        self.assertIn("No code fences", instructions)
+
+    @override_settings(
+        GEMINI_API_KEY="test-key",
+        GEMINI_MODEL="test-model",
+        AI_RETRY_ATTEMPTS=2,
+        AI_RETRY_BACKOFF_SECONDS=0.01,
+    )
+    @patch("monitor.ai.providers.gemini_provider.time.sleep")
+    @patch("monitor.ai.providers.gemini_provider.requests.post")
+    def test_gemini_retries_transient_status_and_recovers(self, mock_post, mock_sleep):
+        provider = GeminiProvider()
+        mock_post.side_effect = [
+            self._gemini_error_response(503),
+            self._gemini_error_response(502),
+            self._gemini_success_response("Recovered after transient Gemini outage."),
+        ]
+
+        content = provider.generate_json(instructions="Return JSON.", input_text="payload")
+
+        self.assertEqual(content["summary"], "Recovered after transient Gemini outage.")
+        self.assertEqual(mock_post.call_count, 3)
+        self.assertEqual(mock_sleep.call_count, 2)
+
+    @override_settings(
+        GEMINI_API_KEY="test-key",
+        GEMINI_MODEL="test-model",
+        AI_RETRY_ATTEMPTS=1,
+        AI_RETRY_BACKOFF_SECONDS=0.01,
+    )
+    @patch("monitor.ai.providers.gemini_provider.time.sleep")
+    @patch("monitor.ai.providers.gemini_provider.requests.post")
+    def test_gemini_retries_timeout_and_recovers(self, mock_post, mock_sleep):
+        provider = GeminiProvider()
+        mock_post.side_effect = [
+            requests.Timeout("timed out"),
+            self._gemini_success_response("Recovered after timeout."),
+        ]
+
+        content = provider.generate_json(instructions="Return JSON.", input_text="payload")
+
+        self.assertEqual(content["summary"], "Recovered after timeout.")
+        self.assertEqual(mock_post.call_count, 2)
+        self.assertEqual(mock_sleep.call_count, 1)
+
+    @override_settings(
+        GEMINI_API_KEY="test-key",
+        GEMINI_MODEL="test-model",
+        AI_RETRY_ATTEMPTS=2,
+        AI_RETRY_BACKOFF_SECONDS=0.01,
+    )
+    @patch("monitor.ai.providers.gemini_provider.time.sleep")
+    @patch("monitor.ai.providers.gemini_provider.requests.post")
+    def test_gemini_persistent_provider_outage_fails_safely(self, mock_post, mock_sleep):
+        provider = GeminiProvider()
+        mock_post.side_effect = [
+            self._gemini_error_response(503),
+            self._gemini_error_response(503),
+            self._gemini_error_response(503),
+        ]
+
+        with self.assertRaisesMessage(AIProviderError, "transient status 503 after 3 attempt"):
+            provider.generate_json(instructions="Return JSON.", input_text="payload")
+
+        self.assertEqual(mock_post.call_count, 3)
+        self.assertEqual(mock_sleep.call_count, 2)
 
 
 class UtilityHelperTests(TestCase):

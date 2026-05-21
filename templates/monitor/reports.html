@@ -148,6 +148,113 @@
               </div>
             </div>
 
+            <div class="dash-panel mb-4 ai-insight-panel export-block">
+              <div class="ai-insight-head">
+                <div>
+                  <span class="panel-label">AI Operational Intelligence</span>
+                  <h5 class="panel-title mb-1">AI Summary</h5>
+                  <p class="panel-subtitle mb-0">
+                    Read-only AI-generated guidance from report, incident, alert, and analyzer data. Recommendations are not guaranteed truth.
+                  </p>
+                </div>
+                <form method="post" action="{% url 'generate_report_ai_analysis' %}" class="ai-action-form">
+                  {% csrf_token %}
+                  <input type="hidden" name="range" value="{{ selected_range }}" />
+                  {% if ai_report_state.cache %}
+                  <input type="hidden" name="force" value="1" />
+                  {% endif %}
+                  <button type="submit" class="btn btn-outline-dark-custom">
+                    <i data-lucide="sparkles" class="me-2 size-sm"></i>
+                    {% if ai_report_state.cache %}Regenerate{% else %}Generate AI Summary{% endif %}
+                  </button>
+                </form>
+              </div>
+
+              {% if ai_report_state.cache.status == 'ready' %}
+              {% if ai_report_state.is_stale %}
+              <div class="alert alert-warning ai-inline-alert" role="status">
+                This AI analysis was generated from older report data. Regenerate to refresh it.
+              </div>
+              {% endif %}
+              <div class="ai-summary-grid">
+                <article class="ai-summary-card ai-summary-card-wide">
+                  <span class="panel-label">Operational Summary</span>
+                  <p class="text-light mb-0">{{ ai_report_state.cache.content.summary|default:"No summary returned." }}</p>
+                </article>
+                <article class="ai-summary-card">
+                  <span class="panel-label">Availability Interpretation</span>
+                  <p class="text-slate-300 text-sm mb-0">{{ ai_report_state.cache.content.availability_interpretation|default:"No availability interpretation returned." }}</p>
+                </article>
+                <article class="ai-summary-card">
+                  <span class="panel-label">Latency Interpretation</span>
+                  <p class="text-slate-300 text-sm mb-0">{{ ai_report_state.cache.content.latency_interpretation|default:"No latency interpretation returned." }}</p>
+                </article>
+              </div>
+              <div class="ai-guidance-grid">
+                <div class="ai-guidance-section">
+                  <h6>AI Suggested Fixes</h6>
+                  <ul>
+                    {% for item in ai_report_state.cache.content.suggested_fixes %}
+                    <li>{{ item }}</li>
+                    {% empty %}
+                    <li>No recommendations returned.</li>
+                    {% endfor %}
+                  </ul>
+                </div>
+                <div class="ai-guidance-section">
+                  <h6>AI Trends</h6>
+                  <ul>
+                    {% for item in ai_report_state.cache.content.trends %}
+                    <li>{{ item }}</li>
+                    {% empty %}
+                    <li>No trends returned.</li>
+                    {% endfor %}
+                  </ul>
+                </div>
+                <div class="ai-guidance-section">
+                  <h6>Recurring Failure Patterns</h6>
+                  <ul>
+                    {% for item in ai_report_state.cache.content.recurring_patterns %}
+                    <li>{{ item }}</li>
+                    {% empty %}
+                    <li>No recurring patterns returned.</li>
+                    {% endfor %}
+                  </ul>
+                </div>
+                <div class="ai-guidance-section">
+                  <h6>Risk Indicators + Root-Cause Hints</h6>
+                  <ul>
+                    {% for item in ai_report_state.cache.content.risk_indicators %}
+                    <li>{{ item }}</li>
+                    {% endfor %}
+                    {% for item in ai_report_state.cache.content.root_cause_hints %}
+                    <li>{{ item }}</li>
+                    {% empty %}
+                    <li>No root-cause hints returned.</li>
+                    {% endfor %}
+                  </ul>
+                </div>
+              </div>
+              <div class="ai-footnote">
+                <span class="utility-chip font-mono">{{ ai_report_state.cache.provider }}</span>
+                <span class="utility-chip font-mono">{{ ai_report_state.cache.model_name|default:"model unavailable" }}</span>
+                <span class="utility-chip font-mono">{{ ai_report_state.cache.generated_at|date:"Y-m-d H:i" }}</span>
+              </div>
+              {% elif ai_report_state.cache.status == 'failed' %}
+              <div class="empty-state ai-empty-state">
+                <i data-lucide="triangle-alert"></i>
+                <h6>AI analysis unavailable</h6>
+                <p class="text-sm mb-0">{{ ai_report_state.cache.error_message|default:"The provider request failed. Reports remain fully available." }}</p>
+              </div>
+              {% else %}
+              <div class="empty-state ai-empty-state">
+                <i data-lucide="sparkles"></i>
+                <h6>{% if ai_report_state.available %}No AI summary generated yet{% else %}AI is disabled{% endif %}</h6>
+                <p class="text-sm mb-0">{{ ai_report_state.message }}</p>
+              </div>
+              {% endif %}
+            </div>
+
             <div class="dash-panel mb-4 export-block">
               <h5 class="panel-title">Response Time Heatmap</h5>
               <p class="panel-subtitle mb-4">

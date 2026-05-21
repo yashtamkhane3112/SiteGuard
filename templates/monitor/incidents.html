@@ -181,6 +181,70 @@
                       </div>
                     {% endfor %}
                   </div>
+
+                  <div class="ai-incident-panel">
+                    <div class="ai-insight-head">
+                      <div>
+                        <span class="panel-label">AI Incident Analysis</span>
+                        <p class="panel-subtitle mb-0">
+                          Read-only suspected root-cause hints and possible fixes from this incident timeline.
+                        </p>
+                      </div>
+                      <form method="post" action="{% url 'generate_incident_ai_analysis' incident.id %}" class="ai-action-form">
+                        {% csrf_token %}
+                        {% if incident.ai_state.cache %}
+                        <input type="hidden" name="force" value="1" />
+                        {% endif %}
+                        <button type="submit" class="btn btn-outline-dark-custom btn-sm">
+                          <i data-lucide="sparkles" class="me-2 size-sm"></i>
+                          {% if incident.ai_state.cache %}Regenerate{% else %}Analyze Incident{% endif %}
+                        </button>
+                      </form>
+                    </div>
+
+                    {% if incident.ai_state.cache.status == 'ready' %}
+                    <div class="ai-summary-grid">
+                      <article class="ai-summary-card ai-summary-card-wide">
+                        <span class="panel-label">Summary</span>
+                        <p class="text-light mb-0">{{ incident.ai_state.cache.content.summary|default:"No summary returned." }}</p>
+                      </article>
+                    </div>
+                    <div class="ai-guidance-grid">
+                      <div class="ai-guidance-section">
+                        <h6>Possible Fixes</h6>
+                        <ul>
+                          {% for item in incident.ai_state.cache.content.suggested_fixes %}
+                          <li>{{ item }}</li>
+                          {% empty %}
+                          <li>No possible fixes returned.</li>
+                          {% endfor %}
+                        </ul>
+                      </div>
+                      <div class="ai-guidance-section">
+                        <h6>Likely Root-Cause Hints</h6>
+                        <ul>
+                          {% for item in incident.ai_state.cache.content.root_cause_hints %}
+                          <li>{{ item }}</li>
+                          {% empty %}
+                          <li>No root-cause hints returned.</li>
+                          {% endfor %}
+                        </ul>
+                      </div>
+                    </div>
+                    {% elif incident.ai_state.cache.status == 'failed' %}
+                    <div class="empty-state ai-empty-state">
+                      <i data-lucide="triangle-alert"></i>
+                      <h6>AI incident analysis unavailable</h6>
+                      <p class="text-sm mb-0">{{ incident.ai_state.cache.error_message|default:"The provider request failed." }}</p>
+                    </div>
+                    {% else %}
+                    <div class="empty-state ai-empty-state">
+                      <i data-lucide="sparkles"></i>
+                      <h6>{% if incident.ai_state.available %}No AI incident analysis generated yet{% else %}AI is disabled{% endif %}</h6>
+                      <p class="text-sm mb-0">{{ incident.ai_state.message }}</p>
+                    </div>
+                    {% endif %}
+                  </div>
                 </div>
               </div>
             {% endfor %}

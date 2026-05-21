@@ -1,7 +1,11 @@
 import logging
+import math
+import os
 import re
+import subprocess
 from datetime import datetime, timedelta
 from collections import Counter, defaultdict
+from functools import lru_cache
 from hmac import compare_digest
 from io import StringIO
 
@@ -24,6 +28,7 @@ from django.views.decorators.http import require_GET
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 
+from .emailing import get_email_diagnostics
 from .forms import (
     AccountPasswordChangeForm,
     AccountPreferencesForm,
@@ -37,6 +42,14 @@ from .forms import (
 )
 from .error_analyzer import build_upload_analytics, get_error_diagnostics, iter_error_entries, process_uploaded_log
 from .models import Alert, Incident, MonitorLog, ParsedError, UploadedLog, Website
+from .ai.services.analysis import (
+    generate_error_upload_analysis,
+    generate_incident_analysis,
+    generate_report_analysis,
+    get_error_upload_ai_state,
+    get_incident_ai_state,
+    get_report_ai_state,
+)
 from .utils import (
     ALERT_DEDUP_WINDOW,
     analyze_domain,
@@ -1303,6 +1316,405 @@ def ensure_admin_user():
         logger.warning("Skipping admin bootstrap because database migrations are not ready.", exc_info=True)
 
 
+def ensure_internal_user(request):
+    if not request.user.is_staff and not request.user.is_superuser:
+        raise Http404()
+
+
+def _ops_badge_class(state):
+    return {
+        'healthy': 'badge-up',
+        'warning': 'badge-slow',
+        'critical': 'badge-down',
+        'info': 'badge-info',
+        'active': 'badge-active',
+    }.get(state, 'badge-purple')
+
+
+def _ops_icon_classes(state):
+    return {
+        'healthy': 'bg-good-light text-good',
+        'warning': 'bg-warning-light text-warning',
+        'critical': 'bg-critical-light text-critical',
+        'info': 'bg-info-light text-info-tone',
+        'active': 'bg-active-light text-active',
+    }.get(state, 'bg-panel-light text-white')
+
+
+def _build_ops_status_card(*, label, state, summary, detail, icon):
+    return {
+        'label': label,
+        'state': state,
+        'summary': summary,
+        'detail': detail,
+        'icon': icon,
+        'badge_class': _ops_badge_class(state),
+        'icon_classes': _ops_icon_classes(state),
+    }
+
+
+def _build_ops_metric(*, label, value, detail='', tone='info'):
+    return {
+        'label': label,
+        'value': value,
+        'detail': detail,
+        'badge_class': _ops_badge_class(tone),
+    }
+
+
+def _format_latency(value):
+    if value is None:
+        return 'No data'
+    return f'{round(value, 2):g} ms'
+
+
+def _compute_percentile(values, percentile):
+    if not values:
+        return None
+    ordered = sorted(values)
+    index = min(max(math.ceil(len(ordered) * percentile) - 1, 0), len(ordered) - 1)
+    return round(ordered[index], 2)
+
+
+@lru_cache(maxsize=1)
+def _get_git_commit_hash():
+    env_commit = (
+        os.environ.get('RENDER_GIT_COMMIT')
+        or os.environ.get('GIT_COMMIT')
+        or os.environ.get('COMMIT_SHA')
+        or ''
+    ).strip()
+    if env_commit:
+        return env_commit[:12]
+
+    try:
+        completed = subprocess.run(
+            ['git', 'rev-parse', '--short=12', 'HEAD'],
+            cwd=django_settings.BASE_DIR,
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except Exception:
+        return 'unavailable'
+
+    return (completed.stdout or '').strip() or 'unavailable'
+
+
+def _get_app_version():
+    configured_version = (
+        os.environ.get('APP_VERSION')
+        or os.environ.get('RENDER_SERVICE_VERSION')
+        or os.environ.get('RELEASE_VERSION')
+        or ''
+    ).strip()
+    if configured_version:
+        return configured_version
+    return _get_git_commit_hash()
+
+
+def _get_environment_name():
+    configured_environment = (
+        os.environ.get('ENVIRONMENT_NAME')
+        or os.environ.get('ENVIRONMENT')
+        or os.environ.get('RENDER_ENVIRONMENT')
+        or ''
+    ).strip()
+    if configured_environment:
+        return configured_environment
+    return 'development' if django_settings.DEBUG else 'production'
+
+
+def _get_scheduler_interval_minutes():
+    try:
+        interval = int(os.environ.get('MONITOR_SCHEDULE_MINUTES', '5'))
+    except ValueError:
+        return 5
+    return max(interval, 1)
+
+
+def _build_operational_health_context():
+    now = timezone.now()
+    windows = {
+        '24h': now - timedelta(hours=24),
+        '7d': now - timedelta(days=7),
+        '30d': now - timedelta(days=30),
+    }
+    scheduler_interval_minutes = _get_scheduler_interval_minutes()
+    monitor_logs = list(
+        MonitorLog.objects.filter(checked_at__gte=windows['30d']).only(
+            'status',
+            'response_time',
+            'checked_at',
+            'website_id',
+        )
+    )
+    recent_monitor_history = list(
+        MonitorLog.objects.select_related('website', 'website__user').order_by('-checked_at', '-id')[:12]
+    )
+    for log in recent_monitor_history:
+        log.display_domain = normalize_domain_display(log.website.url)
+        log.resolved_status = get_site_status(log)
+        log.response_time_display = _format_latency(log.response_time if log.response_time else None)
+
+    monitor_windows = {
+        key: {'total': 0, 'up': 0, 'failed': 0, 'latencies': []}
+        for key in windows
+    }
+    for log in monitor_logs:
+        resolved_status = get_site_status(log)
+        for window_key, start_time in windows.items():
+            if log.checked_at < start_time:
+                continue
+            monitor_windows[window_key]['total'] += 1
+            if resolved_status == MonitorLog.STATUS_UP:
+                monitor_windows[window_key]['up'] += 1
+            if resolved_status == MonitorLog.STATUS_DOWN:
+                monitor_windows[window_key]['failed'] += 1
+            if log.response_time and log.response_time > 0:
+                monitor_windows[window_key]['latencies'].append(float(log.response_time))
+
+    uptime_metrics = []
+    for window_key, label in (('24h', '24h'), ('7d', '7d'), ('30d', '30d')):
+        total = monitor_windows[window_key]['total']
+        up = monitor_windows[window_key]['up']
+        uptime_value = round((up / total) * 100, 2) if total else None
+        tone = 'healthy' if uptime_value is not None and uptime_value >= 99 else 'warning'
+        if uptime_value is None:
+            tone = 'info'
+        uptime_metrics.append(
+            _build_ops_metric(
+                label=f'Uptime {label}',
+                value=f'{uptime_value:g}%' if uptime_value is not None else 'No data',
+                detail=f'{total} checks evaluated' if total else 'No monitor executions recorded in this window.',
+                tone=tone,
+            )
+        )
+
+    latency_metrics = [
+        _build_ops_metric(
+            label='Latency Avg 24h',
+            value=_format_latency(
+                (
+                    round(sum(monitor_windows['24h']['latencies']) / len(monitor_windows['24h']['latencies']), 2)
+                    if monitor_windows['24h']['latencies'] else None
+                )
+            ),
+            detail='Average successful monitor response time in the last 24 hours.',
+            tone='healthy' if monitor_windows['24h']['latencies'] else 'info',
+        ),
+        _build_ops_metric(
+            label='Latency P95 24h',
+            value=_format_latency(_compute_percentile(monitor_windows['24h']['latencies'], 0.95)),
+            detail='95th percentile successful response time in the last 24 hours.',
+            tone='healthy' if monitor_windows['24h']['latencies'] else 'info',
+        ),
+        _build_ops_metric(
+            label='Latency P99 7d',
+            value=_format_latency(_compute_percentile(monitor_windows['7d']['latencies'], 0.99)),
+            detail='99th percentile successful response time in the last 7 days.',
+            tone='healthy' if monitor_windows['7d']['latencies'] else 'info',
+        ),
+    ]
+
+    database_state = 'healthy'
+    database_summary = 'Database query path is responding.'
+    database_detail = 'Auth and monitoring tables are reachable.'
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT 1')
+            cursor.fetchone()
+        auth_user_present = User._meta.db_table in set(connection.introspection.table_names())
+        if not auth_user_present:
+            database_state = 'warning'
+            database_summary = 'Database is reachable, but auth tables look incomplete.'
+            database_detail = 'Run migrations before trusting this deployment.'
+    except Exception as exc:
+        database_state = 'critical'
+        database_summary = 'Database connectivity probe failed.'
+        database_detail = str(exc)
+
+    cloudinary_config = getattr(django_settings, 'CLOUDINARY_STORAGE', {}) or {}
+    default_storage_backend = (
+        getattr(django_settings, 'STORAGES', {}).get('default', {}).get('BACKEND', '')
+    )
+    cloudinary_configured = all(
+        cloudinary_config.get(key)
+        for key in ('CLOUD_NAME', 'API_KEY', 'API_SECRET')
+    )
+    if 'cloudinary' in default_storage_backend.lower() and cloudinary_configured:
+        cloudinary_card = _build_ops_status_card(
+            label='Cloudinary',
+            state='healthy',
+            summary='Cloudinary media storage is configured.',
+            detail=f'Backend: {default_storage_backend}',
+            icon='cloud',
+        )
+    elif 'filesystemstorage' in default_storage_backend.lower():
+        cloudinary_card = _build_ops_status_card(
+            label='Cloudinary',
+            state='warning',
+            summary='Local filesystem media storage is active.',
+            detail='Expected for development. Production should use Cloudinary-backed storage.',
+            icon='cloud-off',
+        )
+    else:
+        cloudinary_card = _build_ops_status_card(
+            label='Cloudinary',
+            state='critical',
+            summary='Cloudinary storage is not fully configured.',
+            detail=f'Backend: {default_storage_backend or "unset"}',
+            icon='cloud-off',
+        )
+
+    email_diagnostics = get_email_diagnostics()
+    latest_email_alert = Alert.objects.filter(
+        Q(sent_to__gt='') | Q(status=Alert.STATUS_FAILED)
+    ).select_related('website', 'incident').order_by('-created_at', '-id').first()
+    brevo_state = 'healthy' if email_diagnostics['configured'] and email_diagnostics['using_brevo_api'] else 'warning'
+    brevo_summary = 'Brevo API transport is configured.'
+    if not email_diagnostics['using_brevo_api']:
+        brevo_summary = 'Email transport is not using the Brevo API backend.'
+    if not email_diagnostics['configured']:
+        brevo_state = 'critical'
+        brevo_summary = 'Email transport configuration is incomplete.'
+    if latest_email_alert and latest_email_alert.status == Alert.STATUS_FAILED:
+        brevo_state = 'warning' if email_diagnostics['configured'] else 'critical'
+        brevo_summary = 'Latest alert email delivery failed.'
+    brevo_card = _build_ops_status_card(
+        label='Brevo Email',
+        state=brevo_state,
+        summary=brevo_summary,
+        detail=(
+            f"Backend: {email_diagnostics['backend'] or 'unset'} | "
+            f"Provider: {email_diagnostics['provider']}"
+        ),
+        icon='mail',
+    )
+
+    latest_checked_at = recent_monitor_history[0].checked_at if recent_monitor_history else None
+    scheduler_tolerance = timedelta(minutes=scheduler_interval_minutes * 3)
+    scheduler_warning_tolerance = timedelta(minutes=scheduler_interval_minutes * 6)
+    if latest_checked_at is None:
+        scheduler_card = _build_ops_status_card(
+            label='Scheduler',
+            state='info',
+            summary='No monitor executions have been recorded yet.',
+            detail=f'Expected cadence is every {scheduler_interval_minutes} minutes.',
+            icon='clock-3',
+        )
+    else:
+        age = now - latest_checked_at
+        scheduler_state = 'healthy'
+        scheduler_summary = 'Monitor scheduler is within the expected execution window.'
+        if age > scheduler_warning_tolerance:
+            scheduler_state = 'critical'
+            scheduler_summary = 'Monitor scheduler looks stalled.'
+        elif age > scheduler_tolerance:
+            scheduler_state = 'warning'
+            scheduler_summary = 'Monitor scheduler is running late.'
+        scheduler_card = _build_ops_status_card(
+            label='Scheduler',
+            state=scheduler_state,
+            summary=scheduler_summary,
+            detail=(
+                f'Last monitor log recorded {format_duration_value(age.total_seconds())} ago. '
+                f'Expected cadence: every {scheduler_interval_minutes} minutes.'
+            ),
+            icon='timer',
+        )
+
+    unresolved_alerts_count = Alert.objects.filter(is_read=False).exclude(
+        alert_type=Alert.TYPE_RECOVERY
+    ).count()
+    failed_alert_sends_count = Alert.objects.filter(
+        status=Alert.STATUS_FAILED,
+        created_at__gte=windows['7d'],
+    ).count()
+    active_incidents_count = Incident.objects.filter(is_resolved=False).count()
+
+    recent_exceptions = list(
+        ParsedError.objects.select_related('uploaded_log', 'uploaded_log__user').order_by(
+            '-uploaded_log__uploaded_at', '-count', '-id'
+        )[:8]
+    )
+
+    latest_email_result = None
+    if latest_email_alert is not None:
+        latest_email_alert.display_domain = normalize_domain_display(latest_email_alert.website.url)
+        latest_email_result = {
+            'state': 'healthy' if latest_email_alert.status == Alert.STATUS_SENT else 'critical',
+            'status': latest_email_alert.status,
+            'website': latest_email_alert.display_domain,
+            'created_at': latest_email_alert.created_at,
+            'recipient': latest_email_alert.sent_to or 'No recipient recorded',
+            'message': latest_email_alert.message,
+            'badge_class': _ops_badge_class(
+                'healthy' if latest_email_alert.status == Alert.STATUS_SENT else 'critical'
+            ),
+        }
+
+    return {
+        'component_health_cards': [
+            _build_ops_status_card(
+                label='Database',
+                state=database_state,
+                summary=database_summary,
+                detail=database_detail,
+                icon='database',
+            ),
+            cloudinary_card,
+            brevo_card,
+            scheduler_card,
+        ],
+        'summary_metrics': [
+            _build_ops_metric(
+                label='Monitored Sites',
+                value=str(Website.objects.count()),
+                detail='Total websites currently tracked across all accounts.',
+                tone='active',
+            ),
+            _build_ops_metric(
+                label='Active Incidents',
+                value=str(active_incidents_count),
+                detail='Incidents still open right now.',
+                tone='critical' if active_incidents_count else 'healthy',
+            ),
+            _build_ops_metric(
+                label='Unresolved Alerts',
+                value=str(unresolved_alerts_count),
+                detail='Unread alerts excluding recovery notices.',
+                tone='warning' if unresolved_alerts_count else 'healthy',
+            ),
+            _build_ops_metric(
+                label='Failed Alert Sends',
+                value=str(failed_alert_sends_count),
+                detail='Failed alert deliveries over the last 7 days.',
+                tone='critical' if failed_alert_sends_count else 'healthy',
+            ),
+            _build_ops_metric(
+                label='Failed Monitor Runs',
+                value=str(monitor_windows['24h']['failed']),
+                detail='DOWN results captured over the last 24 hours.',
+                tone='critical' if monitor_windows['24h']['failed'] else 'healthy',
+            ),
+        ],
+        'uptime_metrics': uptime_metrics,
+        'latency_metrics': latency_metrics,
+        'recent_monitor_history': recent_monitor_history,
+        'recent_exceptions': recent_exceptions,
+        'latest_email_result': latest_email_result,
+        'release_metadata': {
+            'app_version': _get_app_version(),
+            'git_commit': _get_git_commit_hash(),
+            'environment_name': _get_environment_name(),
+            'settings_module': django_settings.SETTINGS_MODULE,
+            'last_monitor_check': latest_checked_at,
+        },
+        'ops_refresh_seconds': scheduler_interval_minutes * 60,
+    }
+
+
 def index(request):
     return render(request, 'monitor/index.html')
 
@@ -1400,6 +1812,13 @@ def logout_view(request):
     return redirect('login')
 
 
+@login_required
+def operations_dashboard(request):
+    ensure_internal_user(request)
+    context = _build_operational_health_context()
+    return render(request, 'monitor/operations_dashboard.html', context)
+
+
 # ✅ DASHBOARD (FULL FIXED)
 @login_required
 def dashboard(request):
@@ -1407,12 +1826,12 @@ def dashboard(request):
     Website.cleanup_existing(user=request.user)
     cleanup_monitoring_state(user=request.user)
 
-    websites = Website.objects.filter(user=request.user).order_by('-created_at')
-    website_ids = websites.values_list('id', flat=True)
+    websites = list(Website.objects.filter(user=request.user).order_by('-created_at'))
+    website_ids = [website.id for website in websites]
 
-    all_logs = MonitorLog.objects.filter(
+    all_logs = list(MonitorLog.objects.filter(
         website_id__in=website_ids
-    ).select_related('website').order_by('-checked_at')
+    ).select_related('website').order_by('-checked_at'))
 
     latest_logs = get_latest_logs_by_website(all_logs)
 
@@ -1458,8 +1877,8 @@ def dashboard(request):
                 2
             )
 
-    total_logs = all_logs.count()
-    up_logs = all_logs.filter(status=MonitorLog.STATUS_UP).count()
+    total_logs = len(all_logs)
+    up_logs = sum(1 for log in all_logs if log.status == MonitorLog.STATUS_UP)
 
     uptime = (up_logs / total_logs) * 100 if total_logs > 0 else 0
     incidents = Incident.objects.filter(
@@ -1487,8 +1906,8 @@ def dashboard(request):
 def dashboard_data(request):
     Website.cleanup_existing(user=request.user)
     cleanup_monitoring_state(user=request.user)
-    sites = Website.objects.filter(user=request.user).order_by('-created_at')
-    website_ids = sites.values_list('id', flat=True)
+    sites = list(Website.objects.filter(user=request.user).order_by('-created_at'))
+    website_ids = [site.id for site in sites]
     all_logs = MonitorLog.objects.filter(
         website_id__in=website_ids
     ).order_by('-checked_at')
@@ -1515,8 +1934,8 @@ def dashboard_data(request):
 def status(request):
     Website.cleanup_existing(user=request.user)
     cleanup_monitoring_state(user=request.user)
-    websites = Website.objects.filter(user=request.user).order_by('-created_at')
-    website_ids = websites.values_list('id', flat=True)
+    websites = list(Website.objects.filter(user=request.user).order_by('-created_at'))
+    website_ids = [website.id for website in websites]
     latest_logs = get_latest_logs_by_website(MonitorLog.objects.filter(
         website_id__in=website_ids
     ).order_by('-checked_at'))
@@ -1566,7 +1985,29 @@ def reports(request):
 
     ensure_weekly_report_notification(request.user)
     context = build_reports_context(request.user, range_key)
+    context['ai_report_state'] = get_report_ai_state(request.user, context)
     return render(request, 'monitor/reports.html', context)
+
+
+@login_required
+@require_POST
+def generate_report_ai_analysis(request):
+    range_key = request.POST.get('range', '7d')
+    if range_key not in {'24h', '7d', '30d'}:
+        range_key = '7d'
+    context = build_reports_context(request.user, range_key)
+    cache = generate_report_analysis(
+        request.user,
+        context,
+        force=request.POST.get('force') == '1',
+    )
+    if cache.status == cache.STATUS_READY:
+        messages.success(request, 'AI report intelligence generated.')
+    elif cache.status == cache.STATUS_DISABLED:
+        messages.warning(request, 'AI operational intelligence is disabled for this environment.')
+    else:
+        messages.warning(request, 'AI report intelligence could not be generated. The report remains available.')
+    return redirect(f"{reverse('reports')}?range={range_key}")
 
 
 @login_required
@@ -1616,29 +2057,54 @@ def error_log_results(request, upload_id):
         'uploaded_log': uploaded_log,
         'recent_uploads': recent_uploads,
         'workspace_insights': workspace_summary['workspace_insights'],
+        'ai_error_state': get_error_upload_ai_state(request.user, uploaded_log, summary),
         **summary,
     }
     return render(request, 'monitor/error_log_results.html', context)
 
 
 @login_required
+@require_POST
+def generate_error_upload_ai_analysis(request, upload_id):
+    uploaded_log = get_object_or_404(
+        UploadedLog.objects.prefetch_related('parsed_errors'),
+        id=upload_id,
+        user=request.user,
+    )
+    summary = build_error_analyzer_summary(uploaded_log)
+    cache = generate_error_upload_analysis(
+        request.user,
+        uploaded_log,
+        summary,
+        force=request.POST.get('force') == '1',
+    )
+    if cache.status == cache.STATUS_READY:
+        messages.success(request, 'AI error explanation generated.')
+    elif cache.status == cache.STATUS_DISABLED:
+        messages.warning(request, 'AI operational intelligence is disabled for this environment.')
+    else:
+        messages.warning(request, 'AI error explanation could not be generated. Analyzer results remain available.')
+    return redirect('error_log_results', upload_id=upload_id)
+
+
+@login_required
 def incidents(request):
     cleanup_monitoring_state(user=request.user)
-    incidents_qs = Incident.objects.filter(
+    incidents = list(Incident.objects.filter(
         website__user=request.user
-    ).select_related('website').prefetch_related('events').order_by('-started_at', '-created_at')
-    for incident in incidents_qs:
+    ).select_related('website').prefetch_related('events').order_by('-started_at', '-created_at'))
+    for incident in incidents:
         set_display_domain(incident.website)
 
     week_ago = timezone.now() - timedelta(days=7)
-    active_incidents = incidents_qs.filter(is_resolved=False).count()
-    resolved_this_week = incidents_qs.filter(
-        is_resolved=True,
-        resolved_at__gte=week_ago,
-    ).count()
+    active_incidents = sum(1 for incident in incidents if not incident.is_resolved)
+    resolved_this_week = sum(
+        1 for incident in incidents
+        if incident.is_resolved and incident.resolved_at and incident.resolved_at >= week_ago
+    )
 
     resolved_incidents = [
-        incident for incident in incidents_qs
+        incident for incident in incidents
         if incident.is_resolved and incident.resolved_at is not None
     ]
     average_resolution_time = "0m"
@@ -1649,13 +2115,46 @@ def incidents(request):
         ) / len(resolved_incidents)
         average_resolution_time = format_duration_value(average_seconds)
 
+    incident_cache = {
+        cache.scope_key: cache
+        for cache in request.user.ai_analysis_cache.filter(scope='incident')
+    }
+    for incident in incidents:
+        incident.ai_state = get_incident_ai_state(
+            request.user,
+            incident,
+            cache=incident_cache.get(f"incident:{incident.id}"),
+        )
+
     context = {
-        'incidents': incidents_qs,
+        'incidents': incidents,
         'active_incidents': active_incidents,
         'resolved_this_week': resolved_this_week,
         'average_resolution_time': average_resolution_time,
     }
     return render(request, 'monitor/incidents.html', context)
+
+
+@login_required
+@require_POST
+def generate_incident_ai_analysis(request, incident_id):
+    incident = get_object_or_404(
+        Incident.objects.select_related('website').prefetch_related('events'),
+        id=incident_id,
+        website__user=request.user,
+    )
+    cache = generate_incident_analysis(
+        request.user,
+        incident,
+        force=request.POST.get('force') == '1',
+    )
+    if cache.status == cache.STATUS_READY:
+        messages.success(request, 'AI incident analysis generated.')
+    elif cache.status == cache.STATUS_DISABLED:
+        messages.warning(request, 'AI operational intelligence is disabled for this environment.')
+    else:
+        messages.warning(request, 'AI incident analysis could not be generated. Incident history remains available.')
+    return redirect('incidents')
 
 
 @login_required

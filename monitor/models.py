@@ -7,6 +7,7 @@ from django.core.exceptions import ValidationError
 from django.core.files.utils import validate_file_name
 from django.core.validators import URLValidator
 from django.db import models
+from django.db.models import Q
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
@@ -230,6 +231,9 @@ class MonitorLog(models.Model):
 
     class Meta:
         ordering = ['-checked_at']
+        indexes = [
+            models.Index(fields=['website', '-checked_at'], name='monitor_mon_website_8e0d66_idx'),
+        ]
 
 
 class Incident(models.Model):
@@ -264,6 +268,16 @@ class Incident(models.Model):
 
     class Meta:
         ordering = ['-started_at', '-created_at']
+        indexes = [
+            models.Index(fields=['website', 'is_resolved', 'incident_type', '-started_at'], name='monitor_inc_website_cfef0e_idx'),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['website', 'incident_type'],
+                condition=Q(is_resolved=False),
+                name='unique_active_incident_per_type',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.website.url} - {self.title} ({self.status})"
@@ -432,6 +446,9 @@ class Alert(models.Model):
 
     class Meta:
         ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['website', 'alert_type', 'status', '-created_at'], name='monitor_ale_website_1a96eb_idx'),
+        ]
 
     def __str__(self):
         return f"{self.website.url} - {self.alert_type} ({self.status})"
@@ -699,6 +716,55 @@ class ParsedError(models.Model):
             self.SEVERITY_MEDIUM: 'badge-purple',
             self.SEVERITY_LOW: 'badge-info',
         }.get(self.severity, 'badge-info')
+
+
+class AIAnalysisCache(models.Model):
+    SCOPE_REPORT = 'report'
+    SCOPE_ERROR_UPLOAD = 'error_upload'
+    SCOPE_INCIDENT = 'incident'
+    SCOPE_CHOICES = [
+        (SCOPE_REPORT, 'Report'),
+        (SCOPE_ERROR_UPLOAD, 'Error Upload'),
+        (SCOPE_INCIDENT, 'Incident'),
+    ]
+
+    STATUS_READY = 'ready'
+    STATUS_FAILED = 'failed'
+    STATUS_DISABLED = 'disabled'
+    STATUS_CHOICES = [
+        (STATUS_READY, 'Ready'),
+        (STATUS_FAILED, 'Failed'),
+        (STATUS_DISABLED, 'Disabled'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ai_analysis_cache')
+    scope = models.CharField(max_length=32, choices=SCOPE_CHOICES)
+    scope_key = models.CharField(max_length=160)
+    input_hash = models.CharField(max_length=64)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_READY)
+    provider = models.CharField(max_length=64, blank=True)
+    model_name = models.CharField(max_length=120, blank=True)
+    content = models.JSONField(default=dict, blank=True)
+    error_message = models.TextField(blank=True)
+    generated_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'scope', 'scope_key'],
+                name='unique_ai_analysis_cache_scope',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['user', 'scope', 'scope_key'], name='monitor_ai_user_scope_idx'),
+            models.Index(fields=['status', '-updated_at'], name='monitor_ai_status_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} {self.scope}:{self.scope_key} ({self.status})"
 
 
 @receiver(post_save, sender=User)

@@ -4,6 +4,8 @@ from email.utils import formataddr
 
 from decouple import Csv, config
 
+from .validation import resolve_email_backend
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -155,15 +157,13 @@ LOGOUT_REDIRECT_URL = "/login/"
 SITE_NAME = config("SITE_NAME", default="SiteGuard").strip() or "SiteGuard"
 BREVO_API_KEY = config("BREVO_API_KEY", default="").strip()
 BREVO_API_URL = config("BREVO_API_URL", default="https://api.brevo.com/v3/smtp/email").strip()
-EMAIL_HOST = config("EMAIL_HOST", default="smtp-relay.brevo.com").strip()
+EMAIL_HOST = config("EMAIL_HOST", default="").strip()
 EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
 EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
 EMAIL_USE_SSL = config("EMAIL_USE_SSL", default=False, cast=bool)
 EMAIL_TIMEOUT = config("EMAIL_TIMEOUT", default=15, cast=int)
-BREVO_SMTP_LOGIN = config("BREVO_SMTP_LOGIN", default="").strip()
-BREVO_SMTP_PASSWORD = config("BREVO_SMTP_PASSWORD", default="").strip()
-EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="").strip() or BREVO_SMTP_LOGIN
-EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="").strip() or BREVO_SMTP_PASSWORD
+EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="").strip()
+EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="").strip()
 EMAIL_SENDER_NAME = config("EMAIL_SENDER_NAME", default=f"{SITE_NAME} Alerts").strip() or f"{SITE_NAME} Alerts"
 EMAIL_SUBJECT_PREFIX = config("EMAIL_SUBJECT_PREFIX", default="[SiteGuard] ").strip()
 if EMAIL_SUBJECT_PREFIX and not EMAIL_SUBJECT_PREFIX.endswith(" "):
@@ -174,12 +174,11 @@ DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default=_default_from_email).s
 SERVER_EMAIL = config("SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
 SUPPORT_EMAIL = config("SUPPORT_EMAIL", default=EMAIL_HOST_USER or _default_sender_address).strip()
 configured_email_backend = config("EMAIL_BACKEND", default="").strip()
-if configured_email_backend:
-    EMAIL_BACKEND = configured_email_backend
-elif DEBUG and not BREVO_API_KEY:
-    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
-else:
-    EMAIL_BACKEND = "brevo_api"
+EMAIL_BACKEND = resolve_email_backend(
+    debug=DEBUG,
+    configured_backend=configured_email_backend,
+    brevo_api_key=BREVO_API_KEY,
+)
 PASSWORD_RESET_TIMEOUT = config("PASSWORD_RESET_TIMEOUT", default=86400, cast=int)
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
@@ -196,9 +195,19 @@ BOOTSTRAP_ADMIN_ENABLED = config("BOOTSTRAP_ADMIN_ENABLED", default=DEBUG, cast=
 CRON_SECRET = config("CRON_SECRET", default="")
 APP_BASE_URL = app_base_url
 CANONICAL_BASE_URL = app_base_url
+AI_FEATURES_ENABLED = config("AI_FEATURES_ENABLED", default=False, cast=bool)
+AI_PROVIDER = config("AI_PROVIDER", default="gemini").strip().lower() or "gemini"
+GEMINI_API_KEY = config("GEMINI_API_KEY", default="").strip()
+GEMINI_MODEL = config("GEMINI_MODEL", default="gemini-1.5-flash").strip()
+OPENAI_API_KEY = config("OPENAI_API_KEY", default="").strip()
+OPENAI_MODEL = config("OPENAI_MODEL", default="gpt-5-mini").strip()
+AI_REQUEST_TIMEOUT = config("AI_REQUEST_TIMEOUT", default=20, cast=int)
+AI_MAX_TOKENS = config("AI_MAX_TOKENS", default=900, cast=int)
+AI_RETRY_ATTEMPTS = config("AI_RETRY_ATTEMPTS", default=2, cast=int)
+AI_RETRY_BACKOFF_SECONDS = config("AI_RETRY_BACKOFF_SECONDS", default=0.5, cast=float)
 EMAIL_CONFIGURED = bool(
     DEFAULT_FROM_EMAIL and (
-        BREVO_API_KEY
+        (EMAIL_BACKEND == "brevo_api" and BREVO_API_KEY)
         or (
             EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend"
             and EMAIL_HOST
@@ -216,6 +225,8 @@ EMAIL_CONFIGURED = bool(
 
 LOG_LEVEL = config("LOG_LEVEL", default="INFO")
 DJANGO_LOG_LEVEL = config("DJANGO_LOG_LEVEL", default="INFO")
+EMAIL_LOG_LEVEL = config("EMAIL_LOG_LEVEL", default="INFO" if DEBUG else "WARNING")
+RUNTIME_LOG_LEVEL = config("RUNTIME_LOG_LEVEL", default="INFO" if DEBUG else "WARNING")
 
 LOGGING = {
     "version": 1,
@@ -250,7 +261,12 @@ LOGGING = {
         },
         "siteguard.email": {
             "handlers": ["email_console"],
-            "level": LOG_LEVEL,
+            "level": EMAIL_LOG_LEVEL,
+            "propagate": False,
+        },
+        "siteguard.runtime": {
+            "handlers": ["console"],
+            "level": RUNTIME_LOG_LEVEL,
             "propagate": False,
         },
     },

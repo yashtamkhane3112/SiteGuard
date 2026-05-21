@@ -5901,3 +5901,482 @@ body.sidebar-open {
         min-width: 560px;
     }
 }
+
+.ops-page-stack {
+    display: grid;
+    gap: 24px;
+    min-width: 0;
+}
+
+.ai-insight-panel {
+    border-color: rgba(168, 85, 247, 0.16);
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.035), rgba(116,48,232,0.028)),
+        radial-gradient(circle at top right, rgba(168, 85, 247, 0.08), transparent 30%);
+}
+
+.ai-insight-head,
+.ai-summary-grid,
+.ai-guidance-grid,
+.ai-footnote {
+    display: grid;
+    gap: 16px;
+    min-width: 0;
+}
+
+.ai-insight-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    margin-bottom: 20px;
+}
+
+.ai-action-form {
+    min-width: 0;
+}
+
+.ai-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-bottom: 18px;
+}
+
+.ai-summary-card,
+.ai-guidance-section {
+    min-width: 0;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(10, 5, 20, 0.24);
+    padding: 18px;
+}
+
+.ai-summary-card-wide {
+    grid-column: 1 / -1;
+}
+
+.ai-guidance-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ai-guidance-section h6 {
+    color: #fff;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+
+.ai-guidance-section ul {
+    display: grid;
+    gap: 10px;
+    margin: 0;
+    padding-left: 18px;
+    color: #cbd5e1;
+    font-size: 0.9rem;
+    line-height: 1.55;
+}
+
+.ai-summary-card p,
+.ai-guidance-section li,
+.ai-inline-alert,
+.ai-footnote .utility-chip {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.ai-footnote {
+    grid-template-columns: repeat(3, minmax(0, max-content));
+    justify-content: start;
+    margin-top: 18px;
+}
+
+.ai-inline-alert {
+    border-color: rgba(245, 158, 11, 0.22);
+    background: rgba(245, 158, 11, 0.12);
+    color: #fde68a;
+}
+
+.ai-empty-state {
+    padding: 30px 18px;
+}
+
+.ai-incident-panel {
+    margin-top: 24px;
+    padding: 18px;
+    border-radius: 16px;
+    border: 1px solid rgba(168, 85, 247, 0.14);
+    background: rgba(10, 5, 20, 0.22);
+}
+
+.ops-page-header,
+.ops-section-head,
+.ops-health-card-head,
+.ops-health-card-body,
+.ops-email-card,
+.ops-exception-meta,
+.ops-table-head,
+.ops-header-meta {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.ops-summary-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 18px;
+    align-items: stretch;
+}
+
+.ops-metric-card {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    min-width: 0;
+    min-height: 188px;
+    gap: 16px;
+    overflow: hidden;
+}
+
+.ops-metric-card-body,
+.ops-metric-card-footer {
+    min-width: 0;
+}
+
+.ops-metric-card-body {
+    display: grid;
+    gap: 10px;
+}
+
+.ops-metric-card .panel-label,
+.ops-metric-card .stat-value,
+.ops-metric-card .panel-subtitle,
+.ops-metric-card-footer,
+.ops-metric-detail {
+    min-width: 0;
+}
+
+.ops-metric-card .panel-label,
+.ops-metric-card .stat-value,
+.ops-list-card .panel-label,
+.ops-list-card .panel-subtitle,
+.ops-health-card .panel-subtitle,
+.ops-kv-card strong,
+.ops-email-card .panel-subtitle,
+.ops-exception-card .panel-subtitle,
+.ops-exception-card .text-light {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.ops-metric-card .stat-value {
+    line-height: 1.05;
+}
+
+.ops-metric-card-footer {
+    margin-top: auto;
+}
+
+.ops-metric-detail {
+    display: inline-flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    width: 100%;
+    max-width: 100%;
+    white-space: normal;
+    line-height: 1.45;
+    padding: 10px 12px;
+}
+
+.ops-health-grid,
+.ops-kv-grid,
+.ops-list-grid,
+.ops-two-column,
+.ops-exception-list {
+    display: grid;
+    gap: 18px;
+    min-width: 0;
+    align-items: stretch;
+}
+
+.ops-summary-grid > *,
+.ops-health-grid > *,
+.ops-kv-grid > *,
+.ops-list-grid > *,
+.ops-two-column > *,
+.ops-exception-list > * {
+    min-width: 0;
+}
+
+.ops-health-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 20px;
+}
+
+.ops-two-column {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ops-health-card,
+.ops-list-card,
+.ops-kv-card,
+.ops-email-card,
+.ops-exception-card {
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.06);
+    background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(116,48,232,0.025));
+    padding: 18px;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.ops-health-card,
+.ops-list-card,
+.ops-kv-card,
+.ops-email-card {
+    height: 100%;
+}
+
+.ops-health-card,
+.ops-list-card,
+.ops-email-card,
+.ops-exception-card {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.ops-health-title,
+.ops-list-value {
+    color: #fff;
+    font-weight: 700;
+    margin: 0;
+}
+
+.ops-health-title {
+    font-size: 1rem;
+    line-height: 1.45;
+}
+
+.ops-list-value {
+    margin-top: 6px;
+    font-size: 1.5rem;
+}
+
+.ops-list-card {
+    min-height: 152px;
+}
+
+.ops-list-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.ops-list-chip {
+    flex-shrink: 0;
+    max-width: 100%;
+}
+
+.ops-kv-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ops-kv-card strong {
+    display: block;
+    margin-top: 10px;
+    color: #fff;
+    word-break: break-word;
+}
+
+.ops-exception-list {
+    margin-top: 20px;
+}
+
+.ops-exception-meta {
+    justify-content: flex-start;
+    margin: 14px 0 12px;
+    gap: 10px;
+}
+
+.ops-table-head {
+    padding: 24px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    min-width: 0;
+}
+
+.ops-empty-state {
+    padding: 32px 20px;
+}
+
+.ops-health-card-body {
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 12px;
+}
+
+.ops-health-card-body .status-badge,
+.ops-health-card-body .panel-subtitle,
+.ops-header-meta .utility-chip,
+.ops-exception-meta .utility-chip,
+.ops-email-card .status-badge,
+.ops-exception-card .status-badge {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.ops-page-header > div:first-child,
+.ops-section-head > div:first-child,
+.ops-health-card-head > .min-width-0,
+.ops-list-card-head > div:first-child {
+    flex: 1 1 240px;
+    min-width: 0;
+}
+
+.ops-header-meta {
+    justify-content: flex-end;
+}
+
+.ops-header-meta .utility-chip {
+    flex: 0 1 auto;
+}
+
+.ops-email-card > .d-flex,
+.ops-exception-card > .d-flex {
+    min-width: 0;
+}
+
+.ops-email-card > .d-flex > div:first-child,
+.ops-exception-card > .d-flex > div:first-child {
+    flex: 1 1 220px;
+    min-width: 0;
+}
+
+@media (max-width: 1400px) {
+    .ops-summary-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 1199.98px) {
+    .ops-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 991.98px) {
+    .ai-insight-head,
+    .ai-summary-grid,
+    .ai-guidance-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .ai-action-form .btn {
+        width: 100%;
+    }
+
+    .ai-footnote {
+        grid-template-columns: repeat(2, minmax(0, max-content));
+    }
+
+    .ops-summary-grid,
+    .ops-health-grid,
+    .ops-two-column,
+    .ops-kv-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .ops-page-stack {
+        gap: 20px;
+    }
+
+    .ops-metric-card {
+        min-height: 176px;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .ops-page-stack {
+        gap: 18px;
+    }
+
+    .ops-summary-grid,
+    .ops-health-grid,
+    .ops-two-column,
+    .ops-kv-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .ops-table-head {
+        padding: 18px;
+    }
+
+    .ops-metric-card,
+    .ops-list-card {
+        min-height: 0;
+    }
+
+    .ops-metric-card {
+        gap: 14px;
+    }
+
+    .ops-page-header,
+    .ops-section-head,
+    .ops-health-card-head,
+    .ops-list-card-head,
+    .ops-email-card > .d-flex,
+    .ops-exception-card > .d-flex {
+        gap: 12px;
+    }
+
+    .ops-header-meta {
+        justify-content: flex-start;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .ai-summary-card,
+    .ai-guidance-section {
+        padding: 16px;
+    }
+
+    .ai-footnote {
+        grid-template-columns: 1fr;
+    }
+
+    .ai-footnote .utility-chip {
+        width: 100%;
+        justify-content: center;
+        text-align: center;
+    }
+
+    .ops-summary-grid,
+    .ops-health-grid,
+    .ops-kv-grid,
+    .ops-list-grid,
+    .ops-two-column,
+    .ops-exception-list {
+        gap: 14px;
+    }
+
+    .ops-health-card,
+    .ops-list-card,
+    .ops-kv-card,
+    .ops-email-card,
+    .ops-exception-card {
+        padding: 16px;
+    }
+
+    .ops-metric-detail,
+    .ops-list-chip,
+    .ops-health-card-body .status-badge,
+    .ops-email-card .status-badge,
+    .ops-exception-card .status-badge {
+        width: 100%;
+        justify-content: center;
+        text-align: center;
+    }
+}

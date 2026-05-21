@@ -117,6 +117,95 @@
             </div>
           </section>
 
+          <section class="dash-panel analyzer-panel analyzer-section ai-insight-panel">
+            <div class="ai-insight-head">
+              <div>
+                <span class="panel-label">AI Operational Intelligence</span>
+                <h5 class="m-0 text-white fw-bold">Explain with AI</h5>
+                <p class="m-0 text-slate-300 text-sm">
+                  Read-only interpretation of parsed error groups. Root-cause hints are suspected patterns, not guaranteed diagnoses.
+                </p>
+              </div>
+              <form method="post" action="{% url 'generate_error_upload_ai_analysis' uploaded_log.id %}" class="ai-action-form">
+                {% csrf_token %}
+                {% if ai_error_state.cache %}
+                <input type="hidden" name="force" value="1" />
+                {% endif %}
+                <button type="submit" class="btn btn-outline-dark-custom">
+                  <i data-lucide="sparkles" class="me-2 size-sm"></i>
+                  {% if ai_error_state.cache %}Regenerate{% else %}Explain with AI{% endif %}
+                </button>
+              </form>
+            </div>
+
+            {% if ai_error_state.cache.status == 'ready' %}
+            {% if ai_error_state.is_stale %}
+            <div class="alert alert-warning ai-inline-alert" role="status">
+              This AI explanation was generated from older analyzer data. Regenerate to refresh it.
+            </div>
+            {% endif %}
+            <div class="ai-summary-grid">
+              <article class="ai-summary-card ai-summary-card-wide">
+                <span class="panel-label">Simplified Operational Interpretation</span>
+                <p class="text-light mb-0">{{ ai_error_state.cache.content.summary|default:"No explanation returned." }}</p>
+              </article>
+              <article class="ai-summary-card">
+                <span class="panel-label">Frequent Error Analysis</span>
+                <p class="text-slate-300 text-sm mb-0">{{ ai_error_state.cache.content.outage_narrative|default:"No frequent-error narrative returned." }}</p>
+              </article>
+            </div>
+            <div class="ai-guidance-grid">
+              <div class="ai-guidance-section">
+                <h6>Possible Fixes</h6>
+                <ul>
+                  {% for item in ai_error_state.cache.content.suggested_fixes %}
+                  <li>{{ item }}</li>
+                  {% empty %}
+                  <li>No possible fixes returned.</li>
+                  {% endfor %}
+                </ul>
+              </div>
+              <div class="ai-guidance-section">
+                <h6>Recurring Patterns</h6>
+                <ul>
+                  {% for item in ai_error_state.cache.content.recurring_patterns %}
+                  <li>{{ item }}</li>
+                  {% empty %}
+                  <li>No recurring patterns returned.</li>
+                  {% endfor %}
+                </ul>
+              </div>
+              <div class="ai-guidance-section">
+                <h6>Likely Root-Cause Hints</h6>
+                <ul>
+                  {% for item in ai_error_state.cache.content.root_cause_hints %}
+                  <li>{{ item }}</li>
+                  {% empty %}
+                  <li>No root-cause hints returned.</li>
+                  {% endfor %}
+                </ul>
+              </div>
+            </div>
+            <div class="ai-footnote">
+              <span class="utility-chip font-mono">{{ ai_error_state.cache.provider }}</span>
+              <span class="utility-chip font-mono">{{ ai_error_state.cache.model_name|default:"model unavailable" }}</span>
+              <span class="utility-chip font-mono">{{ ai_error_state.cache.generated_at|date:"Y-m-d H:i" }}</span>
+            </div>
+            {% elif ai_error_state.cache.status == 'failed' %}
+            <div class="empty-state ai-empty-state">
+              <i data-lucide="triangle-alert"></i>
+              <h6>AI explanation unavailable</h6>
+              <p class="text-sm mb-0">{{ ai_error_state.cache.error_message|default:"The provider request failed. Analyzer results remain available." }}</p>
+            </div>
+            {% else %}
+            <div class="empty-state ai-empty-state">
+              <i data-lucide="sparkles"></i>
+              <h6>{% if ai_error_state.available %}No AI explanation generated yet{% else %}AI is disabled{% endif %}</h6>
+              <p class="text-sm mb-0">{{ ai_error_state.message }}</p>
+            </div>
+            {% endif %}
+          </section>
+
           <section class="dash-panel analyzer-panel analyzer-section analyzer-analytics-row analyzer-parsing-panel">
             <div class="d-flex align-items-center gap-3 mb-4 analyzer-section-header">
               <div class="incident-icon bg-panel-light text-white">

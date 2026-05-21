@@ -8,7 +8,11 @@
 - `CSRF_TRUSTED_ORIGINS`
 - `APP_BASE_URL`
 - `CRON_SECRET`
+- `EMAIL_BACKEND=brevo_api`
 - `BREVO_API_KEY`
+- `CLOUDINARY_CLOUD_NAME`
+- `CLOUDINARY_API_KEY`
+- `CLOUDINARY_API_SECRET`
 - `DEFAULT_FROM_EMAIL`
 
 ## Optional
@@ -16,9 +20,17 @@
 - `EMAIL_BACKEND`
 - `EMAIL_TIMEOUT`
 - `BREVO_API_URL`
+- `EMAIL_HOST`
+- `EMAIL_PORT`
+- `EMAIL_USE_TLS`
+- `EMAIL_USE_SSL`
+- `EMAIL_HOST_USER`
+- `EMAIL_HOST_PASSWORD`
 - `SERVER_EMAIL`
 - `SUPPORT_EMAIL`
 - `EMAIL_SENDER_NAME`
+- `EMAIL_LOG_LEVEL`
+- `RUNTIME_LOG_LEVEL`
 - `SQLITE_PATH`
 - `SQLITE_TIMEOUT`
 - `SITE_NAME`
@@ -26,30 +38,51 @@
 - `LOG_LEVEL`
 - `DJANGO_LOG_LEVEL`
 - `WHITENOISE_MAX_AGE`
+- `AI_FEATURES_ENABLED`
+- `AI_PROVIDER`
+- `GEMINI_API_KEY`
+- `GEMINI_MODEL`
+- `OPENAI_API_KEY`
+- `OPENAI_MODEL`
+- `AI_REQUEST_TIMEOUT`
+- `AI_MAX_TOKENS`
+- `AI_RETRY_ATTEMPTS`
+- `AI_RETRY_BACKOFF_SECONDS`
 
 Default production SQLite path is `data/siteguard.sqlite3` unless `SQLITE_PATH` is explicitly set.
 
 Notes:
 
 - `APP_BASE_URL` must be a valid HTTPS URL in production because password reset emails and operational links are generated from it.
-- Local development auto-selects the Brevo Transactional Email HTTPS API when `BREVO_API_KEY` is present. If the API key is missing, it falls back to `django.core.mail.backends.console.EmailBackend`.
-- You can still force a specific backend by setting `EMAIL_BACKEND` explicitly.
+- Local development defaults to `django.core.mail.backends.console.EmailBackend` unless you explicitly force another backend.
+- Gmail SMTP is intended for local development only.
+- Production should use the Brevo HTTPS API backend and `BREVO_API_KEY`.
 - Password reset emails use the active local request host during `DEBUG=True` development flows, so local forgot-password links stay on `127.0.0.1`, `localhost`, or the host you are actively using.
 - Production password reset and operational email links use `APP_BASE_URL` / `CANONICAL_BASE_URL`, which must stay HTTPS on Render.
+- AI operational intelligence is disabled by default. Set `AI_FEATURES_ENABLED=True`, `AI_PROVIDER=gemini`, and `GEMINI_API_KEY` on the web service to enable on-demand report, error, and incident analysis.
+- Gemini is the default provider and defaults to `GEMINI_MODEL=gemini-1.5-flash`.
+- Gemini transient `429`, `500`, `502`, `503`, and `504` responses are retried with `AI_RETRY_ATTEMPTS` and `AI_RETRY_BACKOFF_SECONDS`.
+- OpenAI remains supported with `AI_PROVIDER=openai`, `OPENAI_API_KEY`, and `OPENAI_MODEL`.
+- AI generation is read-only and cached. The cron job does not need AI provider credentials because monitor execution must not call AI providers.
 
-## Local Brevo API Setup
+## Local SMTP Setup
 
-For real local mail delivery with the Brevo Transactional Email API:
+For real local mail delivery with Gmail SMTP:
 
-1. Create a Brevo API key for the sender identity you want to use.
+1. Create an app password for the Gmail account you want to use.
 3. Copy `.env.example` to `.env`.
 4. Set:
-   - `BREVO_API_KEY=<your brevo api key>`
-   - `BREVO_API_URL=https://api.brevo.com/v3/smtp/email`
-   - `DEFAULT_FROM_EMAIL=SiteGuard Alerts <your verified sender>`
-   - `SERVER_EMAIL=SiteGuard Alerts <your verified sender>`
-   - `SUPPORT_EMAIL=<your support email>`
-5. Leave `EMAIL_BACKEND` blank unless you need to force a backend manually.
+   - `EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend`
+   - `EMAIL_HOST=smtp.gmail.com`
+   - `EMAIL_PORT=587`
+   - `EMAIL_USE_TLS=True`
+   - `EMAIL_USE_SSL=False`
+   - `EMAIL_HOST_USER=<your gmail address>`
+   - `EMAIL_HOST_PASSWORD=<your app password>`
+   - `DEFAULT_FROM_EMAIL=SiteGuard Alerts <your gmail address>`
+   - `SERVER_EMAIL=SiteGuard Alerts <your gmail address>`
+   - `SUPPORT_EMAIL=<your gmail address>`
+5. Do not use the Gmail SMTP transport in production.
 6. For local forgot-password testing, open the site on the exact host you want reflected in the email link, such as `http://127.0.0.1:8000` or `http://localhost:8000`.
 
 Useful verification commands:
