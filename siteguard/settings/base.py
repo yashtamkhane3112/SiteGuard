@@ -9,6 +9,19 @@ from .validation import resolve_email_backend
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
+
+def _normalize_config_text(value, *, default=""):
+    text = "" if value is None else str(value)
+    text = text.strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in {'"', "'"}:
+        text = text[1:-1].strip()
+    return text or default
+
+
+def _config_text(name, *, default=""):
+    raw_value = config(name, default=default)
+    return _normalize_config_text(raw_value, default=default)
+
 SECRET_KEY = config(
     "SECRET_KEY",
     default="django-insecure-siteguard-dev-only-change-me",
@@ -154,26 +167,26 @@ LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/dashboard/"
 LOGOUT_REDIRECT_URL = "/login/"
 
-SITE_NAME = config("SITE_NAME", default="SiteGuard").strip() or "SiteGuard"
-BREVO_API_KEY = config("BREVO_API_KEY", default="").strip()
-BREVO_API_URL = config("BREVO_API_URL", default="https://api.brevo.com/v3/smtp/email").strip()
-EMAIL_HOST = config("EMAIL_HOST", default="").strip()
+SITE_NAME = _config_text("SITE_NAME", default="SiteGuard")
+BREVO_API_KEY = _config_text("BREVO_API_KEY")
+BREVO_API_URL = _config_text("BREVO_API_URL", default="https://api.brevo.com/v3/smtp/email")
+EMAIL_HOST = _config_text("EMAIL_HOST")
 EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
 EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
 EMAIL_USE_SSL = config("EMAIL_USE_SSL", default=False, cast=bool)
 EMAIL_TIMEOUT = config("EMAIL_TIMEOUT", default=15, cast=int)
-EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="").strip()
-EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="").strip()
-EMAIL_SENDER_NAME = config("EMAIL_SENDER_NAME", default=f"{SITE_NAME} Alerts").strip() or f"{SITE_NAME} Alerts"
-EMAIL_SUBJECT_PREFIX = config("EMAIL_SUBJECT_PREFIX", default="[SiteGuard] ").strip()
+EMAIL_HOST_USER = _config_text("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = _config_text("EMAIL_HOST_PASSWORD")
+EMAIL_SENDER_NAME = _config_text("EMAIL_SENDER_NAME", default=f"{SITE_NAME} Alerts")
+EMAIL_SUBJECT_PREFIX = _config_text("EMAIL_SUBJECT_PREFIX", default="[SiteGuard] ")
 if EMAIL_SUBJECT_PREFIX and not EMAIL_SUBJECT_PREFIX.endswith(" "):
     EMAIL_SUBJECT_PREFIX = f"{EMAIL_SUBJECT_PREFIX} "
 _default_sender_address = EMAIL_HOST_USER or "noreply@siteguard.local"
 _default_from_email = formataddr((EMAIL_SENDER_NAME, _default_sender_address))
-DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default=_default_from_email).strip()
-SERVER_EMAIL = config("SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
-SUPPORT_EMAIL = config("SUPPORT_EMAIL", default=EMAIL_HOST_USER or _default_sender_address).strip()
-configured_email_backend = config("EMAIL_BACKEND", default="").strip()
+DEFAULT_FROM_EMAIL = _config_text("DEFAULT_FROM_EMAIL", default=_default_from_email)
+SERVER_EMAIL = _config_text("SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
+SUPPORT_EMAIL = _config_text("SUPPORT_EMAIL", default=EMAIL_HOST_USER or _default_sender_address)
+configured_email_backend = _config_text("EMAIL_BACKEND")
 EMAIL_BACKEND = resolve_email_backend(
     debug=DEBUG,
     configured_backend=configured_email_backend,
@@ -192,15 +205,15 @@ REFERRER_POLICY = "same-origin"
 APPEND_SLASH = True
 
 BOOTSTRAP_ADMIN_ENABLED = config("BOOTSTRAP_ADMIN_ENABLED", default=DEBUG, cast=bool)
-CRON_SECRET = config("CRON_SECRET", default="")
+CRON_SECRET = _config_text("CRON_SECRET")
 APP_BASE_URL = app_base_url
 CANONICAL_BASE_URL = app_base_url
 AI_FEATURES_ENABLED = config("AI_FEATURES_ENABLED", default=False, cast=bool)
-AI_PROVIDER = config("AI_PROVIDER", default="gemini").strip().lower() or "gemini"
-GEMINI_API_KEY = config("GEMINI_API_KEY", default="").strip()
-GEMINI_MODEL = config("GEMINI_MODEL", default="gemini-1.5-flash").strip()
-OPENAI_API_KEY = config("OPENAI_API_KEY", default="").strip()
-OPENAI_MODEL = config("OPENAI_MODEL", default="gpt-5-mini").strip()
+AI_PROVIDER = _config_text("AI_PROVIDER", default="gemini").lower()
+GEMINI_API_KEY = _config_text("GEMINI_API_KEY")
+GEMINI_MODEL = _config_text("GEMINI_MODEL", default="gemini-1.5-flash")
+OPENAI_API_KEY = _config_text("OPENAI_API_KEY")
+OPENAI_MODEL = _config_text("OPENAI_MODEL", default="gpt-5-mini")
 AI_REQUEST_TIMEOUT = config("AI_REQUEST_TIMEOUT", default=20, cast=int)
 AI_MAX_TOKENS = config("AI_MAX_TOKENS", default=900, cast=int)
 AI_RETRY_ATTEMPTS = config("AI_RETRY_ATTEMPTS", default=2, cast=int)
