@@ -10,6 +10,9 @@
 
   <nav class="sidebar-nav" aria-label="Primary">
     <a href="{% url 'dashboard' %}" class="nav-item{% if active_page == 'dashboard' %} active{% endif %}"><i data-lucide="layout-dashboard"></i> Dashboard</a>
+    {% if request.user.is_staff or request.user.is_superuser %}
+    <a href="{% url 'operations_dashboard' %}" class="nav-item{% if active_page == 'operations_dashboard' %} active{% endif %}"><i data-lucide="shield-check"></i> Operational Health</a>
+    {% endif %}
     <a href="{% url 'status' %}" class="nav-item{% if active_page == 'status' %} active{% endif %}"><i data-lucide="globe"></i> Status Check</a>
     <a href="{% url 'reports' %}" class="nav-item{% if active_page == 'reports' %} active{% endif %}"><i data-lucide="bar-chart-2"></i> Reports</a>
     <a href="{% url 'incidents' %}" class="nav-item{% if active_page == 'incidents' %} active{% endif %}"><i data-lucide="alert-triangle"></i> Incidents</a>

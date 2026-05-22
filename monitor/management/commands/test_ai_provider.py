@@ -31,10 +31,9 @@ class Command(BaseCommand):
         try:
             result = provider.generate_json(
                 instructions=(
-                    'Return ONLY valid JSON with the keys '
-                    'summary, outage_narrative, availability_interpretation, latency_interpretation, '
-                    'suggested_fixes, trends, recurring_patterns, risk_indicators, root_cause_hints. '
-                    'Use short strings and empty lists where appropriate. No markdown.'
+                    'Return ONLY raw JSON with the keys '
+                    'summary, suggested_fixes, trends, frequent_issues, likely_causes. '
+                    'No markdown. No code fences. No commentary. Use short strings and empty lists where appropriate.'
                 ),
                 input_text='Self-test request. Confirm the provider is reachable.',
             )

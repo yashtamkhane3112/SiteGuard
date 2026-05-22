@@ -9,6 +9,7 @@ import smtplib
 from unittest.mock import Mock, patch
 
 import requests
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.core import mail
 from django.core.management import call_command
@@ -19,6 +20,7 @@ from django.test import TestCase, override_settings
 from django.urls import resolve, reverse
 from django.utils import timezone
 
+from monitor.apps import log_ai_startup_diagnostics, log_session_startup_diagnostics
 from monitor.emailing import build_password_reset_email_options, get_email_base_url, send_siteguard_email
 from monitor.error_analyzer import parse_log_content
 from monitor.forms import SiteGuardPasswordResetForm
@@ -28,6 +30,7 @@ from monitor.ai.providers.gemini_provider import GeminiProvider
 from monitor.ai.providers.registry import get_default_provider
 from monitor.ai.services.analysis import generate_report_analysis, get_report_ai_state
 from monitor.models import AIAnalysisCache, Alert, Incident, IncidentEvent, MonitorLog, Notification, ParsedError, UploadedLog, UserProfile, Website
+from siteguard.settings.base import _normalize_config_text
 from monitor.utils import (
     analyze_domain,
     build_notification_activity_center,
@@ -103,6 +106,60 @@ class AuthFlowTests(TestCase):
 
         self.assertRedirects(response, reverse("dashboard"))
 
+    def test_login_sets_persistent_session_cookie_by_default(self):
+        User.objects.create_user(username="tester", password="StrongPass123!")
+
+        response = self.client.post(
+            reverse("login"),
+            {
+                "username": "tester",
+                "password": "StrongPass123!",
+                "remember_me": "on",
+            },
+        )
+
+        self.assertRedirects(response, reverse("dashboard"))
+        self.assertGreaterEqual(self.client.session.get_expiry_age(), settings.SESSION_COOKIE_AGE - 5)
+        self.assertFalse(self.client.session.get_expire_at_browser_close())
+
+    def test_login_remember_me_can_be_disabled_for_browser_session_only(self):
+        User.objects.create_user(username="tester", password="StrongPass123!")
+
+        response = self.client.post(
+            reverse("login"),
+            {
+                "username": "tester",
+                "password": "StrongPass123!",
+                "remember_me": "",
+            },
+        )
+
+        session_cookie = response.cookies[settings.SESSION_COOKIE_NAME]
+        self.assertRedirects(response, reverse("dashboard"))
+        self.assertEqual(session_cookie.get("max-age", ""), "")
+        self.assertTrue(self.client.session.get_expire_at_browser_close())
+
+    def test_authenticated_session_persists_across_new_client_with_same_cookie(self):
+        user = User.objects.create_user(username="tester", password="StrongPass123!")
+
+        login_response = self.client.post(
+            reverse("login"),
+            {
+                "username": "tester",
+                "password": "StrongPass123!",
+                "remember_me": "on",
+            },
+        )
+
+        self.assertRedirects(login_response, reverse("dashboard"))
+        fresh_client = self.client_class()
+        fresh_client.cookies = self.client.cookies
+
+        response = fresh_client.get(reverse("dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(int(fresh_client.session["_auth_user_id"]), user.id)
+
     def test_login_stays_on_page_for_invalid_credentials(self):
         User.objects.create_user(username="tester", password="StrongPass123!")
 
@@ -127,6 +184,51 @@ class AuthFlowTests(TestCase):
         dashboard_response = self.client.get(reverse("dashboard"))
         self.assertEqual(dashboard_response.status_code, 302)
         self.assertEqual(dashboard_response.url, "/login/?next=/dashboard/")
+
+    @override_settings(
+        SESSION_ENGINE="django.contrib.sessions.backends.signed_cookies",
+        SESSION_COOKIE_SECURE=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+        CSRF_COOKIE_SECURE=True,
+        SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https"),
+        USE_X_FORWARDED_HOST=True,
+        ALLOWED_HOSTS=["testserver", "siteguard.onrender.com"],
+    )
+    def test_login_sets_secure_cookie_and_honors_render_proxy_https(self):
+        User.objects.create_user(username="tester", password="StrongPass123!")
+
+        with patch("monitor.views.logger.info") as mock_info:
+            response = self.client.post(
+                reverse("login"),
+                {
+                    "username": "tester",
+                    "password": "StrongPass123!",
+                    "remember_me": "on",
+                },
+                HTTP_X_FORWARDED_PROTO="https",
+                HTTP_X_FORWARDED_HOST="siteguard.onrender.com",
+                HTTP_HOST="siteguard.onrender.com",
+            )
+
+        session_cookie = response.cookies[settings.SESSION_COOKIE_NAME]
+        self.assertRedirects(response, reverse("dashboard"))
+        self.assertTrue(session_cookie["secure"])
+        self.assertEqual(session_cookie["samesite"], "Lax")
+        auth_log_call = next(
+            call for call in mock_info.call_args_list
+            if call.args and call.args[0] == "User login established session."
+        )
+        self.assertTrue(auth_log_call.kwargs["extra"]["auth_context"]["request_is_secure"])
+        self.assertEqual(auth_log_call.kwargs["extra"]["auth_context"]["forwarded_proto"], "https")
+        self.assertEqual(auth_log_call.kwargs["extra"]["auth_context"]["host"], "siteguard.onrender.com")
+
+        dashboard_response = self.client.get(
+            reverse("dashboard"),
+            HTTP_X_FORWARDED_PROTO="https",
+            HTTP_X_FORWARDED_HOST="siteguard.onrender.com",
+            HTTP_HOST="siteguard.onrender.com",
+        )
+        self.assertEqual(dashboard_response.status_code, 200)
 
     def test_password_reset_page_renders(self):
         response = self.client.get(reverse("password_reset"))
@@ -537,13 +639,11 @@ class ErrorAnalyzerTests(TestCase):
         )
         sdk_model = Mock()
         sdk_model.generate_content.return_value = Mock(text=(
-            '{"summary":"Timeouts are recurring.","outage_narrative":"Most frequent issue is upstream timeout.",'
-            '"availability_interpretation":"","latency_interpretation":"",'
+            '{"summary":"Timeouts are recurring.",'
             '"suggested_fixes":["Recommendation: inspect upstream timeout budget."],'
             '"trends":["Timeout category dominates this upload."],'
-            '"recurring_patterns":["Repeated TimeoutError signature."],'
-            '"risk_indicators":["Risk: upstream dependency may be unstable."],'
-            '"root_cause_hints":["Likely upstream saturation or network delay."]}'
+            '"frequent_issues":["Repeated TimeoutError signature."],'
+            '"likely_causes":["Likely upstream saturation or network delay."]}'
         ))
         mock_genai.GenerativeModel.return_value = sdk_model
 
@@ -1429,14 +1529,11 @@ class ReportingViewsTests(TestCase):
     def test_ai_report_generation_caches_provider_result(self, mock_genai):
         sdk_model = Mock()
         sdk_model.generate_content.return_value = Mock(text=(
-            '{"summary":"Latency was elevated.","outage_narrative":"No sustained outage.",'
-            '"availability_interpretation":"Availability remained acceptable.",'
-            '"latency_interpretation":"p95 latency needs review.",'
+            '{"summary":"Latency was elevated.",'
             '"suggested_fixes":["Recommendation: inspect upstream saturation."],'
             '"trends":["Latency increased late in the window."],'
-            '"recurring_patterns":["Repeated slow checks."],'
-            '"risk_indicators":["Risk: slow checks may become outages."],'
-            '"root_cause_hints":["Likely upstream saturation based on latency profile."]}'
+            '"frequent_issues":["Repeated slow checks."],'
+            '"likely_causes":["Likely upstream saturation based on latency profile."]}'
         ))
         mock_genai.GenerativeModel.return_value = sdk_model
 
@@ -1580,10 +1677,9 @@ class GeminiProviderParsingTests(TestCase):
 
     def _gemini_success_response(self, summary="Recovered after retry."):
         return Mock(text=(
-            '{"summary":"' + summary + '","outage_narrative":"",'
-            '"availability_interpretation":"","latency_interpretation":"",'
-            '"suggested_fixes":[],"trends":[],"recurring_patterns":[],'
-            '"risk_indicators":[],"root_cause_hints":[]}'
+            '{"summary":"' + summary + '",'
+            '"suggested_fixes":[],"trends":[],"frequent_issues":[],'
+            '"likely_causes":[]}'
         ))
 
     def _configure_gemini_sdk_mock(self, mock_genai, responses):
@@ -1600,9 +1696,11 @@ class GeminiProviderParsingTests(TestCase):
 
     @override_settings(GEMINI_API_KEY="test-key", GEMINI_MODEL="gemini-1.5-flash")
     def test_gemini_model_resolution_accepts_supported_model_names(self):
-        provider = GeminiProvider()
+        with self.assertLogs("monitor.ai.providers.gemini_provider", level="INFO") as captured:
+            provider = GeminiProvider()
         self.assertEqual(provider._normalized_model_name(), "gemini-1.5-flash")
         self.assertEqual(provider._resolved_model_path(), "models/gemini-1.5-flash")
+        self.assertIn("AI provider initialized: provider=gemini model=models/gemini-1.5-flash api_key_present=True", "\n".join(captured.output))
 
         with override_settings(GEMINI_MODEL="gemini-1.5-flash-latest"):
             provider = GeminiProvider()
@@ -1620,6 +1718,14 @@ class GeminiProviderParsingTests(TestCase):
 
         self.assertEqual(provider._normalized_model_name(), "gemini-1.5-flash")
         self.assertEqual(provider._resolved_model_path(), "models/gemini-1.5-flash")
+
+    @override_settings(GEMINI_API_KEY="test-key", GEMINI_MODEL='  "models/gemini-1.5-flash-latest"  ')
+    def test_gemini_model_resolution_strips_quotes_and_whitespace(self):
+        provider = GeminiProvider()
+
+        self.assertEqual(provider.model, "models/gemini-1.5-flash-latest")
+        self.assertEqual(provider._normalized_model_name(), "gemini-1.5-flash-latest")
+        self.assertEqual(provider._resolved_model_path(), "models/gemini-1.5-flash-latest")
 
     @override_settings(GEMINI_API_KEY="test-key", GEMINI_MODEL="models/models/gemini-1.5-flash")
     def test_gemini_model_resolution_rejects_duplicate_models_prefix(self):
@@ -1668,9 +1774,31 @@ class GeminiProviderParsingTests(TestCase):
         provider = GeminiProvider()
         sdk_model = self._configure_gemini_sdk_mock(mock_genai, [self._gemini_error(404)])
 
-        with self.assertRaisesMessage(AIProviderUnavailable, "Gemini model gemini-1.5-flash is unavailable."):
+        with self.assertRaisesMessage(AIProviderUnavailable, "Gemini model models/gemini-1.5-flash is unavailable."):
             provider.generate_json(instructions="Return JSON.", input_text="payload")
 
+        self.assertEqual(sdk_model.generate_content.call_count, 1)
+
+    @override_settings(GEMINI_API_KEY="test-key", GEMINI_MODEL="models/gemini-1.5-flash-latest")
+    @patch("monitor.ai.providers.gemini_provider.genai")
+    def test_gemini_unavailable_model_populates_listing_diagnostics(self, mock_genai):
+        provider = GeminiProvider()
+        sdk_model = self._configure_gemini_sdk_mock(mock_genai, [self._gemini_error(404)])
+        model_one = Mock()
+        model_one.name = "models/gemini-1.5-flash"
+        model_one.supported_generation_methods = ["generateContent"]
+        model_two = Mock()
+        model_two.name = "models/gemini-1.5-flash-8b"
+        model_two.supported_generation_methods = ["generateContent"]
+        mock_genai.list_models.return_value = [model_one, model_two]
+
+        with self.assertRaises(AIProviderUnavailable):
+            provider.generate_json(instructions="Return JSON.", input_text="payload")
+
+        diagnostics = provider.get_last_diagnostics()
+        self.assertEqual(diagnostics["resolved_model"], "models/gemini-1.5-flash-latest")
+        self.assertEqual(diagnostics["suggested_model"], "models/gemini-1.5-flash")
+        self.assertIn("models/gemini-1.5-flash", diagnostics["available_models"])
         self.assertEqual(sdk_model.generate_content.call_count, 1)
 
     def test_gemini_parser_accepts_fenced_json(self):
@@ -1682,21 +1810,51 @@ class GeminiProviderParsingTests(TestCase):
 
         self.assertEqual(content["summary"], "DNS instability.")
         self.assertEqual(content["suggested_fixes"], ["Recommendation: verify DNS provider health."])
+        self.assertIn("likely_causes", content)
         self.assertIn("root_cause_hints", content)
+
+    def test_gemini_parser_accepts_plain_json(self):
+        content = self.provider._parse_json_output(
+            '{"summary":"Stable response.","suggested_fixes":[],"trends":[],"frequent_issues":[],"likely_causes":[]}'
+        )
+
+        self.assertEqual(content["summary"], "Stable response.")
+        self.assertEqual(content["frequent_issues"], [])
 
     def test_gemini_parser_accepts_wrapped_json(self):
         content = self.provider._parse_json_output(
             'Here is the operational analysis:\n\n'
-            '{"summary":"Latency increased.","trends":["Latency degradation is recurring."]}'
+            '{"summary":"Latency increased.","trends":["Latency degradation is recurring."],"suggested_fixes":[],"frequent_issues":[],"likely_causes":[]}'
             '\n\nThis suggests further investigation.'
         )
 
         self.assertEqual(content["summary"], "Latency increased.")
         self.assertEqual(content["trends"], ["Latency degradation is recurring."])
 
+    def test_gemini_parser_accepts_json_with_markdown_wrapper_label(self):
+        content = self.provider._parse_json_output(
+            'JSON:\n'
+            '```json\n'
+            '{"summary":"Wrapped by markdown label.","suggested_fixes":[],"trends":[],"frequent_issues":[],"likely_causes":[]}\n'
+            '```'
+        )
+
+        self.assertEqual(content["summary"], "Wrapped by markdown label.")
+
     def test_gemini_parser_rejects_malformed_json(self):
-        with self.assertRaisesMessage(AIProviderError, "Gemini response was not valid JSON."):
-            self.provider._parse_json_output('```json\n{"summary": "broken",\n```')
+        with self.assertLogs("monitor.ai.providers.gemini_provider", level="WARNING") as captured:
+            with self.assertRaisesMessage(AIProviderError, "Gemini response was not valid JSON."):
+                self.provider._parse_json_output('```json\n{"summary": "broken",\n```')
+
+        self.assertIn("Gemini JSON parse failed.", "\n".join(captured.output))
+
+    def test_gemini_parser_repairs_trailing_commas(self):
+        content = self.provider._parse_json_output(
+            '{"summary":"Trailing comma cleanup.","suggested_fixes":["Retry later",],"trends":[],"frequent_issues":[],"likely_causes":[],}'
+        )
+
+        self.assertEqual(content["summary"], "Trailing comma cleanup.")
+        self.assertEqual(content["suggested_fixes"], ["Retry later"])
 
     def test_gemini_parser_normalizes_partial_json(self):
         content = self.provider._parse_json_output('{"summary":"Partial but usable."}')
@@ -1704,17 +1862,73 @@ class GeminiProviderParsingTests(TestCase):
         self.assertEqual(content["summary"], "Partial but usable.")
         self.assertEqual(content["outage_narrative"], "")
         self.assertEqual(content["suggested_fixes"], [])
+        self.assertEqual(content["frequent_issues"], [])
+
+    def test_gemini_parser_repairs_truncated_partial_json(self):
+        content = self.provider._parse_json_output(
+            '{"summary":"Truncated but recoverable.","suggested_fixes":["Check DNS"]'
+        )
+
+        self.assertEqual(content["summary"], "Truncated but recoverable.")
+        self.assertEqual(content["suggested_fixes"], ["Check DNS"])
+
+    def test_gemini_parser_accepts_commentary_wrapped_fenced_json(self):
+        content = self.provider._parse_json_output(
+            'Here is the requested JSON:\n```json\n'
+            '{"summary":"Commentary stripped.","suggested_fixes":[],"trends":[],"frequent_issues":["Timeout spikes"],"likely_causes":["Likely upstream saturation"]}'
+            '\n```\nAdditional note ignored.'
+        )
+
+        self.assertEqual(content["summary"], "Commentary stripped.")
+        self.assertEqual(content["frequent_issues"], ["Timeout spikes"])
+        self.assertEqual(content["root_cause_hints"], ["Likely upstream saturation"])
 
     def test_gemini_parser_rejects_non_json_output(self):
         with self.assertRaisesMessage(AIProviderError, "Gemini response was not valid JSON."):
             self.provider._parse_json_output("The service looks mostly healthy.")
 
+    def test_gemini_parser_accepts_valid_nested_json(self):
+        content = self.provider._parse_json_output(
+            'Preface ignored.\n'
+            '{"summary":"Nested payload accepted.","suggested_fixes":["Review queue depth"],"trends":["Nested telemetry repeated"],'
+            '"frequent_issues":[{"pattern":"queue saturation"}],"likely_causes":[{"cause":"upstream backlog"}],"meta":{"ignored":true}}'
+            '\nTrailing note ignored.'
+        )
+
+        self.assertEqual(content["summary"], "Nested payload accepted.")
+        self.assertEqual(content["frequent_issues"], ['{"pattern": "queue saturation"}'])
+        self.assertEqual(content["likely_causes"], ['{"cause": "upstream backlog"}'])
+
     def test_gemini_prompt_explicitly_rejects_markdown(self):
         instructions = build_ai_instructions()
 
-        self.assertIn("Return ONLY valid JSON", instructions)
+        self.assertIn("Return STRICT RAW JSON ONLY", instructions)
         self.assertIn("No markdown", instructions)
         self.assertIn("No code fences", instructions)
+        self.assertIn("No commentary", instructions)
+        self.assertIn("Do not wrap the JSON", instructions)
+
+    @override_settings(GEMINI_API_KEY="test-key", GEMINI_MODEL="test-model", AI_DEBUG_RAW_OUTPUT=True)
+    @patch("monitor.ai.providers.gemini_provider.genai")
+    def test_gemini_parser_logs_raw_output_preview_in_debug_mode(self, mock_genai):
+        provider = GeminiProvider()
+        self._configure_gemini_sdk_mock(
+            mock_genai,
+            [Mock(
+                text='Here is the requested JSON: {"summary":"Preview diagnostics.","suggested_fixes":[],"trends":[],"frequent_issues":[],"likely_causes":[]}',
+                candidates=[Mock()],
+            )],
+        )
+
+        with patch("monitor.ai.providers.gemini_provider.logger.debug") as mock_debug:
+            provider.generate_json(instructions="Return JSON.", input_text="payload")
+
+        diagnostic_call = next(
+            call for call in mock_debug.call_args_list
+            if call.args and call.args[0] == "Gemini raw response diagnostics."
+        )
+        self.assertIn("Preview diagnostics.", diagnostic_call.kwargs["extra"]["raw_output_preview"])
+        self.assertTrue(diagnostic_call.kwargs["extra"]["raw_output_debug_enabled"])
 
     @override_settings(
         GEMINI_API_KEY="test-key",
@@ -1797,6 +2011,118 @@ class UtilityHelperTests(TestCase):
 
         self.assertFalse(decoded["success"])
         self.assertEqual(decoded["error"], "Invalid percent-encoding sequence.")
+
+
+class AIConfigurationDiagnosticsTests(TestCase):
+    def test_normalize_config_text_strips_quotes_and_whitespace(self):
+        self.assertEqual(
+            _normalize_config_text('  "models/gemini-1.5-flash-latest"  ', default="gemini-1.5-flash"),
+            "models/gemini-1.5-flash-latest",
+        )
+        self.assertEqual(
+            _normalize_config_text("   ", default="gemini-1.5-flash"),
+            "gemini-1.5-flash",
+        )
+
+    @override_settings(
+        AI_FEATURES_ENABLED=True,
+        AI_PROVIDER="gemini",
+        GEMINI_MODEL='  "models/gemini-1.5-flash-latest"  ',
+        GEMINI_API_KEY="test-key",
+    )
+    def test_startup_diagnostics_log_resolved_model(self):
+        with self.assertLogs("siteguard.runtime", level="INFO") as captured:
+            log_ai_startup_diagnostics()
+
+        combined_output = "\n".join(captured.output)
+        self.assertIn("AI startup diagnostics:", combined_output)
+        self.assertIn("AI_FEATURES_ENABLED=True", combined_output)
+        self.assertIn("AI_PROVIDER=gemini", combined_output)
+        self.assertIn("GEMINI_MODEL=models/gemini-1.5-flash-latest", combined_output)
+        self.assertIn("GEMINI_API_KEY_PRESENT=True", combined_output)
+
+
+class SessionConfigurationDiagnosticsTests(TestCase):
+    @override_settings(
+        SESSION_ENGINE="django.contrib.sessions.backends.signed_cookies",
+        SESSION_COOKIE_AGE=604800,
+        SESSION_COOKIE_SECURE=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+        SESSION_SAVE_EVERY_REQUEST=True,
+        SESSION_EXPIRE_AT_BROWSER_CLOSE=False,
+        CSRF_COOKIE_SECURE=True,
+        CSRF_COOKIE_SAMESITE="Lax",
+        SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https"),
+        USE_X_FORWARDED_HOST=True,
+    )
+    def test_session_startup_diagnostics_log_runtime_configuration(self):
+        with self.assertLogs("siteguard.runtime", level="INFO") as captured:
+            log_session_startup_diagnostics()
+
+        combined_output = "\n".join(captured.output)
+        self.assertIn("Session startup diagnostics:", combined_output)
+        self.assertIn("engine=django.contrib.sessions.backends.signed_cookies", combined_output)
+        self.assertIn("cookie_age=604800", combined_output)
+        self.assertIn("secure=True", combined_output)
+        self.assertIn("proxy_ssl_header=('HTTP_X_FORWARDED_PROTO', 'https')", combined_output)
+        self.assertIn("use_x_forwarded_host=True", combined_output)
+
+
+class TestAIProviderCommandTests(TestCase):
+    @override_settings(
+        AI_FEATURES_ENABLED=True,
+        AI_PROVIDER="gemini",
+        GEMINI_API_KEY="test-key",
+        GEMINI_MODEL='models/gemini-1.5-flash-latest',
+    )
+    @patch("monitor.ai.providers.gemini_provider.genai")
+    def test_test_ai_provider_command_reports_success(self, mock_genai):
+        sdk_model = Mock()
+        sdk_model.generate_content.return_value = Mock(text=(
+            '{"summary":"Self-test OK","suggested_fixes":[],"trends":[],"frequent_issues":[],"likely_causes":[]}'
+        ))
+        mock_genai.GenerativeModel.return_value = sdk_model
+        mock_genai.types.GenerationConfig.return_value = Mock()
+
+        stdout = io.StringIO()
+        call_command("test_ai_provider", stdout=stdout)
+        output = stdout.getvalue()
+
+        self.assertIn("Testing AI provider configuration...", output)
+        self.assertIn("Resolved Gemini model: models/gemini-1.5-flash-latest", output)
+        self.assertIn("Gemini API key configured: True", output)
+        self.assertIn("AI provider self-test passed.", output)
+        self.assertIn("Summary: Self-test OK", output)
+
+    @override_settings(
+        AI_FEATURES_ENABLED=True,
+        AI_PROVIDER="gemini",
+        GEMINI_API_KEY="test-key",
+        GEMINI_MODEL='models/gemini-1.5-flash-latest',
+    )
+    @patch("monitor.ai.providers.gemini_provider.genai")
+    def test_test_ai_provider_command_reports_available_models_when_model_unavailable(self, mock_genai):
+        sdk_model = Mock()
+        error = Exception("404 error")
+        error.code = 404
+        sdk_model.generate_content.side_effect = error
+        mock_genai.GenerativeModel.return_value = sdk_model
+        mock_genai.types.GenerationConfig.return_value = Mock()
+        available_model = Mock()
+        available_model.name = "models/gemini-1.5-flash"
+        available_model.supported_generation_methods = ["generateContent"]
+        mock_genai.list_models.return_value = [available_model]
+
+        stdout = io.StringIO()
+        call_command("test_ai_provider", stdout=stdout)
+        output = stdout.getvalue()
+
+        self.assertIn("Provider unavailable: Gemini model models/gemini-1.5-flash-latest is unavailable.", output)
+        self.assertIn("Configured model: models/gemini-1.5-flash-latest", output)
+        self.assertIn("Resolved model: models/gemini-1.5-flash-latest", output)
+        self.assertIn("Suggested model: models/gemini-1.5-flash", output)
+        self.assertIn("Available Gemini models:", output)
+        self.assertIn("models/gemini-1.5-flash", output)
 
     def test_analyze_domain_rejects_private_or_invalid_hosts(self):
         invalid = analyze_domain("localhost")

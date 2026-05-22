@@ -118,6 +118,19 @@
               {% endfor %}
             </div>
 
+            <div class="form-check mb-4">
+              <input
+                type="checkbox"
+                name="remember_me"
+                id="{{ form.remember_me.id_for_label }}"
+                class="form-check-input"
+                checked
+              />
+              <label class="form-check-label text-white-50" for="{{ form.remember_me.id_for_label }}">
+                Keep me signed in
+              </label>
+            </div>
+
             <button
               type="submit"
               class="btn-auth-primary w-100 mb-4"

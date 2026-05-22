@@ -1,0 +1,289 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Operational Health | SiteGuard</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+    <link rel="shortcut icon" href="/static/favicon.svg" />
+    <link rel="stylesheet" href="{% static 'css/style.css' %}" />
+  </head>
+  <body>
+    <div class="dashboard-layout">
+      {% include "monitor/partials/app_sidebar.html" with active_page="operations_dashboard" %}
+
+      <main class="main-content">
+        {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search incidents, alerts, logs..." %}
+
+        <div class="content-wrapper">
+          <div class="ops-page-stack">
+            <section class="dash-panel">
+              <div class="ops-page-header">
+                <div>
+                  <h2 class="page-title">Operational Health</h2>
+                  <p class="page-subtitle">
+                    Production-safe internal snapshot built from configuration and persisted monitoring data.
+                  </p>
+                </div>
+                <div class="ops-header-meta">
+                  <span class="utility-chip font-mono">{{ release_metadata.environment_name }}</span>
+                  <span class="utility-chip font-mono">v{{ release_metadata.app_version }}</span>
+                  <span class="utility-chip font-mono">{{ release_metadata.git_commit }}</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="stats-grid ops-summary-grid">
+              {% for metric in summary_metrics %}
+              <div class="stat-card ops-metric-card">
+                <div class="ops-metric-card-body">
+                  <span class="panel-label">{{ metric.label }}</span>
+                  <span class="stat-value">{{ metric.value }}</span>
+                </div>
+                <div class="ops-metric-card-footer">
+                  <span class="status-badge {{ metric.badge_class }} ops-metric-detail">{{ metric.detail }}</span>
+                </div>
+              </div>
+              {% endfor %}
+            </section>
+
+            <section class="dash-panel">
+              <div class="ops-section-head">
+                <div>
+                  <h5 class="panel-title mb-1">Core Services</h5>
+                  <p class="panel-subtitle mb-0">Read-only health probes for critical runtime dependencies.</p>
+                </div>
+              </div>
+              <div class="ops-health-grid">
+                {% for card in component_health_cards %}
+                <article class="ops-health-card">
+                  <div class="ops-health-card-head">
+                    <div class="incident-icon {{ card.icon_classes }}">
+                      <i data-lucide="{{ card.icon }}"></i>
+                    </div>
+                    <div class="min-width-0">
+                      <span class="panel-label">{{ card.label }}</span>
+                      <h6 class="ops-health-title">{{ card.summary }}</h6>
+                    </div>
+                  </div>
+                  <div class="ops-health-card-body">
+                    <span class="status-badge {{ card.badge_class }}">{{ card.state|upper }}</span>
+                    <p class="panel-subtitle mb-0">{{ card.detail }}</p>
+                  </div>
+                </article>
+                {% endfor %}
+              </div>
+            </section>
+
+            <section class="ops-two-column">
+              <div class="dash-panel">
+                <div class="ops-section-head">
+                  <div>
+                    <h5 class="panel-title mb-1">Uptime Metrics</h5>
+                    <p class="panel-subtitle mb-0">Availability computed from recorded monitor runs only.</p>
+                  </div>
+                </div>
+                <div class="ops-list-grid">
+                  {% for metric in uptime_metrics %}
+                  <div class="ops-list-card">
+                    <div class="ops-list-card-head">
+                      <div>
+                        <span class="panel-label">{{ metric.label }}</span>
+                        <h6 class="ops-list-value">{{ metric.value }}</h6>
+                      </div>
+                      <span class="status-badge {{ metric.badge_class }} ops-list-chip">Window</span>
+                    </div>
+                    <p class="panel-subtitle mb-0">{{ metric.detail }}</p>
+                  </div>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <div class="dash-panel">
+                <div class="ops-section-head">
+                  <div>
+                    <h5 class="panel-title mb-1">Latency Metrics</h5>
+                    <p class="panel-subtitle mb-0">Successful check latency across recent execution windows.</p>
+                  </div>
+                </div>
+                <div class="ops-list-grid">
+                  {% for metric in latency_metrics %}
+                  <div class="ops-list-card">
+                    <div class="ops-list-card-head">
+                      <div>
+                        <span class="panel-label">{{ metric.label }}</span>
+                        <h6 class="ops-list-value">{{ metric.value }}</h6>
+                      </div>
+                      <span class="status-badge {{ metric.badge_class }} ops-list-chip">Latency</span>
+                    </div>
+                    <p class="panel-subtitle mb-0">{{ metric.detail }}</p>
+                  </div>
+                  {% endfor %}
+                </div>
+              </div>
+            </section>
+
+            <section class="ops-two-column">
+              <div class="dash-panel">
+                <div class="ops-section-head">
+                  <div>
+                    <h5 class="panel-title mb-1">Release Metadata</h5>
+                    <p class="panel-subtitle mb-0">Deployment identity for debugging, rollback, and release verification.</p>
+                  </div>
+                </div>
+                <div class="ops-kv-grid">
+                  <div class="ops-kv-card">
+                    <span class="panel-label">App Version</span>
+                    <strong class="font-mono">{{ release_metadata.app_version }}</strong>
+                  </div>
+                  <div class="ops-kv-card">
+                    <span class="panel-label">Git Commit</span>
+                    <strong class="font-mono">{{ release_metadata.git_commit }}</strong>
+                  </div>
+                  <div class="ops-kv-card">
+                    <span class="panel-label">Environment</span>
+                    <strong>{{ release_metadata.environment_name }}</strong>
+                  </div>
+                  <div class="ops-kv-card">
+                    <span class="panel-label">Settings Module</span>
+                    <strong class="font-mono">{{ release_metadata.settings_module }}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div class="dash-panel">
+                <div class="ops-section-head">
+                  <div>
+                    <h5 class="panel-title mb-1">Latest Email Send Result</h5>
+                    <p class="panel-subtitle mb-0">Most recent alert-delivery outcome recorded by the application.</p>
+                  </div>
+                </div>
+                {% if latest_email_result %}
+                <div class="ops-email-card">
+                  <div class="d-flex align-items-start justify-content-between gap-3">
+                    <div>
+                      <span class="panel-label">{{ latest_email_result.website }}</span>
+                      <h6 class="ops-health-title mb-1">{{ latest_email_result.recipient }}</h6>
+                    </div>
+                    <span class="status-badge {{ latest_email_result.badge_class }}">{{ latest_email_result.status }}</span>
+                  </div>
+                  <p class="panel-subtitle mb-2">{{ latest_email_result.created_at|date:"Y-m-d H:i" }}</p>
+                  <p class="text-light mb-0">{{ latest_email_result.message|truncatechars:180 }}</p>
+                </div>
+                {% else %}
+                <div class="empty-state ops-empty-state">
+                  <i data-lucide="mail"></i>
+                  <h6>No email sends recorded</h6>
+                  <p class="text-sm mb-0">Alert delivery activity will appear here after the first email-backed alert is generated.</p>
+                </div>
+                {% endif %}
+              </div>
+            </section>
+
+            <section class="dash-panel p-0 overflow-hidden">
+              <div class="ops-table-head">
+                <div>
+                  <h5 class="panel-title m-0">Recent Monitor Execution History</h5>
+                  <p class="panel-subtitle mt-1 m-0">Latest monitor runs across all monitored websites.</p>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="table custom-table">
+                  <thead>
+                    <tr>
+                      <th>Website</th>
+                      <th>Account</th>
+                      <th>Status</th>
+                      <th>Latency</th>
+                      <th class="text-end">Checked At</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% if recent_monitor_history %}
+                    {% for log in recent_monitor_history %}
+                    <tr class="activity-row">
+                      <td class="font-mono text-light fw-medium">{{ log.display_domain }}</td>
+                      <td class="text-light opacity-75">{{ log.website.user.username }}</td>
+                      <td>
+                        <span class="status-badge {% if log.resolved_status == 'UP' %}badge-up{% elif log.resolved_status == 'SLOW' %}badge-slow{% else %}badge-down{% endif %}">
+                          {{ log.resolved_status }}
+                        </span>
+                      </td>
+                      <td class="text-light opacity-75">{{ log.response_time_display }}</td>
+                      <td class="text-light opacity-75 font-mono text-end">{{ log.checked_at|date:"Y-m-d H:i" }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% else %}
+                    <tr>
+                      <td colspan="5">
+                        <div class="empty-state ops-empty-state">
+                          <i data-lucide="activity"></i>
+                          <h6>No monitor history yet</h6>
+                          <p class="text-sm mb-0">Once the scheduler starts writing monitor logs, execution history will appear here.</p>
+                        </div>
+                      </td>
+                    </tr>
+                    {% endif %}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="dash-panel">
+              <div class="ops-section-head">
+                <div>
+                  <h5 class="panel-title mb-1">Recent Exception Summaries</h5>
+                  <p class="panel-subtitle mb-0">Latest parsed exceptions surfaced from uploaded logs and analyzer runs.</p>
+                </div>
+              </div>
+              {% if recent_exceptions %}
+              <div class="ops-exception-list">
+                {% for error in recent_exceptions %}
+                <article class="ops-exception-card">
+                  <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+                    <div>
+                      <h6 class="ops-health-title mb-1">{{ error.error_type }}</h6>
+                      <p class="panel-subtitle mb-0">
+                        {{ error.uploaded_log.user.username }} · {{ error.uploaded_log.filename }} · {{ error.uploaded_log.uploaded_at|date:"Y-m-d H:i" }}
+                      </p>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                      <span class="status-badge {{ error.category_badge_class }}">{{ error.category_label }}</span>
+                      <span class="status-badge {{ error.severity_badge_class }}">{{ error.severity_label }}</span>
+                    </div>
+                  </div>
+                  <div class="ops-exception-meta">
+                    <span class="utility-chip font-mono">{{ error.line_range_display }}</span>
+                    <span class="utility-chip font-mono">{{ error.count }} occurrences</span>
+                  </div>
+                  <p class="text-light mb-0">{{ error.raw_line|truncatechars:180 }}</p>
+                </article>
+                {% endfor %}
+              </div>
+              {% else %}
+              <div class="empty-state ops-empty-state">
+                <i data-lucide="bug"></i>
+                <h6>No parsed exceptions available</h6>
+                <p class="text-sm mb-0">Upload operational logs in the Error Analyzer to populate exception summaries here.</p>
+              </div>
+              {% endif %}
+            </section>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{% static 'js/script.js' %}"></script>
+  </body>
+</html>

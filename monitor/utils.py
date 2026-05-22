@@ -11,8 +11,8 @@ from urllib.parse import quote, unquote, urlparse
 import requests
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db.models import Q
-from django.db import transaction
+from django.db.models import Count, Q
+from django.db import IntegrityError, transaction
 from django.urls import reverse
 from django.utils import timezone
 
@@ -494,10 +494,15 @@ def get_resolved_media_url(file_field, *, log_label="media"):
 
 def get_user_account_snapshot(user):
     profile = get_or_create_user_profile(user)
-    websites_qs = Website.objects.filter(user=user)
-    incidents_qs = Incident.objects.filter(website__user=user)
-    alerts_qs = Alert.objects.filter(website__user=user)
     avatar_url = get_resolved_media_url(getattr(profile, "avatar", None), log_label="profile_avatar")
+    incident_counts = Incident.objects.filter(website__user=user).aggregate(
+        total=Count("id"),
+        resolved=Count("id", filter=Q(is_resolved=True)),
+    )
+    alert_counts = Alert.objects.filter(website__user=user).aggregate(
+        total=Count("id"),
+        active=Count("id", filter=Q(is_read=False)),
+    )
 
     return {
         'profile': profile,
@@ -507,11 +512,11 @@ def get_user_account_snapshot(user):
         'member_since': user.date_joined,
         'last_login': user.last_login,
         'account_status': 'Active' if user.is_active else 'Inactive',
-        'monitored_sites_count': websites_qs.count(),
-        'resolved_incidents_count': incidents_qs.filter(is_resolved=True).count(),
-        'total_incidents_count': incidents_qs.count(),
-        'total_alerts_count': alerts_qs.count(),
-        'active_alerts_count': alerts_qs.filter(is_read=False).count(),
+        'monitored_sites_count': Website.objects.filter(user=user).count(),
+        'resolved_incidents_count': incident_counts["resolved"] or 0,
+        'total_incidents_count': incident_counts["total"] or 0,
+        'total_alerts_count': alert_counts["total"] or 0,
+        'active_alerts_count': alert_counts["active"] or 0,
     }
 
 
@@ -1333,7 +1338,7 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
     else:
         active_alert_filters['created_at__gte'] = recent_cutoff
 
-    alert = Alert.objects.filter(**active_alert_filters).order_by('-created_at', '-id').first()
+    alert = Alert.objects.select_for_update().filter(**active_alert_filters).order_by('-created_at', '-id').first()
     reused_existing_alert = alert is not None
 
     if (
@@ -1342,7 +1347,7 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
         and alert.message == message
     ):
         if response_time is not None and alert.response_time != response_time:
-            alert.response_time = response_time
+            alert.response_time = get_numeric_response_time(response_time, default=None)
             alert.save(update_fields=['response_time'])
         create_notification_from_alert(alert)
         return alert
@@ -1462,7 +1467,7 @@ def cleanup_monitoring_state(user=None):
                 alert.is_read,
             )
             if (
-            alert.status in {Alert.STATUS_SENT, Alert.STATUS_PENDING}
+                alert.status in {Alert.STATUS_SENT, Alert.STATUS_PENDING}
                 and not alert.is_read
                 and (alert_key + (alert.message, alert.sent_to)) in alert_seen
             ):
@@ -1525,7 +1530,7 @@ def resolve_incident(incident, current_log, create_recovery_alert=False, message
 def sync_incident_state(website, previous_log, current_log, *, status_code=None, reason=''):
     previous_status = get_site_status(previous_log)
     current_status = get_site_status(current_log)
-    active_incidents = Incident.objects.filter(
+    active_incidents = Incident.objects.select_for_update().filter(
         website=website,
         is_resolved=False,
     ).exclude(incident_type=Incident.TYPE_SSL).order_by('-started_at')
@@ -1551,14 +1556,27 @@ def sync_incident_state(website, previous_log, current_log, *, status_code=None,
         )
 
     if active_incident is None:
-        active_incident = Incident.objects.create(
-            website=website,
-            title=get_incident_title(current_status),
-            incident_type=incident_type,
-            status=current_status,
-            started_at=current_log.checked_at,
-            latest_response_time=current_log.response_time,
-        )
+        try:
+            active_incident = Incident.objects.create(
+                website=website,
+                title=get_incident_title(current_status),
+                incident_type=incident_type,
+                status=current_status,
+                started_at=current_log.checked_at,
+                latest_response_time=current_log.response_time,
+            )
+        except IntegrityError:
+            active_incident = active_incidents.filter(incident_type=incident_type).first()
+
+    if active_incident is None:
+        return
+
+    is_new_incident = (
+        active_incident.created_at == active_incident.updated_at
+        and active_incident.started_at == current_log.checked_at
+    )
+
+    if is_new_incident:
         detail = build_monitoring_detail(
             website=website,
             status=current_status,
@@ -1609,7 +1627,7 @@ def sync_ssl_state(website, current_log, ssl_status, *, status_code=None, reason
         return
 
     if ssl_status == "Invalid":
-        active_non_ssl_incidents = Incident.objects.filter(
+        active_non_ssl_incidents = Incident.objects.select_for_update().filter(
             website=website,
             is_resolved=False,
         ).exclude(incident_type=Incident.TYPE_SSL).order_by('-started_at')
@@ -1622,7 +1640,7 @@ def sync_ssl_state(website, current_log, ssl_status, *, status_code=None, reason
                 status_code=status_code,
             )
 
-    active_ssl_incident = Incident.objects.filter(
+    active_ssl_incident = Incident.objects.select_for_update().filter(
         website=website,
         incident_type=Incident.TYPE_SSL,
         is_resolved=False,
@@ -1650,14 +1668,31 @@ def sync_ssl_state(website, current_log, ssl_status, *, status_code=None, reason
         return
 
     if active_ssl_incident is None:
-        active_ssl_incident = Incident.objects.create(
-            website=website,
-            title="SSL Certificate Warning",
-            incident_type=Incident.TYPE_SSL,
-            status=Incident.STATUS_SLOW,
-            started_at=current_log.checked_at,
-            latest_response_time=current_log.response_time,
-        )
+        try:
+            active_ssl_incident = Incident.objects.create(
+                website=website,
+                title="SSL Certificate Warning",
+                incident_type=Incident.TYPE_SSL,
+                status=Incident.STATUS_SLOW,
+                started_at=current_log.checked_at,
+                latest_response_time=current_log.response_time,
+            )
+        except IntegrityError:
+            active_ssl_incident = Incident.objects.select_for_update().filter(
+                website=website,
+                incident_type=Incident.TYPE_SSL,
+                is_resolved=False,
+            ).order_by('-started_at').first()
+
+    if active_ssl_incident is None:
+        return
+
+    is_new_incident = (
+        active_ssl_incident.created_at == active_ssl_incident.updated_at
+        and active_ssl_incident.started_at == current_log.checked_at
+    )
+
+    if is_new_incident:
         create_incident_event(
             active_ssl_incident,
             IncidentEvent.TYPE_DETECTED,
@@ -1699,7 +1734,6 @@ def run_single_check(website, timeout=5):
     if not url.startswith("http"):
         url = "https://" + url
 
-    previous_log = MonitorLog.objects.filter(website=website).order_by('-checked_at', '-id').first()
     ssl_status = None
     status_code = None
     reason = ''
@@ -1731,8 +1765,11 @@ def run_single_check(website, timeout=5):
             status=status,
             response_time=round(response_time_ms, 2),
         )
-        sync_incident_state(website, previous_log, log, status_code=status_code, reason=reason)
-        sync_ssl_state(website, log, ssl_status, status_code=status_code, reason=ssl_reason)
+        with transaction.atomic():
+            locked_website = Website.objects.select_for_update().select_related("user").get(pk=website.pk)
+            previous_log = MonitorLog.objects.filter(website=locked_website).exclude(pk=log.pk).order_by('-checked_at', '-id').first()
+            sync_incident_state(locked_website, previous_log, log, status_code=status_code, reason=reason)
+            sync_ssl_state(locked_website, log, ssl_status, status_code=status_code, reason=ssl_reason)
         return log, response
     except Exception as exc:
         reason = _describe_exception_reason(exc, timeout)
@@ -1744,9 +1781,12 @@ def run_single_check(website, timeout=5):
             status=MonitorLog.STATUS_DOWN,
             response_time=0,
         )
-        if ssl_status != "Invalid":
-            sync_incident_state(website, previous_log, log, status_code=status_code, reason=reason)
-        sync_ssl_state(website, log, ssl_status, status_code=status_code, reason=ssl_reason)
+        with transaction.atomic():
+            locked_website = Website.objects.select_for_update().select_related("user").get(pk=website.pk)
+            previous_log = MonitorLog.objects.filter(website=locked_website).exclude(pk=log.pk).order_by('-checked_at', '-id').first()
+            if ssl_status != "Invalid":
+                sync_incident_state(locked_website, previous_log, log, status_code=status_code, reason=reason)
+            sync_ssl_state(locked_website, log, ssl_status, status_code=status_code, reason=ssl_reason)
         return log, None
 
 

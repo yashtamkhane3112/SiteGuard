@@ -1780,7 +1780,33 @@ def login(request):
                 password=form.cleaned_data['password'],
             )
             if user is not None:
+                remember_me = bool(form.cleaned_data.get('remember_me', True))
                 auth_login(request, user)
+                request.session.set_expiry(
+                    django_settings.SESSION_COOKIE_AGE if remember_me else 0
+                )
+                logger.info(
+                    "User login established session.",
+                    extra={
+                        "auth_context": {
+                            "user_id": user.id,
+                            "username": user.get_username(),
+                            "remember_me": remember_me,
+                            "session_engine": getattr(django_settings, "SESSION_ENGINE", ""),
+                            "session_cookie_age": int(getattr(django_settings, "SESSION_COOKIE_AGE", 0) or 0),
+                            "session_expiry_seconds": request.session.get_expiry_age(),
+                            "session_expire_at_browser_close": request.session.get_expire_at_browser_close(),
+                            "session_cookie_secure": bool(getattr(django_settings, "SESSION_COOKIE_SECURE", False)),
+                            "session_cookie_samesite": getattr(django_settings, "SESSION_COOKIE_SAMESITE", ""),
+                            "csrf_cookie_secure": bool(getattr(django_settings, "CSRF_COOKIE_SECURE", False)),
+                            "request_is_secure": request.is_secure(),
+                            "request_scheme": request.scheme,
+                            "forwarded_proto": request.META.get("HTTP_X_FORWARDED_PROTO", ""),
+                            "forwarded_host": request.META.get("HTTP_X_FORWARDED_HOST", ""),
+                            "host": request.get_host(),
+                        }
+                    },
+                )
                 return redirect('dashboard')
             form.add_error(None, 'Invalid username or password.')
 

@@ -44,6 +44,14 @@
 - `GEMINI_MODEL`
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
+- `SESSION_ENGINE`
+- `SESSION_COOKIE_AGE`
+- `SESSION_COOKIE_SECURE`
+- `SESSION_COOKIE_SAMESITE`
+- `SESSION_SAVE_EVERY_REQUEST`
+- `SESSION_EXPIRE_AT_BROWSER_CLOSE`
+- `CSRF_COOKIE_SECURE`
+- `CSRF_COOKIE_SAMESITE`
 - `AI_REQUEST_TIMEOUT`
 - `AI_MAX_TOKENS`
 - `AI_RETRY_ATTEMPTS`
@@ -59,11 +67,17 @@ Notes:
 - Production should use the Brevo HTTPS API backend and `BREVO_API_KEY`.
 - Password reset emails use the active local request host during `DEBUG=True` development flows, so local forgot-password links stay on `127.0.0.1`, `localhost`, or the host you are actively using.
 - Production password reset and operational email links use `APP_BASE_URL` / `CANONICAL_BASE_URL`, which must stay HTTPS on Render.
+- Render terminates HTTPS at the proxy. Keep `SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https")` and `USE_X_FORWARDED_HOST=True` so Django treats forwarded requests as secure.
+- Production session persistence should not depend on local SQLite-backed server-side sessions on Render. Prefer `SESSION_ENGINE=django.contrib.sessions.backends.signed_cookies` unless you move sessions to a persistent external session store.
+- Keep `SECRET_KEY` stable across deploys. Rotating it will invalidate all signed sessions immediately.
+- `SESSION_COOKIE_AGE` defaults to 14 days and `SESSION_SAVE_EVERY_REQUEST=True` refreshes active sessions without weakening HTTPS-only cookie behavior in production.
 - AI operational intelligence is disabled by default. Set `AI_FEATURES_ENABLED=True`, `AI_PROVIDER=gemini`, and `GEMINI_API_KEY` on the web service to enable on-demand report, error, and incident analysis.
 - Gemini is the default provider and defaults to `GEMINI_MODEL=gemini-1.5-flash`.
 - Gemini calls use the official `google-generativeai` Python SDK with `configure(api_key=...)` and `GenerativeModel(...)`.
 - Gemini transient quota/service failures such as `429`, `500`, `502`, `503`, and `504` are retried with `AI_RETRY_ATTEMPTS` and `AI_RETRY_BACKOFF_SECONDS`.
 - Gemini auth failures, unavailable models, malformed responses, and timeouts are handled gracefully and cached as failed AI generation without breaking monitoring or report pages.
+- Startup logs now emit AI diagnostics with `AI_FEATURES_ENABLED`, `AI_PROVIDER`, resolved `GEMINI_MODEL`, and whether the Gemini API key is present.
+- Run `python manage.py test_ai_provider` to verify the active provider configuration and execute a minimal AI self-test.
 - OpenAI remains supported with `AI_PROVIDER=openai`, `OPENAI_API_KEY`, and `OPENAI_MODEL`.
 - AI generation is read-only and cached. The cron job does not need AI provider credentials because monitor execution must not call AI providers.
 

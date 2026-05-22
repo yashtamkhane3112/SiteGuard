@@ -22,7 +22,6 @@ from django.db import connection
 cursor = connection.cursor()
 cursor.execute(\"SELECT name FROM sqlite_master WHERE type='table' AND name='auth_user';\")
 result = cursor.fetchone()
-print(result)
 assert result is not None, 'auth_user table missing'
 "
 

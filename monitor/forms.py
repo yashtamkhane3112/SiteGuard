@@ -20,6 +20,7 @@ password_reset_logger = logging.getLogger("siteguard.email")
 class LoginForm(forms.Form):
     username = forms.CharField(max_length=150)
     password = forms.CharField(strip=False, widget=forms.PasswordInput)
+    remember_me = forms.BooleanField(required=False, initial=True)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -37,6 +38,11 @@ class LoginForm(forms.Form):
                 "placeholder": "Enter your password",
                 "autocomplete": "current-password",
                 "id": "id_password",
+            }
+        )
+        self.fields["remember_me"].widget.attrs.update(
+            {
+                "class": "form-check-input",
             }
         )
 

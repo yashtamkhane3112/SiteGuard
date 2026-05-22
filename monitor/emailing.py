@@ -28,6 +28,22 @@ class BrevoAPITransportError(Exception):
     pass
 
 
+def _normalize_recipients(recipients):
+    normalized = []
+    seen = set()
+    for recipient in recipients or []:
+        raw_value = (recipient or "").strip()
+        if not raw_value:
+            continue
+        _name, email = parseaddr(raw_value)
+        dedupe_key = (email or raw_value).strip().lower()
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        normalized.append(raw_value)
+    return normalized
+
+
 def _get_email_backend():
     return (getattr(settings, "EMAIL_BACKEND", "") or "").strip()
 
@@ -98,8 +114,6 @@ def _get_email_provider():
         return "brevo_api"
     if _using_smtp_fallback():
         host = (getattr(settings, "EMAIL_HOST", "") or "").strip().lower()
-        if "brevo" in host:
-            return "brevo_smtp"
         if "gmail" in host or "googlemail" in host:
             return "gmail_smtp"
         if not host:
@@ -131,7 +145,7 @@ def _send_via_brevo_api(*, subject, text_body, html_body, recipients, from_email
         recipients=recipients,
         from_email=from_email,
     )
-    logger.info(
+    logger.debug(
         "Brevo API request starting.",
         extra={
             "email_context": {
@@ -167,7 +181,7 @@ def _send_via_brevo_api(*, subject, text_body, html_body, recipients, from_email
         ) from exc
 
     response_payload = response.json() if response.content else {}
-    logger.info(
+    logger.debug(
         "Brevo API response received.",
         extra={
             "email_context": {
@@ -305,8 +319,6 @@ def get_email_diagnostics():
         "configured": _email_transport_is_configured(),
         "host_user_present": bool(getattr(settings, "EMAIL_HOST_USER", "")),
         "host_password_present": bool(getattr(settings, "EMAIL_HOST_PASSWORD", "")),
-        "brevo_login_present": bool(getattr(settings, "BREVO_SMTP_LOGIN", "")),
-        "brevo_password_present": bool(getattr(settings, "BREVO_SMTP_PASSWORD", "")),
         "smtp_login_source": "email_host_user",
         "smtp_password_source": "email_host_password",
         "sender_email": get_sender_email_address(),
@@ -327,9 +339,9 @@ def send_siteguard_email(
     log_context=None,
     raise_on_error=False,
 ):
-    recipient_list = [recipient.strip() for recipient in (recipients or []) if recipient and recipient.strip()]
+    recipient_list = _normalize_recipients(recipients)
     email_diagnostics = get_email_diagnostics()
-    logger.info(
+    logger.debug(
         "send_siteguard_email called.",
         extra={
             "email_context": {
@@ -386,7 +398,7 @@ def send_siteguard_email(
                 message.attach_alternative(html_body, "text/html")
             message.send(fail_silently=False)
             message_id = ""
-        logger.info(
+        logger.debug(
             "Email sent successfully.",
             extra={
                 "email_context": {

@@ -18,6 +18,7 @@ from django.conf import settings
 from django.contrib import admin
 from django.http import Http404
 from django.urls import include, path, re_path
+from django.views.generic.base import RedirectView
 from django.views.static import serve
 
 handler404 = 'monitor.views.custom_404'
@@ -32,6 +33,7 @@ def serve_media(request, path):
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('favicon.ico', RedirectView.as_view(url=f"{settings.STATIC_URL}favicon.svg", permanent=True)),
     path('', include('monitor.urls')),
 ]
 
