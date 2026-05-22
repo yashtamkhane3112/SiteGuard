@@ -2,8 +2,11 @@ import os
 import re
 from urllib.parse import urlsplit
 
+from cloudinary_storage.storage import RawMediaCloudinaryStorage
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.core.files.storage import storages
 from django.core.files.utils import validate_file_name
 from django.core.validators import URLValidator
 from django.db import models
@@ -17,6 +20,13 @@ def uploaded_log_file_path(instance, filename):
     safe_name = validate_file_name(os.path.basename(filename or 'upload.log'))
     timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
     return f'error_logs/user_{instance.user_id}/{timestamp}_{safe_name}'
+
+
+def get_uploaded_log_storage():
+    default_backend = (getattr(settings, 'STORAGES', {}) or {}).get('default', {}).get('BACKEND', '')
+    if default_backend == 'cloudinary_storage.storage.MediaCloudinaryStorage':
+        return RawMediaCloudinaryStorage()
+    return storages['default']
 
 
 STATUS_TONE_HEALTHY = 'healthy'
@@ -622,7 +632,7 @@ class UploadedLog(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='uploaded_logs')
     filename = models.CharField(max_length=255)
     uploaded_at = models.DateTimeField(auto_now_add=True)
-    file = models.FileField(upload_to=uploaded_log_file_path)
+    file = models.FileField(upload_to=uploaded_log_file_path, storage=get_uploaded_log_storage)
     processed = models.BooleanField(default=False)
 
     class Meta:

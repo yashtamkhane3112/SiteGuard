@@ -2047,16 +2047,38 @@ def weekly_reports(request, week_key=None):
 def error_log_upload(request):
     if request.method == 'POST':
         form = UploadedLogForm(request.POST, request.FILES)
+        handled_upload_failure = False
         if form.is_valid():
             uploaded_log = form.save(commit=False)
             uploaded_log.user = request.user
             uploaded_log.filename = form.cleaned_data['file'].name
             uploaded_log.processed = False
-            uploaded_log.save()
-            process_uploaded_log(uploaded_log)
-            messages.success(request, f'Processed {uploaded_log.filename} successfully.')
-            return redirect('error_log_results', upload_id=uploaded_log.id)
-        messages.error(request, 'Upload failed. Review the selected file and try again.')
+            try:
+                uploaded_log.save()
+                process_uploaded_log(uploaded_log)
+            except Exception:
+                logger.exception(
+                    "Error analyzer upload failed.",
+                    extra={
+                        "error_analyzer_upload": {
+                            "user_id": request.user.id,
+                            "filename": uploaded_log.filename,
+                            "content_type": getattr(form.cleaned_data.get('file'), 'content_type', ''),
+                            "size": getattr(form.cleaned_data.get('file'), 'size', 0),
+                            "storage": uploaded_log.file.storage.__class__.__name__,
+                        }
+                    },
+                )
+                if uploaded_log.pk:
+                    uploaded_log.delete()
+                form.add_error('file', 'The diagnostic file could not be uploaded right now. Please try again.')
+                messages.error(request, 'Upload failed. The diagnostic file could not be stored or analyzed right now.')
+                handled_upload_failure = True
+            else:
+                messages.success(request, f'Processed {uploaded_log.filename} successfully.')
+                return redirect('error_log_results', upload_id=uploaded_log.id)
+        if not handled_upload_failure:
+            messages.error(request, 'Upload failed. Review the selected file and try again.')
     else:
         form = UploadedLogForm()
 

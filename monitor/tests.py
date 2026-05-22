@@ -9,6 +9,7 @@ import smtplib
 from unittest.mock import Mock, patch
 
 import requests
+from cloudinary_storage.storage import RawMediaCloudinaryStorage
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core import mail
@@ -30,7 +31,7 @@ from monitor.ai.providers.base import AIProviderError, AIProviderUnavailable
 from monitor.ai.providers.gemini_provider import GeminiProvider
 from monitor.ai.providers.registry import get_default_provider
 from monitor.ai.services.analysis import generate_report_analysis, get_report_ai_state
-from monitor.models import AIAnalysisCache, Alert, Incident, IncidentEvent, MonitorLog, Notification, ParsedError, UploadedLog, UserProfile, Website
+from monitor.models import AIAnalysisCache, Alert, Incident, IncidentEvent, MonitorLog, Notification, ParsedError, UploadedLog, UserProfile, Website, get_uploaded_log_storage
 from siteguard.settings.base import _normalize_config_text
 from monitor.utils import (
     analyze_domain,
@@ -596,6 +597,122 @@ class ErrorAnalyzerTests(TestCase):
         self.assertTrue(response.context["error_analytics"]["has_data"])
         self.assertContains(response, "Error Analytics")
         self.assertContains(response, "HTTP 404")
+
+    def test_error_log_upload_accepts_log_files_and_attaches_to_record(self):
+        response = self.client.post(
+            reverse("error_log_upload"),
+            {
+                "file": SimpleUploadedFile(
+                    "runtime.log",
+                    b"TimeoutError: upstream timed out\nTimeoutError: upstream timed out\n",
+                    content_type="text/plain",
+                )
+            },
+        )
+
+        uploaded_log = UploadedLog.objects.get(user=self.user, filename="runtime.log")
+        self.assertRedirects(response, reverse("error_log_results", args=[uploaded_log.id]))
+        self.assertTrue(uploaded_log.processed)
+        self.assertTrue(uploaded_log.parsed_errors.exists())
+
+    def test_error_log_upload_accepts_txt_files(self):
+        response = self.client.post(
+            reverse("error_log_upload"),
+            {
+                "file": SimpleUploadedFile(
+                    "runtime.txt",
+                    b"django.db.utils.OperationalError: database is locked\n",
+                    content_type="text/plain",
+                )
+            },
+        )
+
+        uploaded_log = UploadedLog.objects.get(user=self.user, filename="runtime.txt")
+        self.assertRedirects(response, reverse("error_log_results", args=[uploaded_log.id]))
+        self.assertTrue(uploaded_log.processed)
+
+    def test_error_log_upload_accepts_json_diagnostics(self):
+        response = self.client.post(
+            reverse("error_log_upload"),
+            {
+                "file": SimpleUploadedFile(
+                    "runtime.json",
+                    b'{"error":"TimeoutError","message":"upstream timed out"}',
+                    content_type="application/json",
+                )
+            },
+        )
+
+        uploaded_log = UploadedLog.objects.get(user=self.user, filename="runtime.json")
+        self.assertRedirects(response, reverse("error_log_results", args=[uploaded_log.id]))
+        self.assertTrue(uploaded_log.processed)
+
+    def test_error_log_upload_rejects_invalid_binary_payload(self):
+        response = self.client.post(
+            reverse("error_log_upload"),
+            {
+                "file": SimpleUploadedFile(
+                    "payload.exe",
+                    b"MZ\x00\x00binary",
+                    content_type="application/x-msdownload",
+                )
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Only .txt, .log, and .json diagnostic files are supported.")
+        self.assertEqual(UploadedLog.objects.filter(user=self.user).count(), 0)
+
+    @override_settings(
+        STORAGES={
+            "default": {"BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage"},
+            "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+        }
+    )
+    def test_error_log_upload_uses_cloudinary_raw_storage_in_production_mode(self):
+        storage = get_uploaded_log_storage()
+
+        self.assertIsInstance(storage, RawMediaCloudinaryStorage)
+        self.assertEqual(storage.RESOURCE_TYPE, "raw")
+
+    def test_error_log_results_render_after_upload(self):
+        upload_response = self.client.post(
+            reverse("error_log_upload"),
+            {
+                "file": SimpleUploadedFile(
+                    "renderable.log",
+                    b"Traceback (most recent call last):\ndjango.db.utils.OperationalError: database is locked\n",
+                    content_type="text/plain",
+                )
+            },
+        )
+
+        uploaded_log = UploadedLog.objects.get(user=self.user, filename="renderable.log")
+        results_response = self.client.get(reverse("error_log_results", args=[uploaded_log.id]))
+
+        self.assertRedirects(upload_response, reverse("error_log_results", args=[uploaded_log.id]))
+        self.assertEqual(results_response.status_code, 200)
+        self.assertContains(results_response, "renderable.log")
+        self.assertContains(results_response, "OperationalError")
+
+    @patch("monitor.views.process_uploaded_log", side_effect=RuntimeError("cloud storage unavailable"))
+    @patch("monitor.views.logger.exception")
+    def test_error_log_upload_failure_is_handled_gracefully(self, mock_exception, _mock_process):
+        response = self.client.post(
+            reverse("error_log_upload"),
+            {
+                "file": SimpleUploadedFile(
+                    "failed.log",
+                    b"TimeoutError: upstream timed out\n",
+                    content_type="text/plain",
+                )
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "The diagnostic file could not be stored or analyzed right now.")
+        self.assertEqual(UploadedLog.objects.filter(user=self.user, filename="failed.log").count(), 0)
+        mock_exception.assert_called_once()
 
     def test_error_analyzer_results_include_ai_explain_panel(self):
         uploaded_log = UploadedLog.objects.create(

@@ -508,8 +508,23 @@ class DeleteAccountForm(forms.Form):
 
 
 class UploadedLogForm(forms.ModelForm):
-    allowed_extensions = {'.txt', '.log'}
+    allowed_extensions = {'.txt', '.log', '.json'}
     max_file_size = 5 * 1024 * 1024
+    blocked_content_types = {
+        'application/x-dosexec',
+        'application/x-executable',
+        'application/x-msdownload',
+        'application/x-sh',
+    }
+    blocked_magic_prefixes = (
+        b'MZ',
+        b'\x7fELF',
+        b'PK\x03\x04',
+        b'Rar!\x1a\x07',
+        b'\x89PNG\r\n\x1a\n',
+        b'\xff\xd8\xff',
+        b'%PDF',
+    )
 
     class Meta:
         model = UploadedLog
@@ -519,9 +534,9 @@ class UploadedLogForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['file'].widget.attrs.update({
             'class': 'form-control custom-input',
-            'accept': '.txt,.log,text/plain',
+            'accept': '.txt,.log,.json,text/plain,application/json',
         })
-        self.fields['file'].help_text = 'Upload a .txt or .log file up to 5 MB.'
+        self.fields['file'].help_text = 'Upload a .txt, .log, or .json file up to 5 MB.'
 
     def clean_file(self):
         uploaded_file = self.cleaned_data.get('file')
@@ -530,13 +545,23 @@ class UploadedLogForm(forms.ModelForm):
 
         file_name = (uploaded_file.name or '').lower()
         if not any(file_name.endswith(ext) for ext in self.allowed_extensions):
-            raise forms.ValidationError('Only .txt and .log files are supported.')
+            raise forms.ValidationError('Only .txt, .log, and .json diagnostic files are supported.')
 
         if uploaded_file.size > self.max_file_size:
             raise forms.ValidationError('Log files must be 5 MB or smaller.')
 
-        content_type = getattr(uploaded_file, 'content_type', '')
-        if content_type and content_type not in {'text/plain', 'application/octet-stream'}:
-            raise forms.ValidationError('Unsupported file type.')
+        content_type = (getattr(uploaded_file, 'content_type', '') or '').lower()
+        if content_type in self.blocked_content_types:
+            raise forms.ValidationError('Executable files are not supported.')
+
+        header = uploaded_file.read(4096)
+        if hasattr(uploaded_file, 'seek'):
+            uploaded_file.seek(0)
+
+        if b'\x00' in header:
+            raise forms.ValidationError('Binary files are not supported. Upload plain text or JSON diagnostics only.')
+
+        if any(header.startswith(prefix) for prefix in self.blocked_magic_prefixes):
+            raise forms.ValidationError('Unsupported binary file format. Upload plain text or JSON diagnostics only.')
 
         return uploaded_file
