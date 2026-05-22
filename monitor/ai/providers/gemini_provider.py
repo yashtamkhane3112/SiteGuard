@@ -24,25 +24,24 @@ logger = logging.getLogger(__name__)
 TRANSIENT_STATUS_CODES = {429, 500, 502, 503, 504}
 NON_RETRYABLE_STATUS_CODES = {400, 401, 403, 404}
 MODEL_NAME_PATTERN = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]*$')
+RAW_OUTPUT_PREVIEW_LIMIT = 320
+RAW_DEBUG_PREVIEW_LIMIT = 1000
+
+# TODO: Migrate this provider to google.genai once the runtime contract is stable in production.
 
 REQUIRED_AI_KEYS = {
     'summary',
-    'outage_narrative',
-    'availability_interpretation',
-    'latency_interpretation',
     'suggested_fixes',
     'trends',
-    'recurring_patterns',
-    'risk_indicators',
-    'root_cause_hints',
+    'frequent_issues',
+    'likely_causes',
 }
 
 LIST_AI_KEYS = {
     'suggested_fixes',
     'trends',
-    'recurring_patterns',
-    'risk_indicators',
-    'root_cause_hints',
+    'frequent_issues',
+    'likely_causes',
 }
 
 
@@ -54,6 +53,7 @@ class GeminiProvider(BaseAIProvider):
         self.model = self._normalize_text(getattr(settings, 'GEMINI_MODEL', ''), default='gemini-1.5-flash')
         self.timeout = max(int(getattr(settings, 'AI_REQUEST_TIMEOUT', 20) or 20), 1)
         self.max_tokens = max(int(getattr(settings, 'AI_MAX_TOKENS', 900) or 900), 100)
+        self.debug_raw_output = bool(getattr(settings, 'AI_DEBUG_RAW_OUTPUT', False))
         retry_attempts = getattr(settings, 'AI_RETRY_ATTEMPTS', 2)
         retry_backoff_seconds = getattr(settings, 'AI_RETRY_BACKOFF_SECONDS', 0.5)
         self.retry_attempts = max(int(2 if retry_attempts in {'', None} else retry_attempts), 0)
@@ -89,6 +89,7 @@ class GeminiProvider(BaseAIProvider):
         output_text = self._extract_output_text(response)
         if not output_text:
             raise AIProviderError('Gemini response did not include output text.')
+        self._log_output_diagnostics(response, output_text)
 
         return self._parse_json_output(output_text)
 
@@ -133,6 +134,8 @@ class GeminiProvider(BaseAIProvider):
         return genai.types.GenerationConfig(
             response_mime_type='application/json',
             max_output_tokens=self.max_tokens,
+            candidate_count=1,
+            temperature=0,
         )
 
     def _generate_with_retries(self, *, instructions, input_text):
@@ -359,10 +362,21 @@ class GeminiProvider(BaseAIProvider):
         return f'Gemini request failed after {max_attempts} attempt(s).'
 
     def _extract_output_text(self, response):
+        response_type = type(response).__name__
         text = getattr(response, 'text', None)
         if isinstance(text, str) and text.strip():
+            logger.debug(
+                "Gemini text extraction succeeded.",
+                extra={
+                    'provider': self.provider_name,
+                    'response_type': response_type,
+                    'candidate_count': self._safe_candidate_count(response),
+                    'text_extraction_path': 'response.text',
+                },
+            )
             return text.strip()
 
+        candidate_count = self._safe_candidate_count(response)
         chunks = []
         for candidate in getattr(response, 'candidates', []) or []:
             content = self._get_value(candidate, 'content') or {}
@@ -370,60 +384,310 @@ class GeminiProvider(BaseAIProvider):
                 text = self._get_value(part, 'text')
                 if text:
                     chunks.append(text)
-        return ''.join(chunks).strip()
+        extracted = ''.join(chunks).strip()
+        logger.debug(
+            "Gemini text extraction completed.",
+            extra={
+                'provider': self.provider_name,
+                'response_type': response_type,
+                'candidate_count': candidate_count,
+                'text_extraction_path': 'candidates.parts' if extracted else 'none',
+            },
+        )
+        return extracted
+
+    def _log_output_diagnostics(self, response, output_text):
+        logger.debug(
+            "Gemini raw response diagnostics.",
+            extra={
+                'provider': self.provider_name,
+                'response_type': type(response).__name__,
+                'candidate_count': self._safe_candidate_count(response),
+                'extracted_text_length': len(output_text or ''),
+                'raw_output_preview': self._debug_preview(output_text) if self.debug_raw_output else '',
+                'raw_output_debug_enabled': self.debug_raw_output,
+            },
+        )
 
     def _get_value(self, data, key):
         if isinstance(data, dict):
             return data.get(key)
         return getattr(data, key, None)
 
+    def _safe_candidate_count(self, response):
+        candidates = getattr(response, 'candidates', None)
+        if isinstance(candidates, (list, tuple)):
+            return len(candidates)
+        return 0
+
     def _parse_json_output(self, output_text):
-        cleaned_text = self._strip_markdown_fence(output_text)
-        parsed = self._decode_first_json_object(cleaned_text)
+        parsed = self._decode_json_object(output_text)
         if not isinstance(parsed, dict):
             raise AIProviderError('Gemini response did not contain a JSON object.')
         return self._validate_json_object(parsed)
 
-    def _strip_markdown_fence(self, output_text):
-        text = (output_text or '').strip()
-        if not text.startswith('```'):
-            return text
+    def _sanitize_output_text(self, output_text):
+        text = self._normalize_text(output_text)
+        text = text.lstrip('\ufeff')
+        text = text.replace('\r\n', '\n').replace('\r', '\n')
+        return text.strip()
 
-        lines = text.splitlines()
-        if not lines:
-            return text
-        opening = lines[0].strip().lower()
-        if opening not in {'```', '```json'}:
-            return text
-        if len(lines) > 1 and lines[-1].strip() == '```':
-            return '\n'.join(lines[1:-1]).strip()
-        return '\n'.join(lines[1:]).strip()
-
-    def _decode_first_json_object(self, output_text):
-        decoder = json.JSONDecoder()
-        text = (output_text or '').strip()
-        for index, character in enumerate(text):
-            if character != '{':
+    def _decode_json_object(self, output_text):
+        candidate_specs = self._candidate_json_blocks(output_text)
+        parse_errors = []
+        for source, candidate in candidate_specs:
+            cleaned_candidate = self._cleanup_json_candidate(candidate)
+            if not cleaned_candidate:
+                parse_errors.append(f'{source}:empty_candidate')
                 continue
+            parsed = self._try_parse_candidate(cleaned_candidate, source=source, parse_errors=parse_errors)
+            if isinstance(parsed, dict):
+                return parsed
+        self._log_parse_failure(
+            output_text,
+            reason=', '.join(parse_errors) if parse_errors else 'no_json_object_found',
+        )
+        raise AIProviderError('Gemini response was not valid JSON.')
+
+    def _candidate_json_blocks(self, output_text):
+        text = self._sanitize_output_text(output_text)
+        candidates = [('raw', text)]
+
+        fenced_blocks = self._extract_fenced_blocks(text)
+        candidates.extend(('fenced', block) for block in fenced_blocks)
+
+        regex_candidate = self._extract_first_json_by_regex(text)
+        if regex_candidate:
+            candidates.append(('regex_first_object', regex_candidate))
+
+        balanced_candidate = self._extract_largest_balanced_json_block(text)
+        if balanced_candidate:
+            candidates.append(('largest_balanced_block', balanced_candidate))
+
+        repaired_candidate = self._extract_repaired_partial_json_block(text)
+        if repaired_candidate:
+            candidates.append(('repaired_partial_block', repaired_candidate))
+
+        unique_candidates = []
+        seen = set()
+        for source, candidate in candidates:
+            normalized = candidate.strip()
+            key = (source, normalized)
+            if not normalized or key in seen:
+                continue
+            seen.add(key)
+            unique_candidates.append((source, normalized))
+        return unique_candidates
+
+    def _extract_fenced_blocks(self, text):
+        return [
+            match.group(1).strip()
+            for match in re.finditer(r'```(?:json)?\s*([\s\S]*?)```', text, flags=re.IGNORECASE)
+            if match.group(1).strip()
+        ]
+
+    def _extract_first_json_by_regex(self, text):
+        match = re.search(r'\{[\s\S]*?\}', text or '')
+        return match.group(0).strip() if match else ''
+
+    def _extract_largest_balanced_json_block(self, text):
+        largest_block = ''
+        start_index = None
+        depth = 0
+        in_string = False
+        escaped = False
+
+        for index, character in enumerate(text or ''):
+            if escaped:
+                escaped = False
+                continue
+            if character == '\\' and in_string:
+                escaped = True
+                continue
+            if character == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if character == '{':
+                if depth == 0:
+                    start_index = index
+                depth += 1
+            elif character == '}' and depth > 0:
+                depth -= 1
+                if depth == 0 and start_index is not None:
+                    block = text[start_index:index + 1].strip()
+                    if len(block) > len(largest_block):
+                        largest_block = block
+                    start_index = None
+        return largest_block
+
+    def _extract_repaired_partial_json_block(self, text):
+        block, missing_closers = self._scan_partial_json_block(text)
+        if not block:
+            return ''
+        if missing_closers > 0:
+            block = f'{block}{"}" * missing_closers}'
+        return block
+
+    def _scan_partial_json_block(self, text):
+        start_index = None
+        depth = 0
+        in_string = False
+        escaped = False
+
+        for index, character in enumerate(text or ''):
+            if escaped:
+                escaped = False
+                continue
+            if character == '\\' and in_string:
+                escaped = True
+                continue
+            if character == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if character == '{':
+                if depth == 0:
+                    start_index = index
+                depth += 1
+            elif character == '}' and depth > 0:
+                depth -= 1
+
+        if start_index is None:
+            return '', 0
+        return text[start_index:].strip(), depth
+
+    def _cleanup_json_candidate(self, candidate):
+        text = self._sanitize_output_text(candidate)
+        text = re.sub(r'^\s*```(?:json)?\s*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\s*```$', '', text)
+        text = re.sub(r'^\s*json\s*[:\-]?\s*', '', text, flags=re.IGNORECASE)
+        text = text.replace('\u201c', '"').replace('\u201d', '"').replace('\u2019', "'").replace('\u2018', "'")
+        start_index = text.find('{')
+        end_index = text.rfind('}')
+        if start_index != -1 and end_index != -1 and end_index >= start_index:
+            text = text[start_index:end_index + 1]
+        return text.strip()
+
+    def _try_parse_candidate(self, candidate, *, source, parse_errors):
+        normalized_candidates = [candidate]
+
+        trailing_comma_cleaned = re.sub(r',\s*([}\]])', r'\1', candidate)
+        if trailing_comma_cleaned != candidate:
+            normalized_candidates.append(trailing_comma_cleaned)
+
+        repaired_unbalanced = self._close_unbalanced_braces(candidate)
+        if repaired_unbalanced and repaired_unbalanced not in normalized_candidates:
+            normalized_candidates.append(repaired_unbalanced)
+
+        for attempt_number, item in enumerate(normalized_candidates, start=1):
             try:
-                parsed, _end_index = decoder.raw_decode(text[index:])
-            except json.JSONDecodeError:
+                parsed = json.loads(item)
+            except json.JSONDecodeError as exc:
+                parse_errors.append(f'{source}:json_decode_error_{attempt_number}@{exc.pos}')
                 continue
             if isinstance(parsed, dict):
                 return parsed
-        raise AIProviderError('Gemini response was not valid JSON.')
+            parse_errors.append(f'{source}:non_object_json_{attempt_number}')
+        return None
+
+    def _close_unbalanced_braces(self, candidate):
+        text = candidate.strip()
+        if not text.startswith('{'):
+            return ''
+        depth = 0
+        in_string = False
+        escaped = False
+        for character in text:
+            if escaped:
+                escaped = False
+                continue
+            if character == '\\' and in_string:
+                escaped = True
+                continue
+            if character == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if character == '{':
+                depth += 1
+            elif character == '}':
+                depth -= 1
+        if depth > 0:
+            return f'{text}{"}" * depth}'
+        return text
 
     def _validate_json_object(self, parsed):
+        missing_keys = [key for key in REQUIRED_AI_KEYS if key not in parsed]
+        if missing_keys:
+            logger.debug(
+                "Gemini JSON response omitted schema keys.",
+                extra={
+                    'provider': self.provider_name,
+                    'missing_schema_keys': missing_keys,
+                },
+            )
         validated = {}
         for key in REQUIRED_AI_KEYS:
             value = parsed.get(key)
             if key in LIST_AI_KEYS:
-                if isinstance(value, list):
-                    validated[key] = value
-                elif value:
-                    validated[key] = [value]
-                else:
-                    validated[key] = []
+                validated[key] = self._coerce_string_list(value)
             else:
-                validated[key] = value if isinstance(value, str) else ''
+                validated[key] = self._coerce_string(value)
+        validated['recurring_patterns'] = list(validated.get('frequent_issues', []))
+        validated['root_cause_hints'] = list(validated.get('likely_causes', []))
+        validated['risk_indicators'] = list(validated.get('likely_causes', []))
+        validated['outage_narrative'] = validated.get('frequent_issues', [])[0] if validated.get('frequent_issues') else ''
+        validated['availability_interpretation'] = ''
+        validated['latency_interpretation'] = ''
         return validated
+
+    def _coerce_string(self, value):
+        if isinstance(value, str):
+            return self._normalize_text(value)
+        if value is None or value == '' or value == [] or value == {}:
+            return ''
+        if isinstance(value, (list, tuple)):
+            flattened = [self._normalize_text(item) for item in value if self._normalize_text(item)]
+            return ' '.join(flattened).strip()
+        return self._normalize_text(value)
+
+    def _coerce_string_list(self, value):
+        if value is None or value == '' or value == [] or value == {}:
+            return []
+        items = value if isinstance(value, (list, tuple)) else [value]
+        normalized_items = []
+        for item in items:
+            if isinstance(item, dict):
+                item = json.dumps(item, sort_keys=True, default=str)
+            normalized = self._normalize_text(item)
+            if normalized:
+                normalized_items.append(normalized)
+        return normalized_items
+
+    def _log_parse_failure(self, output_text, *, reason):
+        logger.warning(
+            "Gemini JSON parse failed.",
+            extra={
+                'provider': self.provider_name,
+                'parse_failure_reason': reason,
+                'raw_output_preview': self._safe_preview(output_text),
+            },
+        )
+
+    def _safe_preview(self, output_text):
+        text = self._normalize_text(output_text)
+        text = re.sub(r'\s+', ' ', text).strip()
+        if len(text) > RAW_OUTPUT_PREVIEW_LIMIT:
+            return f'{text[:RAW_OUTPUT_PREVIEW_LIMIT].rstrip()}...'
+        return text
+
+    def _debug_preview(self, output_text):
+        text = self._normalize_text(output_text)
+        text = re.sub(r'\s+', ' ', text).strip()
+        if len(text) > RAW_DEBUG_PREVIEW_LIMIT:
+            return f'{text[:RAW_DEBUG_PREVIEW_LIMIT].rstrip()}...'
+        return text
