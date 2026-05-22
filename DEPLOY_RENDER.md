@@ -54,6 +54,8 @@ Optional AI operational intelligence on the web service only:
 - `AI_FEATURES_ENABLED=True`
 - `GEMINI_API_KEY=<google ai studio api key>`
 
+Gemini support is installed through the official `google-generativeai` Python SDK in `requirements.txt`. The web service initializes it with `GEMINI_API_KEY` and creates the configured `GEMINI_MODEL`, which defaults to `gemini-1.5-flash`.
+
 OpenAI remains available as a non-default provider by setting:
 
 - `AI_PROVIDER=openai`

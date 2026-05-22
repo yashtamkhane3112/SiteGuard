@@ -23,7 +23,7 @@ from monitor.emailing import build_password_reset_email_options, get_email_base_
 from monitor.error_analyzer import parse_log_content
 from monitor.forms import SiteGuardPasswordResetForm
 from monitor.ai.prompts.builders import build_ai_instructions, build_report_prompt, sanitize_text
-from monitor.ai.providers.base import AIProviderError
+from monitor.ai.providers.base import AIProviderError, AIProviderUnavailable
 from monitor.ai.providers.gemini_provider import GeminiProvider
 from monitor.ai.providers.registry import get_default_provider
 from monitor.ai.services.analysis import generate_report_analysis, get_report_ai_state
@@ -518,8 +518,8 @@ class ErrorAnalyzerTests(TestCase):
         self.assertContains(response, "Explain with AI")
 
     @override_settings(AI_FEATURES_ENABLED=True, GEMINI_API_KEY="test-key", GEMINI_MODEL="test-model")
-    @patch("monitor.ai.providers.gemini_provider.requests.post")
-    def test_error_analyzer_ai_generation_caches_result(self, mock_post):
+    @patch("monitor.ai.providers.gemini_provider.genai")
+    def test_error_analyzer_ai_generation_caches_result(self, mock_genai):
         uploaded_log = UploadedLog.objects.create(
             user=self.user,
             filename="server.log",
@@ -535,27 +535,17 @@ class ErrorAnalyzerTests(TestCase):
             category=ParsedError.CATEGORY_TIMEOUT,
             severity=ParsedError.SEVERITY_HIGH,
         )
-        mock_post.return_value = Mock(
-            status_code=200,
-            raise_for_status=Mock(),
-            json=Mock(return_value={
-                "candidates": [{
-                    "content": {
-                        "parts": [{
-                            "text": (
-                                '{"summary":"Timeouts are recurring.","outage_narrative":"Most frequent issue is upstream timeout.",'
-                                '"availability_interpretation":"","latency_interpretation":"",'
-                                '"suggested_fixes":["Recommendation: inspect upstream timeout budget."],'
-                                '"trends":["Timeout category dominates this upload."],'
-                                '"recurring_patterns":["Repeated TimeoutError signature."],'
-                                '"risk_indicators":["Risk: upstream dependency may be unstable."],'
-                                '"root_cause_hints":["Likely upstream saturation or network delay."]}'
-                            )
-                        }]
-                    }
-                }]
-            }),
-        )
+        sdk_model = Mock()
+        sdk_model.generate_content.return_value = Mock(text=(
+            '{"summary":"Timeouts are recurring.","outage_narrative":"Most frequent issue is upstream timeout.",'
+            '"availability_interpretation":"","latency_interpretation":"",'
+            '"suggested_fixes":["Recommendation: inspect upstream timeout budget."],'
+            '"trends":["Timeout category dominates this upload."],'
+            '"recurring_patterns":["Repeated TimeoutError signature."],'
+            '"risk_indicators":["Risk: upstream dependency may be unstable."],'
+            '"root_cause_hints":["Likely upstream saturation or network delay."]}'
+        ))
+        mock_genai.GenerativeModel.return_value = sdk_model
 
         response = self.client.post(reverse("generate_error_upload_ai_analysis", args=[uploaded_log.id]))
 
@@ -1435,30 +1425,20 @@ class ReportingViewsTests(TestCase):
         self.assertEqual(cache.content, {})
 
     @override_settings(AI_FEATURES_ENABLED=True, GEMINI_API_KEY="test-key", GEMINI_MODEL="test-model")
-    @patch("monitor.ai.providers.gemini_provider.requests.post")
-    def test_ai_report_generation_caches_provider_result(self, mock_post):
-        mock_post.return_value = Mock(
-            status_code=200,
-            raise_for_status=Mock(),
-            json=Mock(return_value={
-                "candidates": [{
-                    "content": {
-                        "parts": [{
-                            "text": (
-                                '{"summary":"Latency was elevated.","outage_narrative":"No sustained outage.",'
-                                '"availability_interpretation":"Availability remained acceptable.",'
-                                '"latency_interpretation":"p95 latency needs review.",'
-                                '"suggested_fixes":["Recommendation: inspect upstream saturation."],'
-                                '"trends":["Latency increased late in the window."],'
-                                '"recurring_patterns":["Repeated slow checks."],'
-                                '"risk_indicators":["Risk: slow checks may become outages."],'
-                                '"root_cause_hints":["Likely upstream saturation based on latency profile."]}'
-                            )
-                        }]
-                    }
-                }]
-            }),
-        )
+    @patch("monitor.ai.providers.gemini_provider.genai")
+    def test_ai_report_generation_caches_provider_result(self, mock_genai):
+        sdk_model = Mock()
+        sdk_model.generate_content.return_value = Mock(text=(
+            '{"summary":"Latency was elevated.","outage_narrative":"No sustained outage.",'
+            '"availability_interpretation":"Availability remained acceptable.",'
+            '"latency_interpretation":"p95 latency needs review.",'
+            '"suggested_fixes":["Recommendation: inspect upstream saturation."],'
+            '"trends":["Latency increased late in the window."],'
+            '"recurring_patterns":["Repeated slow checks."],'
+            '"risk_indicators":["Risk: slow checks may become outages."],'
+            '"root_cause_hints":["Likely upstream saturation based on latency profile."]}'
+        ))
+        mock_genai.GenerativeModel.return_value = sdk_model
 
         response = self.client.post(reverse("generate_report_ai_analysis"), {"range": "7d"})
 
@@ -1467,15 +1447,19 @@ class ReportingViewsTests(TestCase):
         self.assertEqual(cache.status, AIAnalysisCache.STATUS_READY)
         self.assertEqual(cache.content["summary"], "Latency was elevated.")
         self.assertEqual(cache.provider, "gemini")
-        self.assertEqual(mock_post.call_count, 1)
+        self.assertEqual(sdk_model.generate_content.call_count, 1)
 
         context = build_reports_context(self.user, "7d")
         generate_report_analysis(self.user, context)
-        self.assertEqual(mock_post.call_count, 1)
+        self.assertEqual(sdk_model.generate_content.call_count, 1)
 
     @override_settings(AI_FEATURES_ENABLED=True, GEMINI_API_KEY="test-key", GEMINI_MODEL="test-model")
-    @patch("monitor.ai.providers.gemini_provider.requests.post", side_effect=requests.Timeout("timed out"))
-    def test_ai_provider_failure_is_cached_without_breaking_reports(self, _mock_post):
+    @patch("monitor.ai.providers.gemini_provider.genai")
+    def test_ai_provider_failure_is_cached_without_breaking_reports(self, mock_genai):
+        sdk_model = Mock()
+        sdk_model.generate_content.side_effect = TimeoutError("timed out")
+        mock_genai.GenerativeModel.return_value = sdk_model
+
         response = self.client.post(reverse("generate_report_ai_analysis"), {"range": "7d"})
 
         self.assertRedirects(response, f"{reverse('reports')}?range=7d")
@@ -1486,8 +1470,11 @@ class ReportingViewsTests(TestCase):
         self.assertContains(report_response, "AI analysis unavailable")
 
     @override_settings(AI_FEATURES_ENABLED=True, GEMINI_API_KEY="test-key", GEMINI_MODEL="test-model", AI_RETRY_ATTEMPTS=0)
-    @patch("monitor.ai.providers.gemini_provider.requests.post", side_effect=requests.Timeout("timed out"))
-    def test_ai_provider_failure_preserves_existing_ready_cache(self, mock_post):
+    @patch("monitor.ai.providers.gemini_provider.genai")
+    def test_ai_provider_failure_preserves_existing_ready_cache(self, mock_genai):
+        sdk_model = Mock()
+        sdk_model.generate_content.side_effect = TimeoutError("timed out")
+        mock_genai.GenerativeModel.return_value = sdk_model
         context = build_reports_context(self.user, "7d")
         cache = AIAnalysisCache.objects.create(
             user=self.user,
@@ -1506,7 +1493,7 @@ class ReportingViewsTests(TestCase):
         self.assertEqual(result.id, cache.id)
         self.assertEqual(cache.status, AIAnalysisCache.STATUS_READY)
         self.assertEqual(cache.content["summary"], "Previously generated insight.")
-        self.assertEqual(mock_post.call_count, 1)
+        self.assertEqual(sdk_model.generate_content.call_count, 1)
 
     @override_settings(AI_PROVIDER="openai", OPENAI_API_KEY="test-key", OPENAI_MODEL="openai-test-model")
     def test_ai_provider_selection_can_use_openai(self):
@@ -1592,31 +1579,99 @@ class GeminiProviderParsingTests(TestCase):
         self.provider = GeminiProvider()
 
     def _gemini_success_response(self, summary="Recovered after retry."):
-        return Mock(
-            status_code=200,
-            raise_for_status=Mock(),
-            json=Mock(return_value={
-                "candidates": [{
-                    "content": {
-                        "parts": [{
-                            "text": (
-                                '{"summary":"' + summary + '","outage_narrative":"",'
-                                '"availability_interpretation":"","latency_interpretation":"",'
-                                '"suggested_fixes":[],"trends":[],"recurring_patterns":[],'
-                                '"risk_indicators":[],"root_cause_hints":[]}'
-                            )
-                        }]
-                    }
-                }]
-            }),
+        return Mock(text=(
+            '{"summary":"' + summary + '","outage_narrative":"",'
+            '"availability_interpretation":"","latency_interpretation":"",'
+            '"suggested_fixes":[],"trends":[],"recurring_patterns":[],'
+            '"risk_indicators":[],"root_cause_hints":[]}'
+        ))
+
+    def _configure_gemini_sdk_mock(self, mock_genai, responses):
+        sdk_model = Mock()
+        sdk_model.generate_content.side_effect = responses
+        mock_genai.GenerativeModel.return_value = sdk_model
+        mock_genai.types.GenerationConfig.return_value = Mock()
+        return sdk_model
+
+    def _gemini_error(self, status_code):
+        error = Exception(f"{status_code} error")
+        error.code = status_code
+        return error
+
+    @override_settings(GEMINI_API_KEY="test-key", GEMINI_MODEL="gemini-1.5-flash")
+    def test_gemini_model_resolution_accepts_supported_model_names(self):
+        provider = GeminiProvider()
+        self.assertEqual(provider._normalized_model_name(), "gemini-1.5-flash")
+        self.assertEqual(provider._resolved_model_path(), "models/gemini-1.5-flash")
+
+        with override_settings(GEMINI_MODEL="gemini-1.5-flash-latest"):
+            provider = GeminiProvider()
+            self.assertEqual(provider._normalized_model_name(), "gemini-1.5-flash-latest")
+            self.assertEqual(provider._resolved_model_path(), "models/gemini-1.5-flash-latest")
+
+        with override_settings(GEMINI_MODEL="gemini-2.5-flash"):
+            provider = GeminiProvider()
+            self.assertEqual(provider._normalized_model_name(), "gemini-2.5-flash")
+            self.assertEqual(provider._resolved_model_path(), "models/gemini-2.5-flash")
+
+    @override_settings(GEMINI_API_KEY="test-key", GEMINI_MODEL="models/gemini-1.5-flash")
+    def test_gemini_model_resolution_accepts_single_models_prefix(self):
+        provider = GeminiProvider()
+
+        self.assertEqual(provider._normalized_model_name(), "gemini-1.5-flash")
+        self.assertEqual(provider._resolved_model_path(), "models/gemini-1.5-flash")
+
+    @override_settings(GEMINI_API_KEY="test-key", GEMINI_MODEL="models/models/gemini-1.5-flash")
+    def test_gemini_model_resolution_rejects_duplicate_models_prefix(self):
+        provider = GeminiProvider()
+
+        with self.assertRaisesMessage(AIProviderUnavailable, "Gemini model configuration is invalid."):
+            provider._resolved_model_path()
+
+    @override_settings(GEMINI_API_KEY="test-key", GEMINI_MODEL="gemini 1.5 flash")
+    def test_gemini_model_resolution_rejects_malformed_model_name(self):
+        provider = GeminiProvider()
+
+        with self.assertRaisesMessage(AIProviderUnavailable, "Gemini model configuration is invalid."):
+            provider._resolved_model_path()
+
+    @override_settings(GEMINI_API_KEY="test-key", GEMINI_MODEL="gemini-1.5-flash")
+    @patch("monitor.ai.providers.gemini_provider.genai")
+    def test_gemini_sdk_initialization_uses_configure_and_generative_model(self, mock_genai):
+        provider = GeminiProvider()
+        sdk_model = self._configure_gemini_sdk_mock(
+            mock_genai,
+            [self._gemini_success_response("SDK response.")],
         )
 
-    def _gemini_error_response(self, status_code):
-        response = Mock(status_code=status_code)
-        error = requests.HTTPError(f"{status_code} error")
-        error.response = response
-        response.raise_for_status = Mock(side_effect=error)
-        return response
+        provider.generate_json(instructions="Return JSON.", input_text="payload")
+
+        mock_genai.configure.assert_called_once_with(api_key="test-key")
+        mock_genai.GenerativeModel.assert_called_once_with(
+            "models/gemini-1.5-flash",
+            system_instruction="Return JSON.",
+        )
+        sdk_model.generate_content.assert_called_once_with(
+            "payload",
+            generation_config=mock_genai.types.GenerationConfig.return_value,
+            request_options={"timeout": 20},
+        )
+
+    @override_settings(
+        GEMINI_API_KEY="test-key",
+        GEMINI_MODEL="gemini-1.5-flash",
+        AI_RETRY_ATTEMPTS=2,
+        AI_RETRY_BACKOFF_SECONDS=0.01,
+    )
+    @patch("monitor.ai.providers.gemini_provider.genai")
+    def test_gemini_404_is_non_retryable_and_fails_gracefully(self, mock_genai):
+        provider = GeminiProvider()
+        sdk_model = self._configure_gemini_sdk_mock(mock_genai, [self._gemini_error(404)])
+
+        with self.assertRaisesMessage(AIProviderUnavailable, "Gemini model gemini-1.5-flash is unavailable."):
+            provider.generate_json(instructions="Return JSON.", input_text="payload")
+
+        self.assertEqual(sdk_model.generate_content.call_count, 1)
 
     def test_gemini_parser_accepts_fenced_json(self):
         content = self.provider._parse_json_output(
@@ -1668,19 +1723,19 @@ class GeminiProviderParsingTests(TestCase):
         AI_RETRY_BACKOFF_SECONDS=0.01,
     )
     @patch("monitor.ai.providers.gemini_provider.time.sleep")
-    @patch("monitor.ai.providers.gemini_provider.requests.post")
-    def test_gemini_retries_transient_status_and_recovers(self, mock_post, mock_sleep):
+    @patch("monitor.ai.providers.gemini_provider.genai")
+    def test_gemini_retries_transient_status_and_recovers(self, mock_genai, mock_sleep):
         provider = GeminiProvider()
-        mock_post.side_effect = [
-            self._gemini_error_response(503),
-            self._gemini_error_response(502),
+        sdk_model = self._configure_gemini_sdk_mock(mock_genai, [
+            self._gemini_error(503),
+            self._gemini_error(502),
             self._gemini_success_response("Recovered after transient Gemini outage."),
-        ]
+        ])
 
         content = provider.generate_json(instructions="Return JSON.", input_text="payload")
 
         self.assertEqual(content["summary"], "Recovered after transient Gemini outage.")
-        self.assertEqual(mock_post.call_count, 3)
+        self.assertEqual(sdk_model.generate_content.call_count, 3)
         self.assertEqual(mock_sleep.call_count, 2)
 
     @override_settings(
@@ -1690,18 +1745,18 @@ class GeminiProviderParsingTests(TestCase):
         AI_RETRY_BACKOFF_SECONDS=0.01,
     )
     @patch("monitor.ai.providers.gemini_provider.time.sleep")
-    @patch("monitor.ai.providers.gemini_provider.requests.post")
-    def test_gemini_retries_timeout_and_recovers(self, mock_post, mock_sleep):
+    @patch("monitor.ai.providers.gemini_provider.genai")
+    def test_gemini_retries_timeout_and_recovers(self, mock_genai, mock_sleep):
         provider = GeminiProvider()
-        mock_post.side_effect = [
-            requests.Timeout("timed out"),
+        sdk_model = self._configure_gemini_sdk_mock(mock_genai, [
+            TimeoutError("timed out"),
             self._gemini_success_response("Recovered after timeout."),
-        ]
+        ])
 
         content = provider.generate_json(instructions="Return JSON.", input_text="payload")
 
         self.assertEqual(content["summary"], "Recovered after timeout.")
-        self.assertEqual(mock_post.call_count, 2)
+        self.assertEqual(sdk_model.generate_content.call_count, 2)
         self.assertEqual(mock_sleep.call_count, 1)
 
     @override_settings(
@@ -1711,19 +1766,19 @@ class GeminiProviderParsingTests(TestCase):
         AI_RETRY_BACKOFF_SECONDS=0.01,
     )
     @patch("monitor.ai.providers.gemini_provider.time.sleep")
-    @patch("monitor.ai.providers.gemini_provider.requests.post")
-    def test_gemini_persistent_provider_outage_fails_safely(self, mock_post, mock_sleep):
+    @patch("monitor.ai.providers.gemini_provider.genai")
+    def test_gemini_persistent_provider_outage_fails_safely(self, mock_genai, mock_sleep):
         provider = GeminiProvider()
-        mock_post.side_effect = [
-            self._gemini_error_response(503),
-            self._gemini_error_response(503),
-            self._gemini_error_response(503),
-        ]
+        sdk_model = self._configure_gemini_sdk_mock(mock_genai, [
+            self._gemini_error(503),
+            self._gemini_error(503),
+            self._gemini_error(503),
+        ])
 
         with self.assertRaisesMessage(AIProviderError, "transient status 503 after 3 attempt"):
             provider.generate_json(instructions="Return JSON.", input_text="payload")
 
-        self.assertEqual(mock_post.call_count, 3)
+        self.assertEqual(sdk_model.generate_content.call_count, 3)
         self.assertEqual(mock_sleep.call_count, 2)
 
 

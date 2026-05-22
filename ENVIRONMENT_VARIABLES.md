@@ -61,7 +61,9 @@ Notes:
 - Production password reset and operational email links use `APP_BASE_URL` / `CANONICAL_BASE_URL`, which must stay HTTPS on Render.
 - AI operational intelligence is disabled by default. Set `AI_FEATURES_ENABLED=True`, `AI_PROVIDER=gemini`, and `GEMINI_API_KEY` on the web service to enable on-demand report, error, and incident analysis.
 - Gemini is the default provider and defaults to `GEMINI_MODEL=gemini-1.5-flash`.
-- Gemini transient `429`, `500`, `502`, `503`, and `504` responses are retried with `AI_RETRY_ATTEMPTS` and `AI_RETRY_BACKOFF_SECONDS`.
+- Gemini calls use the official `google-generativeai` Python SDK with `configure(api_key=...)` and `GenerativeModel(...)`.
+- Gemini transient quota/service failures such as `429`, `500`, `502`, `503`, and `504` are retried with `AI_RETRY_ATTEMPTS` and `AI_RETRY_BACKOFF_SECONDS`.
+- Gemini auth failures, unavailable models, malformed responses, and timeouts are handled gracefully and cached as failed AI generation without breaking monitoring or report pages.
 - OpenAI remains supported with `AI_PROVIDER=openai`, `OPENAI_API_KEY`, and `OPENAI_MODEL`.
 - AI generation is read-only and cached. The cron job does not need AI provider credentials because monitor execution must not call AI providers.
 
