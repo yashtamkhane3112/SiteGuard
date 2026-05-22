@@ -16,6 +16,7 @@ from django.core import mail
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.exceptions import ImproperlyConfigured
 from django.db import IntegrityError, transaction
 from django.test.client import RequestFactory
 from django.test import TestCase, override_settings
@@ -33,6 +34,7 @@ from monitor.ai.providers.registry import get_default_provider
 from monitor.ai.services.analysis import generate_report_analysis, get_report_ai_state
 from monitor.models import AIAnalysisCache, Alert, Incident, IncidentEvent, MonitorLog, Notification, ParsedError, UploadedLog, UserProfile, Website, get_uploaded_log_storage
 from siteguard.settings.base import _normalize_config_text
+from siteguard.settings.validation import validate_production_configuration
 from monitor.utils import (
     analyze_domain,
     build_notification_activity_center,
@@ -2184,6 +2186,64 @@ class SessionConfigurationDiagnosticsTests(TestCase):
         self.assertIn("secure=True", combined_output)
         self.assertIn("proxy_ssl_header=('HTTP_X_FORWARDED_PROTO', 'https')", combined_output)
         self.assertIn("use_x_forwarded_host=True", combined_output)
+
+
+class ProductionEmailValidationTests(TestCase):
+    def _base_validation_kwargs(self, **overrides):
+        kwargs = {
+            "secret_key": "SiteGuard-Prod-Secret-Key-1234567890-abcdefghijklmnopqrstuvwxyz",
+            "debug": False,
+            "allowed_hosts": ["siteguard.onrender.com"],
+            "app_base_url": "https://siteguard.onrender.com",
+            "csrf_trusted_origins": ["https://siteguard.onrender.com"],
+            "email_backend": "monitor.emailing.BrevoEmailBackend",
+            "email_host": "",
+            "email_use_tls": True,
+            "email_use_ssl": False,
+            "email_timeout": 15,
+            "brevo_api_key": "brevo-api-key",
+            "default_from_email": "SiteGuard Alerts <sender@example.com>",
+            "cloudinary_storage": {
+                "CLOUD_NAME": "cloud",
+                "API_KEY": "key",
+                "API_SECRET": "secret",
+            },
+            "storages": {
+                "default": {
+                    "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
+                }
+            },
+            "cron_secret": "cron-secret-value",
+        }
+        kwargs.update(overrides)
+        return kwargs
+
+    def test_production_validation_accepts_brevo_backend_class(self):
+        validate_production_configuration(**self._base_validation_kwargs())
+
+    def test_production_validation_rejects_console_backend(self):
+        with self.assertRaisesMessage(ImproperlyConfigured, "Development email backends are not allowed in production."):
+            validate_production_configuration(
+                **self._base_validation_kwargs(
+                    email_backend="django.core.mail.backends.console.EmailBackend"
+                )
+            )
+
+    def test_production_validation_rejects_file_backend(self):
+        with self.assertRaisesMessage(ImproperlyConfigured, "Development email backends are not allowed in production."):
+            validate_production_configuration(
+                **self._base_validation_kwargs(
+                    email_backend="django.core.mail.backends.filebased.EmailBackend"
+                )
+            )
+
+    def test_production_validation_rejects_locmem_backend(self):
+        with self.assertRaisesMessage(ImproperlyConfigured, "Development email backends are not allowed in production."):
+            validate_production_configuration(
+                **self._base_validation_kwargs(
+                    email_backend="django.core.mail.backends.locmem.EmailBackend"
+                )
+            )
 
 
 class TestAIProviderCommandTests(TestCase):

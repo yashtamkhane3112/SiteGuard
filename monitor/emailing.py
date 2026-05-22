@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 import requests
 from django.conf import settings
 from django.contrib.auth.tokens import default_token_generator
+from django.core.mail.backends.base import BaseEmailBackend
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -14,6 +15,11 @@ from django.utils.http import urlsafe_base64_encode
 
 
 logger = logging.getLogger("siteguard.email")
+
+BREVO_EMAIL_BACKENDS = {
+    "brevo_api",
+    "monitor.emailing.BrevoEmailBackend",
+}
 
 DJANGO_FALLBACK_BACKENDS = {
     "django.core.mail.backends.console.EmailBackend",
@@ -49,7 +55,7 @@ def _get_email_backend():
 
 
 def _using_brevo_api():
-    return _get_email_backend() == "brevo_api"
+    return _get_email_backend() in BREVO_EMAIL_BACKENDS
 
 
 def _using_smtp_fallback():
@@ -447,3 +453,27 @@ def send_siteguard_email(
 
 def render_email_template(template_name, context):
     return render_to_string(template_name, context)
+
+
+class BrevoEmailBackend(BaseEmailBackend):
+    def send_messages(self, email_messages):
+        sent_count = 0
+        for message in email_messages or []:
+            sent = send_siteguard_email(
+                subject=message.subject,
+                text_body=message.body,
+                html_body=self._extract_html_body(message),
+                recipients=message.to,
+                from_email=message.from_email,
+                raise_on_error=not self.fail_silently,
+                log_context={"flow": "django_email_backend"},
+            )
+            if sent:
+                sent_count += 1
+        return sent_count
+
+    def _extract_html_body(self, message):
+        for alternative in getattr(message, "alternatives", []) or []:
+            if len(alternative) >= 2 and alternative[1] == "text/html":
+                return alternative[0]
+        return None

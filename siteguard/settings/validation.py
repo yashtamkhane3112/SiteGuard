@@ -19,6 +19,11 @@ DEVELOPMENT_EMAIL_BACKENDS = {
     "django.core.mail.backends.dummy.EmailBackend",
 }
 
+PRODUCTION_BREVO_EMAIL_BACKENDS = {
+    "brevo_api",
+    "monitor.emailing.BrevoEmailBackend",
+}
+
 
 def resolve_email_backend(*, debug, configured_backend, brevo_api_key):
     if configured_backend:
@@ -99,9 +104,9 @@ def validate_production_configuration(
         normalized_host = (email_host or "").strip().lower()
         if "gmail" in normalized_host or "googlemail" in normalized_host:
             errors.append("Gmail SMTP is local-development only and must not be used in production.")
-    elif email_backend == "brevo_api":
+    elif email_backend in PRODUCTION_BREVO_EMAIL_BACKENDS:
         if not brevo_api_key:
-            errors.append("BREVO_API_KEY is required when EMAIL_BACKEND resolves to brevo_api.")
+            errors.append("BREVO_API_KEY is required when EMAIL_BACKEND resolves to the Brevo backend.")
     else:
         errors.append(f"Unsupported production EMAIL_BACKEND: {email_backend}")
 
