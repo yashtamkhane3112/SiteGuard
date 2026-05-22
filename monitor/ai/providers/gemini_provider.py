@@ -31,18 +31,20 @@ RAW_DEBUG_PREVIEW_LIMIT = 1000
 
 REQUIRED_AI_KEYS = {
     'summary',
-    'suggested_fixes',
+    'likely_root_cause',
+    'impact',
+    'recommendations',
+    'confidence',
+}
+
+LIST_AI_KEYS = {
+    'recommendations',
     'trends',
     'frequent_issues',
     'likely_causes',
 }
 
-LIST_AI_KEYS = {
-    'suggested_fixes',
-    'trends',
-    'frequent_issues',
-    'likely_causes',
-}
+CONFIDENCE_LEVELS = {'low', 'medium', 'high'}
 
 
 class GeminiProvider(BaseAIProvider):
@@ -88,7 +90,8 @@ class GeminiProvider(BaseAIProvider):
         response = self._generate_with_retries(instructions=instructions, input_text=input_text)
         output_text = self._extract_output_text(response)
         if not output_text:
-            raise AIProviderError('Gemini response did not include output text.')
+            self._log_fallback_activation('', reason='empty_output_text')
+            return self._fallback_payload(reason='empty_output_text')
         self._log_output_diagnostics(response, output_text)
 
         return self._parse_json_output(output_text)
@@ -403,6 +406,7 @@ class GeminiProvider(BaseAIProvider):
                 'provider': self.provider_name,
                 'response_type': type(response).__name__,
                 'candidate_count': self._safe_candidate_count(response),
+                'raw_response_length': len(output_text or ''),
                 'extracted_text_length': len(output_text or ''),
                 'raw_output_preview': self._debug_preview(output_text) if self.debug_raw_output else '',
                 'raw_output_debug_enabled': self.debug_raw_output,
@@ -421,10 +425,11 @@ class GeminiProvider(BaseAIProvider):
         return 0
 
     def _parse_json_output(self, output_text):
-        parsed = self._decode_json_object(output_text)
+        parsed, strategy, fallback_activated = self._decode_json_object(output_text)
         if not isinstance(parsed, dict):
-            raise AIProviderError('Gemini response did not contain a JSON object.')
-        return self._validate_json_object(parsed)
+            self._log_fallback_activation(output_text, reason='non_object_json')
+            return self._fallback_payload(reason='non_object_json')
+        return self._validate_json_object(parsed, strategy=strategy, fallback_activated=fallback_activated)
 
     def _sanitize_output_text(self, output_text):
         text = self._normalize_text(output_text)
@@ -433,7 +438,12 @@ class GeminiProvider(BaseAIProvider):
         return text.strip()
 
     def _decode_json_object(self, output_text):
-        candidate_specs = self._candidate_json_blocks(output_text)
+        text = self._sanitize_output_text(output_text)
+        direct_parse = self._load_json_object(text, source='direct_raw')
+        if direct_parse is not None:
+            return direct_parse, 'direct_raw', False
+
+        candidate_specs = self._candidate_json_blocks(text)
         parse_errors = []
         for source, candidate in candidate_specs:
             cleaned_candidate = self._cleanup_json_candidate(candidate)
@@ -442,16 +452,21 @@ class GeminiProvider(BaseAIProvider):
                 continue
             parsed = self._try_parse_candidate(cleaned_candidate, source=source, parse_errors=parse_errors)
             if isinstance(parsed, dict):
-                return parsed
+                return parsed, source, True
         self._log_parse_failure(
             output_text,
             reason=', '.join(parse_errors) if parse_errors else 'no_json_object_found',
         )
-        raise AIProviderError('Gemini response was not valid JSON.')
+        self._log_fallback_activation(output_text, reason='invalid_json')
+        return self._fallback_payload(reason='invalid_json'), 'fallback_payload', True
 
     def _candidate_json_blocks(self, output_text):
         text = self._sanitize_output_text(output_text)
-        candidates = [('raw', text)]
+        stripped_fences = self._strip_markdown_fences(text)
+        candidates = []
+        if stripped_fences and stripped_fences != text:
+            candidates.append(('stripped_fences', stripped_fences))
+        candidates.append(('cleaned_raw', text))
 
         fenced_blocks = self._extract_fenced_blocks(text)
         candidates.extend(('fenced', block) for block in fenced_blocks)
@@ -472,12 +487,18 @@ class GeminiProvider(BaseAIProvider):
         seen = set()
         for source, candidate in candidates:
             normalized = candidate.strip()
-            key = (source, normalized)
+            key = normalized
             if not normalized or key in seen:
                 continue
             seen.add(key)
             unique_candidates.append((source, normalized))
         return unique_candidates
+
+    def _strip_markdown_fences(self, text):
+        stripped = re.sub(r'^\s*```json\s*', '', text, flags=re.IGNORECASE)
+        stripped = re.sub(r'^\s*```\s*', '', stripped)
+        stripped = re.sub(r'\s*```\s*$', '', stripped)
+        return stripped.strip()
 
     def _extract_fenced_blocks(self, text):
         return [
@@ -583,14 +604,22 @@ class GeminiProvider(BaseAIProvider):
             normalized_candidates.append(repaired_unbalanced)
 
         for attempt_number, item in enumerate(normalized_candidates, start=1):
-            try:
-                parsed = json.loads(item)
-            except json.JSONDecodeError as exc:
-                parse_errors.append(f'{source}:json_decode_error_{attempt_number}@{exc.pos}')
-                continue
+            parsed = self._load_json_object(item, source=f'{source}:{attempt_number}', parse_errors=parse_errors)
             if isinstance(parsed, dict):
                 return parsed
-            parse_errors.append(f'{source}:non_object_json_{attempt_number}')
+        return None
+
+    def _load_json_object(self, candidate, *, source, parse_errors=None):
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            if parse_errors is not None:
+                parse_errors.append(f'{source}:json_decode_error@{exc.pos}')
+            return None
+        if isinstance(parsed, dict):
+            return parsed
+        if parse_errors is not None:
+            parse_errors.append(f'{source}:non_object_json')
         return None
 
     def _close_unbalanced_braces(self, candidate):
@@ -620,30 +649,69 @@ class GeminiProvider(BaseAIProvider):
             return f'{text}{"}" * depth}'
         return text
 
-    def _validate_json_object(self, parsed):
+    def _validate_json_object(self, parsed, *, strategy, fallback_activated):
         missing_keys = [key for key in REQUIRED_AI_KEYS if key not in parsed]
         if missing_keys:
-            logger.debug(
-                "Gemini JSON response omitted schema keys.",
+            logger.warning(
+                "Gemini JSON validation populated missing schema keys.",
                 extra={
                     'provider': self.provider_name,
                     'missing_schema_keys': missing_keys,
+                    'parse_strategy': strategy,
+                    'fallback_activated': fallback_activated,
                 },
             )
-        validated = {}
-        for key in REQUIRED_AI_KEYS:
-            value = parsed.get(key)
-            if key in LIST_AI_KEYS:
-                validated[key] = self._coerce_string_list(value)
-            else:
-                validated[key] = self._coerce_string(value)
-        validated['recurring_patterns'] = list(validated.get('frequent_issues', []))
-        validated['root_cause_hints'] = list(validated.get('likely_causes', []))
-        validated['risk_indicators'] = list(validated.get('likely_causes', []))
-        validated['outage_narrative'] = validated.get('frequent_issues', [])[0] if validated.get('frequent_issues') else ''
-        validated['availability_interpretation'] = ''
-        validated['latency_interpretation'] = ''
+        validated = self._normalize_schema(parsed)
+        self._log_parse_success(
+            strategy=strategy,
+            fallback_activated=fallback_activated,
+            validation_failures=missing_keys,
+            parsed=validated,
+        )
         return validated
+
+    def _normalize_schema(self, parsed):
+        summary = self._coerce_string(parsed.get('summary'))
+        likely_root_cause = self._coerce_string(
+            parsed.get('likely_root_cause')
+            or parsed.get('likely_root_causes')
+            or parsed.get('likely_causes')
+        )
+        impact = self._coerce_string(
+            parsed.get('impact')
+            or parsed.get('outage_narrative')
+            or parsed.get('availability_interpretation')
+            or parsed.get('latency_interpretation')
+        )
+        recommendations = self._coerce_string_list(
+            parsed.get('recommendations')
+            or parsed.get('suggested_fixes')
+        )
+        confidence = self._normalize_confidence(parsed.get('confidence'))
+        trends = self._coerce_string_list(parsed.get('trends'))
+        frequent_issues = self._coerce_string_list(parsed.get('frequent_issues'))
+        likely_causes = self._coerce_string_list(parsed.get('likely_causes'))
+        if not likely_causes and likely_root_cause:
+            likely_causes = [likely_root_cause]
+        root_cause_hints = list(likely_causes)
+
+        return {
+            'summary': summary,
+            'likely_root_cause': likely_root_cause,
+            'impact': impact,
+            'recommendations': recommendations,
+            'confidence': confidence,
+            'suggested_fixes': list(recommendations),
+            'trends': trends,
+            'frequent_issues': frequent_issues,
+            'likely_causes': likely_causes,
+            'recurring_patterns': list(frequent_issues),
+            'root_cause_hints': root_cause_hints,
+            'risk_indicators': list(likely_causes),
+            'outage_narrative': impact,
+            'availability_interpretation': self._coerce_string(parsed.get('availability_interpretation') or impact),
+            'latency_interpretation': self._coerce_string(parsed.get('latency_interpretation')),
+        }
 
     def _coerce_string(self, value):
         if isinstance(value, str):
@@ -668,12 +736,54 @@ class GeminiProvider(BaseAIProvider):
                 normalized_items.append(normalized)
         return normalized_items
 
+    def _normalize_confidence(self, value):
+        normalized = self._normalize_text(value, default='low').lower()
+        if normalized in CONFIDENCE_LEVELS:
+            return normalized
+        return 'low'
+
+    def _fallback_payload(self, *, reason):
+        return self._normalize_schema({
+            'summary': 'AI analysis could not be structured reliably. Core SiteGuard data remains available.',
+            'likely_root_cause': '',
+            'impact': 'No structured AI impact summary was generated from the provider response.',
+            'recommendations': [],
+            'confidence': 'low',
+            'frequent_issues': [reason] if reason else [],
+        })
+
     def _log_parse_failure(self, output_text, *, reason):
         logger.warning(
             "Gemini JSON parse failed.",
             extra={
                 'provider': self.provider_name,
+                'raw_response_length': len(output_text or ''),
                 'parse_failure_reason': reason,
+                'raw_output_preview': self._safe_preview(output_text),
+            },
+        )
+
+    def _log_parse_success(self, *, strategy, fallback_activated, validation_failures, parsed):
+        logger.info(
+            "Gemini JSON parse succeeded.",
+            extra={
+                'provider': self.provider_name,
+                'parse_strategy': strategy,
+                'fallback_activated': fallback_activated,
+                'validation_failures': list(validation_failures or []),
+                'summary_present': bool(parsed.get('summary')),
+                'recommendation_count': len(parsed.get('recommendations') or []),
+                'confidence': parsed.get('confidence', 'low'),
+            },
+        )
+
+    def _log_fallback_activation(self, output_text, *, reason):
+        logger.warning(
+            "Gemini JSON fallback activated.",
+            extra={
+                'provider': self.provider_name,
+                'fallback_reason': reason,
+                'raw_response_length': len(output_text or ''),
                 'raw_output_preview': self._safe_preview(output_text),
             },
         )

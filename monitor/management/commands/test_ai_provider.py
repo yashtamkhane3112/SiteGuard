@@ -32,8 +32,8 @@ class Command(BaseCommand):
             result = provider.generate_json(
                 instructions=(
                     'Return ONLY raw JSON with the keys '
-                    'summary, suggested_fixes, trends, frequent_issues, likely_causes. '
-                    'No markdown. No code fences. No commentary. Use short strings and empty lists where appropriate.'
+                    'summary, likely_root_cause, impact, recommendations, confidence. '
+                    'No markdown. No code fences. No commentary. Use short strings, confidence low/medium/high, and empty lists where appropriate.'
                 ),
                 input_text='Self-test request. Confirm the provider is reachable.',
             )

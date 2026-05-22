@@ -827,6 +827,35 @@ class ErrorAnalyzerTests(TestCase):
         self.assertEqual(cache.status, AIAnalysisCache.STATUS_READY)
         self.assertEqual(cache.content["summary"], "Timeouts are recurring.")
 
+    @override_settings(AI_FEATURES_ENABLED=True, GEMINI_API_KEY="test-key", GEMINI_MODEL="test-model")
+    @patch("monitor.ai.providers.gemini_provider.genai")
+    def test_error_analyzer_ai_generation_uses_graceful_fallback_for_malformed_json(self, mock_genai):
+        uploaded_log = UploadedLog.objects.create(
+            user=self.user,
+            filename="server.log",
+            file=SimpleUploadedFile("server.log", b"TimeoutError: upstream timed out", content_type="text/plain"),
+            processed=True,
+        )
+        ParsedError.objects.create(
+            uploaded_log=uploaded_log,
+            error_type="TimeoutError",
+            raw_line="TimeoutError: upstream timed out",
+            count=3,
+            first_seen_line=1,
+            category=ParsedError.CATEGORY_TIMEOUT,
+            severity=ParsedError.SEVERITY_HIGH,
+        )
+        sdk_model = Mock()
+        sdk_model.generate_content.return_value = Mock(text='Model commentary without any JSON object.')
+        mock_genai.GenerativeModel.return_value = sdk_model
+
+        response = self.client.post(reverse("generate_error_upload_ai_analysis", args=[uploaded_log.id]))
+
+        self.assertRedirects(response, reverse("error_log_results", args=[uploaded_log.id]))
+        cache = AIAnalysisCache.objects.get(user=self.user, scope=AIAnalysisCache.SCOPE_ERROR_UPLOAD)
+        self.assertEqual(cache.status, AIAnalysisCache.STATUS_READY)
+        self.assertIn("could not be structured reliably", cache.content["summary"])
+
 
 class MonitorEmailAlertTests(TestCase):
     def setUp(self):
@@ -1725,6 +1754,20 @@ class ReportingViewsTests(TestCase):
 
     @override_settings(AI_FEATURES_ENABLED=True, GEMINI_API_KEY="test-key", GEMINI_MODEL="test-model")
     @patch("monitor.ai.providers.gemini_provider.genai")
+    def test_ai_report_generation_uses_graceful_fallback_for_malformed_json(self, mock_genai):
+        sdk_model = Mock()
+        sdk_model.generate_content.return_value = Mock(text='Here is the result without any JSON object.')
+        mock_genai.GenerativeModel.return_value = sdk_model
+
+        response = self.client.post(reverse("generate_report_ai_analysis"), {"range": "7d"})
+
+        self.assertRedirects(response, f"{reverse('reports')}?range=7d")
+        cache = AIAnalysisCache.objects.get(user=self.user, scope=AIAnalysisCache.SCOPE_REPORT)
+        self.assertEqual(cache.status, AIAnalysisCache.STATUS_READY)
+        self.assertIn("could not be structured reliably", cache.content["summary"])
+
+    @override_settings(AI_FEATURES_ENABLED=True, GEMINI_API_KEY="test-key", GEMINI_MODEL="test-model")
+    @patch("monitor.ai.providers.gemini_provider.genai")
     def test_ai_provider_failure_is_cached_without_breaking_reports(self, mock_genai):
         sdk_model = Mock()
         sdk_model.generate_content.side_effect = TimeoutError("timed out")
@@ -1977,27 +2020,27 @@ class GeminiProviderParsingTests(TestCase):
     def test_gemini_parser_accepts_fenced_json(self):
         content = self.provider._parse_json_output(
             '```json\n'
-            '{"summary":"DNS instability.","suggested_fixes":["Recommendation: verify DNS provider health."]}'
+            '{"summary":"DNS instability.","likely_root_cause":"Likely DNS provider instability.","impact":"Intermittent resolution failures may delay checks.","recommendations":["Recommendation: verify DNS provider health."],"confidence":"medium"}'
             '\n```'
         )
 
         self.assertEqual(content["summary"], "DNS instability.")
         self.assertEqual(content["suggested_fixes"], ["Recommendation: verify DNS provider health."])
-        self.assertIn("likely_causes", content)
-        self.assertIn("root_cause_hints", content)
+        self.assertEqual(content["likely_root_cause"], "Likely DNS provider instability.")
+        self.assertEqual(content["confidence"], "medium")
 
     def test_gemini_parser_accepts_plain_json(self):
         content = self.provider._parse_json_output(
-            '{"summary":"Stable response.","suggested_fixes":[],"trends":[],"frequent_issues":[],"likely_causes":[]}'
+            '{"summary":"Stable response.","likely_root_cause":"","impact":"No measurable user impact detected.","recommendations":[],"confidence":"high"}'
         )
 
         self.assertEqual(content["summary"], "Stable response.")
-        self.assertEqual(content["frequent_issues"], [])
+        self.assertEqual(content["recommendations"], [])
 
     def test_gemini_parser_accepts_wrapped_json(self):
         content = self.provider._parse_json_output(
             'Here is the operational analysis:\n\n'
-            '{"summary":"Latency increased.","trends":["Latency degradation is recurring."],"suggested_fixes":[],"frequent_issues":[],"likely_causes":[]}'
+            '{"summary":"Latency increased.","likely_root_cause":"Likely upstream saturation.","impact":"Users may see slower page loads.","recommendations":["Recommendation: inspect upstream saturation."],"confidence":"medium","trends":["Latency degradation is recurring."]}'
             '\n\nThis suggests further investigation.'
         )
 
@@ -2008,22 +2051,23 @@ class GeminiProviderParsingTests(TestCase):
         content = self.provider._parse_json_output(
             'JSON:\n'
             '```json\n'
-            '{"summary":"Wrapped by markdown label.","suggested_fixes":[],"trends":[],"frequent_issues":[],"likely_causes":[]}\n'
+            '{"summary":"Wrapped by markdown label.","likely_root_cause":"","impact":"No additional impact inferred.","recommendations":[],"confidence":"low"}\n'
             '```'
         )
 
         self.assertEqual(content["summary"], "Wrapped by markdown label.")
 
-    def test_gemini_parser_rejects_malformed_json(self):
+    def test_gemini_parser_falls_back_on_malformed_json(self):
         with self.assertLogs("monitor.ai.providers.gemini_provider", level="WARNING") as captured:
-            with self.assertRaisesMessage(AIProviderError, "Gemini response was not valid JSON."):
-                self.provider._parse_json_output('```json\n{"summary": "broken",\n```')
+            content = self.provider._parse_json_output('```json\n{"summary": "broken",\n```')
 
         self.assertIn("Gemini JSON parse failed.", "\n".join(captured.output))
+        self.assertIn("Gemini JSON fallback activated.", "\n".join(captured.output))
+        self.assertIn("could not be structured reliably", content["summary"])
 
     def test_gemini_parser_repairs_trailing_commas(self):
         content = self.provider._parse_json_output(
-            '{"summary":"Trailing comma cleanup.","suggested_fixes":["Retry later",],"trends":[],"frequent_issues":[],"likely_causes":[],}'
+            '{"summary":"Trailing comma cleanup.","likely_root_cause":"Likely transient provider formatting issue.","impact":"No direct production impact inferred.","recommendations":["Retry later",],"confidence":"medium",}'
         )
 
         self.assertEqual(content["summary"], "Trailing comma cleanup.")
@@ -2033,13 +2077,13 @@ class GeminiProviderParsingTests(TestCase):
         content = self.provider._parse_json_output('{"summary":"Partial but usable."}')
 
         self.assertEqual(content["summary"], "Partial but usable.")
-        self.assertEqual(content["outage_narrative"], "")
+        self.assertEqual(content["confidence"], "low")
         self.assertEqual(content["suggested_fixes"], [])
-        self.assertEqual(content["frequent_issues"], [])
+        self.assertEqual(content["likely_root_cause"], "")
 
     def test_gemini_parser_repairs_truncated_partial_json(self):
         content = self.provider._parse_json_output(
-            '{"summary":"Truncated but recoverable.","suggested_fixes":["Check DNS"]'
+            '{"summary":"Truncated but recoverable.","recommendations":["Check DNS"]'
         )
 
         self.assertEqual(content["summary"], "Truncated but recoverable.")
@@ -2048,22 +2092,24 @@ class GeminiProviderParsingTests(TestCase):
     def test_gemini_parser_accepts_commentary_wrapped_fenced_json(self):
         content = self.provider._parse_json_output(
             'Here is the requested JSON:\n```json\n'
-            '{"summary":"Commentary stripped.","suggested_fixes":[],"trends":[],"frequent_issues":["Timeout spikes"],"likely_causes":["Likely upstream saturation"]}'
+            '{"summary":"Commentary stripped.","likely_root_cause":"Likely upstream saturation.","impact":"Timeout spikes may degrade request completion.","recommendations":[],"confidence":"medium","frequent_issues":["Timeout spikes"]}'
             '\n```\nAdditional note ignored.'
         )
 
         self.assertEqual(content["summary"], "Commentary stripped.")
         self.assertEqual(content["frequent_issues"], ["Timeout spikes"])
-        self.assertEqual(content["root_cause_hints"], ["Likely upstream saturation"])
+        self.assertEqual(content["root_cause_hints"], ["Likely upstream saturation."])
 
-    def test_gemini_parser_rejects_non_json_output(self):
-        with self.assertRaisesMessage(AIProviderError, "Gemini response was not valid JSON."):
-            self.provider._parse_json_output("The service looks mostly healthy.")
+    def test_gemini_parser_falls_back_on_non_json_output(self):
+        content = self.provider._parse_json_output("The service looks mostly healthy.")
+
+        self.assertIn("could not be structured reliably", content["summary"])
+        self.assertEqual(content["confidence"], "low")
 
     def test_gemini_parser_accepts_valid_nested_json(self):
         content = self.provider._parse_json_output(
             'Preface ignored.\n'
-            '{"summary":"Nested payload accepted.","suggested_fixes":["Review queue depth"],"trends":["Nested telemetry repeated"],'
+            '{"summary":"Nested payload accepted.","likely_root_cause":"Likely upstream backlog.","impact":"Queue latency may increase.","recommendations":["Review queue depth"],"confidence":"medium","trends":["Nested telemetry repeated"],'
             '"frequent_issues":[{"pattern":"queue saturation"}],"likely_causes":[{"cause":"upstream backlog"}],"meta":{"ignored":true}}'
             '\nTrailing note ignored.'
         )
@@ -2072,10 +2118,24 @@ class GeminiProviderParsingTests(TestCase):
         self.assertEqual(content["frequent_issues"], ['{"pattern": "queue saturation"}'])
         self.assertEqual(content["likely_causes"], ['{"cause": "upstream backlog"}'])
 
+    def test_gemini_parser_accepts_missing_fields_with_defaults(self):
+        content = self.provider._parse_json_output('{"summary":"Only summary provided."}')
+
+        self.assertEqual(content["summary"], "Only summary provided.")
+        self.assertEqual(content["likely_root_cause"], "")
+        self.assertEqual(content["recommendations"], [])
+        self.assertEqual(content["confidence"], "low")
+
+    def test_gemini_parser_empty_response_uses_fallback_payload(self):
+        content = self.provider._parse_json_output("")
+
+        self.assertIn("could not be structured reliably", content["summary"])
+        self.assertEqual(content["confidence"], "low")
+
     def test_gemini_prompt_explicitly_rejects_markdown(self):
         instructions = build_ai_instructions()
 
-        self.assertIn("Return STRICT RAW JSON ONLY", instructions)
+        self.assertIn("Return STRICT RAW VALID JSON ONLY", instructions)
         self.assertIn("No markdown", instructions)
         self.assertIn("No code fences", instructions)
         self.assertIn("No commentary", instructions)

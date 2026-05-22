@@ -23,6 +23,10 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CONTENT = {
     'summary': '',
+    'likely_root_cause': '',
+    'impact': '',
+    'recommendations': [],
+    'confidence': 'low',
     'outage_narrative': '',
     'availability_interpretation': '',
     'latency_interpretation': '',
@@ -41,12 +45,36 @@ def normalize_ai_content(content):
     if isinstance(content, dict):
         normalized.update({key: content.get(key, default) for key, default in DEFAULT_CONTENT.items()})
 
+    if not normalized.get('recommendations') and normalized.get('suggested_fixes'):
+        normalized['recommendations'] = normalized.get('suggested_fixes', [])
+    if not normalized.get('suggested_fixes') and normalized.get('recommendations'):
+        normalized['suggested_fixes'] = normalized.get('recommendations', [])
+
+    if not normalized.get('likely_root_cause'):
+        likely_causes = normalized.get('likely_causes') or normalized.get('root_cause_hints') or []
+        normalized['likely_root_cause'] = likely_causes[0] if likely_causes else ''
+    if not normalized.get('likely_causes') and normalized.get('likely_root_cause'):
+        normalized['likely_causes'] = [normalized['likely_root_cause']]
+
+    if not normalized.get('impact'):
+        normalized['impact'] = (
+            normalized.get('outage_narrative')
+            or normalized.get('availability_interpretation')
+            or normalized.get('latency_interpretation')
+            or ''
+        )
+    if not normalized.get('outage_narrative') and normalized.get('impact'):
+        normalized['outage_narrative'] = normalized['impact']
+
     if not normalized.get('recurring_patterns') and normalized.get('frequent_issues'):
         normalized['recurring_patterns'] = normalized.get('frequent_issues', [])
     if not normalized.get('root_cause_hints') and normalized.get('likely_causes'):
         normalized['root_cause_hints'] = normalized.get('likely_causes', [])
+    if not normalized.get('risk_indicators') and normalized.get('likely_causes'):
+        normalized['risk_indicators'] = normalized.get('likely_causes', [])
 
     for key in (
+        'recommendations',
         'suggested_fixes',
         'trends',
         'frequent_issues',
@@ -60,7 +88,15 @@ def normalize_ai_content(content):
             value = [value] if value else []
         normalized[key] = [sanitize_text(item, limit=260) for item in value if sanitize_text(item, limit=260)][:6]
 
-    for key in ('summary', 'outage_narrative', 'availability_interpretation', 'latency_interpretation'):
+    for key in (
+        'summary',
+        'likely_root_cause',
+        'impact',
+        'confidence',
+        'outage_narrative',
+        'availability_interpretation',
+        'latency_interpretation',
+    ):
         normalized[key] = sanitize_text(normalized.get(key), limit=520)
 
     return normalized
@@ -304,6 +340,34 @@ def _generate_analysis(*, user, scope, scope_key, input_hash, prompt, force=Fals
     except (AIProviderUnavailable, AIProviderError) as exc:
         provider_name = getattr(provider, 'provider_name', 'unknown')
         model_name = getattr(provider, 'model', '')
+        fallback_content = None
+        fallback_reason = ''
+        if _is_graceful_ai_fallback_error(exc):
+            fallback_reason = sanitize_text(str(exc), limit=180)
+            fallback_content = _graceful_ai_fallback_content(scope=scope, reason=fallback_reason)
+            logger.warning(
+                "AI analysis used graceful fallback content: %s",
+                fallback_reason,
+                extra={
+                    'ai_scope': scope,
+                    'scope_key': scope_key,
+                    'provider': provider_name,
+                    'model': model_name,
+                    'fallback_activated': True,
+                },
+            )
+            return _store_cache(
+                cache=cache,
+                user=user,
+                scope=scope,
+                scope_key=scope_key,
+                input_hash=input_hash,
+                status=AIAnalysisCache.STATUS_READY,
+                content=fallback_content,
+                provider=provider_name,
+                model_name=model_name,
+                error_message='',
+            )
         logger.warning(
             "AI analysis generation failed: %s",
             sanitize_text(str(exc), limit=180),
@@ -355,3 +419,35 @@ def _store_cache(*, cache, user, scope, scope_key, input_hash, status, content, 
     cache.generated_at = timezone.now()
     cache.save()
     return cache
+
+
+def _is_graceful_ai_fallback_error(error):
+    message = sanitize_text(str(error), limit=260).lower()
+    return (
+        'not valid json' in message
+        or 'did not include output text' in message
+        or 'did not contain a json object' in message
+    )
+
+
+def _graceful_ai_fallback_content(*, scope, reason):
+    summary = 'AI analysis could not be structured reliably. Core SiteGuard data remains available.'
+    impact = 'No automated impact summary was generated from the provider response.'
+    if scope == AIAnalysisCache.SCOPE_ERROR_UPLOAD:
+        summary = 'AI explanation could not be structured reliably. Parsed analyzer results remain available.'
+        impact = 'No automated error-impact explanation was generated from the provider response.'
+    elif scope == AIAnalysisCache.SCOPE_INCIDENT:
+        summary = 'AI incident analysis could not be structured reliably. Incident timeline data remains available.'
+        impact = 'No automated incident-impact explanation was generated from the provider response.'
+
+    return normalize_ai_content({
+        'summary': summary,
+        'likely_root_cause': '',
+        'impact': impact,
+        'recommendations': [],
+        'confidence': 'low',
+        'outage_narrative': impact,
+        'availability_interpretation': impact if scope == AIAnalysisCache.SCOPE_REPORT else '',
+        'latency_interpretation': '',
+        'frequent_issues': [reason] if reason else [],
+    })

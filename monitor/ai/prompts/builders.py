@@ -8,10 +8,10 @@ MAX_INPUT_LENGTH = 9000
 
 AI_JSON_SCHEMA_DESCRIPTION = {
     'summary': 'Concise operational summary.',
-    'suggested_fixes': ['Recommendation strings.'],
-    'trends': ['Operational trend strings.'],
-    'frequent_issues': ['Frequent issue or recurring pattern strings.'],
-    'likely_causes': ['Cautious likely/probable/suspected cause strings.'],
+    'likely_root_cause': 'Cautious likely/probable/suspected root-cause statement.',
+    'impact': 'Short user-facing impact statement.',
+    'recommendations': ['Recommendation strings.'],
+    'confidence': 'One of: low, medium, high.',
 }
 
 
@@ -39,7 +39,7 @@ def build_ai_instructions():
         'to trigger alerts, create incidents, delete data, decide uptime, or mutate monitoring state. '
         'Give cautious operational guidance. Label suggestions as recommendations or possible fixes. '
         'Label root-cause content as suspected, probable, or likely. Do not present speculation as certainty. '
-        'Return STRICT RAW JSON ONLY. No markdown. No code fences. No explanations. No commentary. No prose before or after the JSON. '
+        'Return STRICT RAW VALID JSON ONLY. No markdown. No code fences. No explanations. No commentary. No prose before or after the JSON. '
         'Do not wrap the JSON in backticks, headings, labels, or any surrounding text. '
         'Return exactly one compact JSON object with these keys and no additional top-level keys: '
         f'{json.dumps(AI_JSON_SCHEMA_DESCRIPTION)}'
