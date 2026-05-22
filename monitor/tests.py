@@ -13,6 +13,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.core import mail
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, transaction
 from django.test.client import RequestFactory
@@ -2717,6 +2718,85 @@ class EmailDiagnosticsTests(TestCase):
 
         self.assertTrue(sent)
         self.assertEqual(mock_post.call_args.kwargs["json"]["htmlContent"], "<p>Hello</p>")
+
+
+class AdminBootstrapCommandTests(TestCase):
+    def setUp(self):
+        self.env_patch = patch.dict(
+            os.environ,
+            {
+                "DJANGO_ADMIN_USERNAME": "render-admin",
+                "DJANGO_ADMIN_EMAIL": "render-admin@example.com",
+                "DJANGO_ADMIN_PASSWORD": "StrongAdminPass123!",
+            },
+            clear=False,
+        )
+        self.env_patch.start()
+
+    def tearDown(self):
+        self.env_patch.stop()
+
+    def test_bootstrap_admin_command_creates_superuser(self):
+        stdout = io.StringIO()
+
+        call_command("bootstrap_admin", stdout=stdout)
+
+        user = User.objects.get(username="render-admin")
+        output = stdout.getvalue()
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.is_active)
+        self.assertTrue(user.check_password("StrongAdminPass123!"))
+        self.assertIn('created superuser "render-admin" successfully', output)
+        self.assertNotIn("StrongAdminPass123!", output)
+
+    def test_bootstrap_admin_command_updates_existing_user_idempotently(self):
+        user = User.objects.create_user(
+            username="render-admin",
+            email="old@example.com",
+            password="OldPassword123!",
+            is_staff=False,
+            is_superuser=False,
+            is_active=False,
+        )
+        stdout = io.StringIO()
+
+        call_command("bootstrap_admin", stdout=stdout)
+
+        user.refresh_from_db()
+        output = stdout.getvalue()
+        self.assertEqual(User.objects.filter(username="render-admin").count(), 1)
+        self.assertEqual(user.email, "render-admin@example.com")
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.is_active)
+        self.assertTrue(user.check_password("StrongAdminPass123!"))
+        self.assertIn('updated superuser "render-admin" successfully', output)
+        self.assertNotIn("StrongAdminPass123!", output)
+
+    def test_bootstrap_admin_command_can_claim_existing_email_safely(self):
+        user = User.objects.create_user(
+            username="legacy-admin",
+            email="render-admin@example.com",
+            password="OldPassword123!",
+            is_staff=False,
+            is_superuser=False,
+            is_active=False,
+        )
+
+        call_command("bootstrap_admin", stdout=io.StringIO())
+
+        user.refresh_from_db()
+        self.assertEqual(user.username, "render-admin")
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.is_active)
+        self.assertTrue(user.check_password("StrongAdminPass123!"))
+
+    def test_bootstrap_admin_command_fails_clearly_when_env_missing(self):
+        with patch.dict(os.environ, {"DJANGO_ADMIN_PASSWORD": ""}, clear=False):
+            with self.assertRaisesMessage(CommandError, "DJANGO_ADMIN_PASSWORD"):
+                call_command("bootstrap_admin", stdout=io.StringIO())
 
 
 class ImmediateMonitoringTests(TestCase):

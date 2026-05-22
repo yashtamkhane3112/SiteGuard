@@ -33,6 +33,7 @@ Recommended:
 
 - `DEBUG=False`
 - `BOOTSTRAP_ADMIN_ENABLED=False`
+- `DJANGO_BOOTSTRAP_ADMIN=False`
 - `LOG_LEVEL=INFO`
 - `DJANGO_LOG_LEVEL=INFO`
 - `EMAIL_TIMEOUT=15`
@@ -78,6 +79,17 @@ Web service:
 - Build command: `pip install -r requirements.txt`
 - Start command: `bash ./start.sh`
 
+Optional one-time admin bootstrap on the web service only:
+
+- `DJANGO_BOOTSTRAP_ADMIN=True`
+- `DJANGO_ADMIN_USERNAME=<admin username>`
+- `DJANGO_ADMIN_EMAIL=<admin email>`
+- `DJANGO_ADMIN_PASSWORD=<strong admin password>`
+
+After the deploy succeeds and the superuser is confirmed, set:
+
+- `DJANGO_BOOTSTRAP_ADMIN=False`
+
 Cron job:
 
 - Schedule: `*/5 * * * *`
@@ -91,11 +103,42 @@ Do not override the web start command with `gunicorn siteguard.wsgi:application`
 
 1. export production settings
 2. run migrations
-3. verify `auth_user`
-4. collect static files
-5. start Gunicorn
+3. optionally run `python manage.py bootstrap_admin` only when `DJANGO_BOOTSTRAP_ADMIN=True`
+4. verify `auth_user`
+5. collect static files
+6. start Gunicorn
 
 The script exits on the first error.
+
+## Admin Bootstrap Command
+
+Use:
+
+```bash
+python manage.py bootstrap_admin --settings=siteguard.settings.prod
+```
+
+Required environment variables:
+
+- `DJANGO_ADMIN_USERNAME`
+- `DJANGO_ADMIN_EMAIL`
+- `DJANGO_ADMIN_PASSWORD`
+
+Behavior:
+
+- creates the configured user if missing
+- updates the configured user if it already exists
+- enforces `is_staff=True`, `is_superuser=True`, and `is_active=True`
+- never prints the password
+- fails clearly if required environment variables are missing
+- is idempotent and safe to rerun
+
+Expected startup log lines when using the deploy/start integration:
+
+- `Admin bootstrap executed: running bootstrap_admin...`
+- `Admin bootstrap success.`
+- `Admin bootstrap skipped.`
+- `Admin bootstrap failure.`
 
 ## Why the Cron Uses HTTP
 

@@ -16,6 +16,19 @@ command -v gunicorn >/dev/null 2>&1
 echo "Running migrations..."
 python manage.py migrate --settings="${DJANGO_SETTINGS_MODULE}" --noinput
 
+bootstrap_admin_flag="$(printf '%s' "${DJANGO_BOOTSTRAP_ADMIN:-False}" | tr '[:upper:]' '[:lower:]')"
+if [[ "${bootstrap_admin_flag}" == "true" ]]; then
+  echo "Admin bootstrap executed: running bootstrap_admin..."
+  if python manage.py bootstrap_admin --settings="${DJANGO_SETTINGS_MODULE}"; then
+    echo "Admin bootstrap success."
+  else
+    echo "Admin bootstrap failure." >&2
+    exit 1
+  fi
+else
+  echo "Admin bootstrap skipped."
+fi
+
 echo "Checking auth table..."
 python manage.py shell --settings="${DJANGO_SETTINGS_MODULE}" -c "
 from django.db import connection
