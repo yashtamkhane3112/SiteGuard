@@ -39,6 +39,58 @@ def log_ai_startup_diagnostics():
     )
 
 
+def log_session_startup_diagnostics():
+    session_engine = getattr(settings, "SESSION_ENGINE", "")
+    default_db_name = ""
+    try:
+        default_db_name = str(settings.DATABASES.get("default", {}).get("NAME", ""))
+    except Exception:
+        default_db_name = ""
+
+    logger.info(
+        "Session startup diagnostics: engine=%s cookie_age=%s secure=%s samesite=%s save_every_request=%s expire_at_browser_close=%s proxy_ssl_header=%s use_x_forwarded_host=%s csrf_secure=%s csrf_samesite=%s",
+        session_engine,
+        int(getattr(settings, "SESSION_COOKIE_AGE", 0) or 0),
+        bool(getattr(settings, "SESSION_COOKIE_SECURE", False)),
+        getattr(settings, "SESSION_COOKIE_SAMESITE", ""),
+        bool(getattr(settings, "SESSION_SAVE_EVERY_REQUEST", False)),
+        bool(getattr(settings, "SESSION_EXPIRE_AT_BROWSER_CLOSE", False)),
+        getattr(settings, "SECURE_PROXY_SSL_HEADER", None),
+        bool(getattr(settings, "USE_X_FORWARDED_HOST", False)),
+        bool(getattr(settings, "CSRF_COOKIE_SECURE", False)),
+        getattr(settings, "CSRF_COOKIE_SAMESITE", ""),
+        extra={
+            "session_engine": session_engine,
+            "session_cookie_age": int(getattr(settings, "SESSION_COOKIE_AGE", 0) or 0),
+            "session_cookie_secure": bool(getattr(settings, "SESSION_COOKIE_SECURE", False)),
+            "session_cookie_samesite": getattr(settings, "SESSION_COOKIE_SAMESITE", ""),
+            "session_save_every_request": bool(getattr(settings, "SESSION_SAVE_EVERY_REQUEST", False)),
+            "session_expire_at_browser_close": bool(getattr(settings, "SESSION_EXPIRE_AT_BROWSER_CLOSE", False)),
+            "secure_proxy_ssl_header": getattr(settings, "SECURE_PROXY_SSL_HEADER", None),
+            "use_x_forwarded_host": bool(getattr(settings, "USE_X_FORWARDED_HOST", False)),
+            "csrf_cookie_secure": bool(getattr(settings, "CSRF_COOKIE_SECURE", False)),
+            "csrf_cookie_samesite": getattr(settings, "CSRF_COOKIE_SAMESITE", ""),
+            "session_db_name": default_db_name,
+        },
+    )
+
+    if (
+        not getattr(settings, "DEBUG", False)
+        and session_engine == "django.contrib.sessions.backends.db"
+        and default_db_name
+        and "siteguard.sqlite3" in default_db_name.replace("\\", "/")
+    ):
+        logger.warning(
+            "Production session engine is using the database backend on a local SQLite file. On Render this can invalidate sessions after deploys or instance restarts.",
+            extra={
+                "runtime_context": {
+                    "session_engine": session_engine,
+                    "database_name": default_db_name,
+                }
+            },
+        )
+
+
 class MonitorConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'monitor'
@@ -47,6 +99,7 @@ class MonitorConfig(AppConfig):
         global _startup_diagnostics_logged
         if not _startup_diagnostics_logged:
             log_ai_startup_diagnostics()
+            log_session_startup_diagnostics()
             _startup_diagnostics_logged = True
 
         if getattr(settings, "DEBUG", False):
