@@ -3,7 +3,7 @@ from urllib.parse import urlparse
 
 from .base import *  # noqa: F401,F403
 from .validation import validate_production_configuration
-
+from .base import _config_text
 
 DEBUG = False
 
