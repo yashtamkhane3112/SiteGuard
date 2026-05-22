@@ -23,7 +23,11 @@ from django.test import TestCase, override_settings
 from django.urls import resolve, reverse
 from django.utils import timezone
 
-from monitor.apps import log_ai_startup_diagnostics, log_session_startup_diagnostics
+from monitor.apps import (
+    log_ai_startup_diagnostics,
+    log_analyzer_storage_startup_diagnostics,
+    log_session_startup_diagnostics,
+)
 from monitor.emailing import build_password_reset_email_options, get_email_base_url, send_siteguard_email
 from monitor.error_analyzer import parse_log_content
 from monitor.forms import SiteGuardPasswordResetForm
@@ -32,7 +36,8 @@ from monitor.ai.providers.base import AIProviderError, AIProviderUnavailable
 from monitor.ai.providers.gemini_provider import GeminiProvider
 from monitor.ai.providers.registry import get_default_provider
 from monitor.ai.services.analysis import generate_report_analysis, get_report_ai_state
-from monitor.models import AIAnalysisCache, Alert, Incident, IncidentEvent, MonitorLog, Notification, ParsedError, UploadedLog, UserProfile, Website, get_uploaded_log_storage
+from monitor.models import AIAnalysisCache, Alert, Incident, IncidentEvent, MonitorLog, Notification, ParsedError, UploadedLog, UserProfile, Website
+from monitor.storage import AnalyzerUploadStorage, get_uploaded_log_storage, get_uploaded_log_storage_metadata
 from siteguard.settings.base import _normalize_config_text
 from siteguard.settings.validation import validate_production_configuration
 from monitor.utils import (
@@ -671,11 +676,32 @@ class ErrorAnalyzerTests(TestCase):
             "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
         }
     )
+    def test_uploaded_log_field_uses_analyzer_storage_wrapper(self):
+        storage = UploadedLog._meta.get_field("file").storage
+
+        self.assertIsInstance(storage, AnalyzerUploadStorage)
+
+    @override_settings(
+        STORAGES={
+            "default": {"BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage"},
+            "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+        }
+    )
     def test_error_log_upload_uses_cloudinary_raw_storage_in_production_mode(self):
         storage = get_uploaded_log_storage()
+        delegate = storage.get_delegate_storage()
+        metadata = get_uploaded_log_storage_metadata()
 
-        self.assertIsInstance(storage, RawMediaCloudinaryStorage)
-        self.assertEqual(storage.RESOURCE_TYPE, "raw")
+        self.assertIsInstance(storage, AnalyzerUploadStorage)
+        self.assertIs(delegate.__class__, RawMediaCloudinaryStorage)
+        self.assertEqual(delegate.RESOURCE_TYPE, "raw")
+        self.assertEqual(metadata["resource_type"], "raw")
+        self.assertEqual(metadata["delegate_class"], "cloudinary_storage.storage.RawMediaCloudinaryStorage")
+
+    def test_avatar_field_storage_remains_separate_from_analyzer_storage(self):
+        storage = UserProfile._meta.get_field("avatar").storage
+
+        self.assertNotIsInstance(storage, AnalyzerUploadStorage)
 
     def test_error_log_results_render_after_upload(self):
         upload_response = self.client.post(
@@ -715,6 +741,33 @@ class ErrorAnalyzerTests(TestCase):
         self.assertContains(response, "The diagnostic file could not be stored or analyzed right now.")
         self.assertEqual(UploadedLog.objects.filter(user=self.user, filename="failed.log").count(), 0)
         mock_exception.assert_called_once()
+
+    @patch("monitor.views.logger.warning")
+    def test_error_log_upload_rejects_unavailable_storage_gracefully(self, mock_warning):
+        storage = UploadedLog._meta.get_field("file").storage
+        with patch.object(storage, "get_debug_metadata", return_value={
+            "storage_class": "monitor.storage.AnalyzerUploadStorage",
+            "delegate_class": "",
+            "resource_type": "",
+            "active_media_backend": "cloudinary_storage.storage.MediaCloudinaryStorage",
+            "available": False,
+            "error": "Analyzer upload storage resolved to a non-raw Cloudinary backend.",
+        }):
+            response = self.client.post(
+                reverse("error_log_upload"),
+                {
+                    "file": SimpleUploadedFile(
+                        "failed.log",
+                        b"TimeoutError: upstream timed out\n",
+                        content_type="text/plain",
+                    )
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "storage backend is not available right now")
+        self.assertEqual(UploadedLog.objects.filter(user=self.user, filename="failed.log").count(), 0)
+        mock_warning.assert_called_once()
 
     def test_error_analyzer_results_include_ai_explain_panel(self):
         uploaded_log = UploadedLog.objects.create(
@@ -2186,6 +2239,23 @@ class SessionConfigurationDiagnosticsTests(TestCase):
         self.assertIn("secure=True", combined_output)
         self.assertIn("proxy_ssl_header=('HTTP_X_FORWARDED_PROTO', 'https')", combined_output)
         self.assertIn("use_x_forwarded_host=True", combined_output)
+
+    @override_settings(
+        STORAGES={
+            "default": {"BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage"},
+            "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+        }
+    )
+    def test_analyzer_storage_startup_diagnostics_log_runtime_configuration(self):
+        with self.assertLogs("siteguard.runtime", level="INFO") as captured:
+            log_analyzer_storage_startup_diagnostics()
+
+        combined_output = "\n".join(captured.output)
+        self.assertIn("Analyzer storage startup diagnostics:", combined_output)
+        self.assertIn("field_storage=monitor.storage.AnalyzerUploadStorage", combined_output)
+        self.assertIn("delegate=cloudinary_storage.storage.RawMediaCloudinaryStorage", combined_output)
+        self.assertIn("resource_type=raw", combined_output)
+        self.assertIn("active_media_backend=cloudinary_storage.storage.MediaCloudinaryStorage", combined_output)
 
 
 class ProductionEmailValidationTests(TestCase):

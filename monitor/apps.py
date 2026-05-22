@@ -91,6 +91,39 @@ def log_session_startup_diagnostics():
         )
 
 
+def log_analyzer_storage_startup_diagnostics():
+    from .models import UploadedLog
+
+    storage = UploadedLog._meta.get_field("file").storage
+    if hasattr(storage, "get_debug_metadata"):
+        metadata = storage.get_debug_metadata()
+    else:
+        metadata = {
+            "storage_class": f"{storage.__class__.__module__}.{storage.__class__.__name__}",
+            "delegate_class": "",
+            "resource_type": getattr(storage, "RESOURCE_TYPE", ""),
+            "active_media_backend": ((getattr(settings, "STORAGES", {}) or {}).get("default", {}) or {}).get("BACKEND", ""),
+            "available": True,
+            "error": "",
+        }
+
+    logger.info(
+        "Analyzer storage startup diagnostics: field_storage=%s delegate=%s resource_type=%s active_media_backend=%s available=%s",
+        metadata.get("storage_class", ""),
+        metadata.get("delegate_class", ""),
+        metadata.get("resource_type", ""),
+        metadata.get("active_media_backend", ""),
+        bool(metadata.get("available", False)),
+        extra={"analyzer_storage": metadata},
+    )
+
+    if not metadata.get("available", False):
+        logger.warning(
+            "Analyzer upload storage is unavailable.",
+            extra={"analyzer_storage": metadata},
+        )
+
+
 class MonitorConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'monitor'
@@ -100,6 +133,7 @@ class MonitorConfig(AppConfig):
         if not _startup_diagnostics_logged:
             log_ai_startup_diagnostics()
             log_session_startup_diagnostics()
+            log_analyzer_storage_startup_diagnostics()
             _startup_diagnostics_logged = True
 
         if getattr(settings, "DEBUG", False):

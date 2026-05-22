@@ -2,11 +2,8 @@ import os
 import re
 from urllib.parse import urlsplit
 
-from cloudinary_storage.storage import RawMediaCloudinaryStorage
-from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from django.core.files.storage import storages
 from django.core.files.utils import validate_file_name
 from django.core.validators import URLValidator
 from django.db import models
@@ -14,6 +11,8 @@ from django.db.models import Q
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
+
+from .storage import AnalyzerUploadStorage, get_uploaded_log_storage as resolve_uploaded_log_storage
 
 
 def uploaded_log_file_path(instance, filename):
@@ -23,10 +22,7 @@ def uploaded_log_file_path(instance, filename):
 
 
 def get_uploaded_log_storage():
-    default_backend = (getattr(settings, 'STORAGES', {}) or {}).get('default', {}).get('BACKEND', '')
-    if default_backend == 'cloudinary_storage.storage.MediaCloudinaryStorage':
-        return RawMediaCloudinaryStorage()
-    return storages['default']
+    return resolve_uploaded_log_storage()
 
 
 STATUS_TONE_HEALTHY = 'healthy'
@@ -632,7 +628,7 @@ class UploadedLog(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='uploaded_logs')
     filename = models.CharField(max_length=255)
     uploaded_at = models.DateTimeField(auto_now_add=True)
-    file = models.FileField(upload_to=uploaded_log_file_path, storage=get_uploaded_log_storage)
+    file = models.FileField(upload_to=uploaded_log_file_path, storage=AnalyzerUploadStorage())
     processed = models.BooleanField(default=False)
 
     class Meta:

@@ -2049,34 +2049,93 @@ def error_log_upload(request):
         form = UploadedLogForm(request.POST, request.FILES)
         handled_upload_failure = False
         if form.is_valid():
-            uploaded_log = form.save(commit=False)
-            uploaded_log.user = request.user
-            uploaded_log.filename = form.cleaned_data['file'].name
-            uploaded_log.processed = False
-            try:
-                uploaded_log.save()
-                process_uploaded_log(uploaded_log)
-            except Exception:
-                logger.exception(
-                    "Error analyzer upload failed.",
+            uploaded_file = form.cleaned_data['file']
+            field_storage = UploadedLog._meta.get_field('file').storage
+            if hasattr(field_storage, 'get_debug_metadata'):
+                storage_metadata = field_storage.get_debug_metadata()
+            else:
+                storage_metadata = {
+                    'storage_class': f'{field_storage.__class__.__module__}.{field_storage.__class__.__name__}',
+                    'delegate_class': '',
+                    'resource_type': getattr(field_storage, 'RESOURCE_TYPE', ''),
+                    'active_media_backend': ((getattr(django_settings, 'STORAGES', {}) or {}).get('default', {}) or {}).get('BACKEND', ''),
+                    'available': True,
+                    'error': '',
+                }
+
+            extension = os.path.splitext(uploaded_file.name or '')[1].lower()
+            logger.info(
+                "Error analyzer upload diagnostics.",
+                extra={
+                    "error_analyzer_upload": {
+                        "user_id": request.user.id,
+                        "filename": uploaded_file.name,
+                        "extension": extension,
+                        "content_type": getattr(uploaded_file, 'content_type', ''),
+                        "size": getattr(uploaded_file, 'size', 0),
+                        "field_storage": storage_metadata.get('storage_class', ''),
+                        "delegate_storage": storage_metadata.get('delegate_class', ''),
+                        "resource_type": storage_metadata.get('resource_type', ''),
+                        "active_media_backend": storage_metadata.get('active_media_backend', ''),
+                        "storage_available": bool(storage_metadata.get('available', False)),
+                    }
+                },
+            )
+
+            if not storage_metadata.get('available', False):
+                logger.warning(
+                    "Analyzer upload storage rejected before save.",
                     extra={
                         "error_analyzer_upload": {
                             "user_id": request.user.id,
-                            "filename": uploaded_log.filename,
-                            "content_type": getattr(form.cleaned_data.get('file'), 'content_type', ''),
-                            "size": getattr(form.cleaned_data.get('file'), 'size', 0),
-                            "storage": uploaded_log.file.storage.__class__.__name__,
+                            "filename": uploaded_file.name,
+                            "extension": extension,
+                            "content_type": getattr(uploaded_file, 'content_type', ''),
+                            "storage_error": storage_metadata.get('error', ''),
+                            "field_storage": storage_metadata.get('storage_class', ''),
+                            "delegate_storage": storage_metadata.get('delegate_class', ''),
+                            "resource_type": storage_metadata.get('resource_type', ''),
+                            "active_media_backend": storage_metadata.get('active_media_backend', ''),
                         }
                     },
                 )
-                if uploaded_log.pk:
-                    uploaded_log.delete()
-                form.add_error('file', 'The diagnostic file could not be uploaded right now. Please try again.')
-                messages.error(request, 'Upload failed. The diagnostic file could not be stored or analyzed right now.')
+                form.add_error('file', 'Diagnostic uploads are temporarily unavailable. Please try again shortly.')
+                messages.error(request, 'Upload failed. The diagnostic file storage backend is not available right now.')
                 handled_upload_failure = True
             else:
-                messages.success(request, f'Processed {uploaded_log.filename} successfully.')
-                return redirect('error_log_results', upload_id=uploaded_log.id)
+                uploaded_log = form.save(commit=False)
+                uploaded_log.user = request.user
+                uploaded_log.filename = uploaded_file.name
+                uploaded_log.processed = False
+                try:
+                    uploaded_log.save()
+                    process_uploaded_log(uploaded_log)
+                except Exception:
+                    logger.exception(
+                        "Error analyzer upload failed.",
+                        extra={
+                            "error_analyzer_upload": {
+                                "user_id": request.user.id,
+                                "filename": uploaded_log.filename,
+                                "extension": extension,
+                                "content_type": getattr(uploaded_file, 'content_type', ''),
+                                "size": getattr(uploaded_file, 'size', 0),
+                                "field_storage": storage_metadata.get('storage_class', ''),
+                                "delegate_storage": storage_metadata.get('delegate_class', ''),
+                                "resource_type": storage_metadata.get('resource_type', ''),
+                                "active_media_backend": storage_metadata.get('active_media_backend', ''),
+                                "storage_error": storage_metadata.get('error', ''),
+                            }
+                        },
+                    )
+                    if uploaded_log.pk:
+                        uploaded_log.delete()
+                    form.add_error('file', 'The diagnostic file could not be uploaded right now. Please try again.')
+                    messages.error(request, 'Upload failed. The diagnostic file could not be stored or analyzed right now.')
+                    handled_upload_failure = True
+                else:
+                    messages.success(request, f'Processed {uploaded_log.filename} successfully.')
+                    return redirect('error_log_results', upload_id=uploaded_log.id)
         if not handled_upload_failure:
             messages.error(request, 'Upload failed. Review the selected file and try again.')
     else:
