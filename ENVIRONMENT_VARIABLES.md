@@ -68,8 +68,9 @@ Notes:
 - Password reset emails use the active local request host during `DEBUG=True` development flows, so local forgot-password links stay on `127.0.0.1`, `localhost`, or the host you are actively using.
 - Production password reset and operational email links use `APP_BASE_URL` / `CANONICAL_BASE_URL`, which must stay HTTPS on Render.
 - Render terminates HTTPS at the proxy. Keep `SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https")` and `USE_X_FORWARDED_HOST=True` so Django treats forwarded requests as secure.
-- Production session persistence should not depend on local SQLite-backed server-side sessions on Render. Prefer `SESSION_ENGINE=django.contrib.sessions.backends.signed_cookies` unless you move sessions to a persistent external session store.
-- Keep `SECRET_KEY` stable across deploys. Rotating it will invalidate all signed sessions immediately.
+- Production now defaults to `SESSION_ENGINE=django.contrib.sessions.backends.db`.
+- Keep `python manage.py migrate` in the Render startup flow so the `django_session` table exists before serving traffic.
+- If you use SQLite on Render for session persistence, keep the database on a persistent disk path such as `data/siteguard.sqlite3`.
 - `SESSION_COOKIE_AGE` defaults to 14 days and `SESSION_SAVE_EVERY_REQUEST=True` refreshes active sessions without weakening HTTPS-only cookie behavior in production.
 - AI operational intelligence is disabled by default. Set `AI_FEATURES_ENABLED=True`, `AI_PROVIDER=gemini`, and `GEMINI_API_KEY` on the web service to enable on-demand report, error, and incident analysis.
 - Gemini is the default provider and defaults to `GEMINI_MODEL=gemini-1.5-flash`.

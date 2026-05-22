@@ -12,6 +12,7 @@ import requests
 from cloudinary_storage.storage import RawMediaCloudinaryStorage
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.contrib.sessions.models import Session
 from django.core import mail
 from django.core.management import call_command
 from django.core.management.base import CommandError
@@ -168,6 +169,72 @@ class AuthFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(int(fresh_client.session["_auth_user_id"]), user.id)
+
+    @override_settings(SESSION_ENGINE="django.contrib.sessions.backends.db")
+    def test_authenticated_routes_survive_multiple_requests_with_db_sessions(self):
+        User.objects.create_user(username="tester", password="StrongPass123!")
+
+        login_response = self.client.post(
+            reverse("login"),
+            {
+                "username": "tester",
+                "password": "StrongPass123!",
+                "remember_me": "on",
+            },
+        )
+
+        self.assertRedirects(login_response, reverse("dashboard"))
+        first = self.client.get(reverse("dashboard"))
+        second = self.client.get(reverse("alerts"))
+        third = self.client.get(reverse("reports"))
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(third.status_code, 200)
+
+    @override_settings(SESSION_ENGINE="django.contrib.sessions.backends.db")
+    def test_db_session_survives_worker_reload_simulation(self):
+        user = User.objects.create_user(username="tester", password="StrongPass123!")
+
+        login_response = self.client.post(
+            reverse("login"),
+            {
+                "username": "tester",
+                "password": "StrongPass123!",
+                "remember_me": "on",
+            },
+        )
+
+        self.assertRedirects(login_response, reverse("dashboard"))
+        session_key = self.client.session.session_key
+        self.assertTrue(Session.objects.filter(session_key=session_key).exists())
+
+        reloaded_client = self.client_class()
+        reloaded_client.cookies = self.client.cookies
+
+        dashboard_response = reloaded_client.get(reverse("dashboard"))
+
+        self.assertEqual(dashboard_response.status_code, 200)
+        self.assertEqual(int(reloaded_client.session["_auth_user_id"]), user.id)
+
+    @override_settings(SESSION_ENGINE="django.contrib.sessions.backends.db")
+    def test_logout_clears_database_session(self):
+        User.objects.create_user(username="tester", password="StrongPass123!")
+        self.client.post(
+            reverse("login"),
+            {
+                "username": "tester",
+                "password": "StrongPass123!",
+                "remember_me": "on",
+            },
+        )
+        session_key = self.client.session.session_key
+        self.assertTrue(Session.objects.filter(session_key=session_key).exists())
+
+        response = self.client.get(reverse("logout"))
+
+        self.assertRedirects(response, reverse("login"))
+        self.assertFalse(Session.objects.filter(session_key=session_key).exists())
 
     def test_login_stays_on_page_for_invalid_credentials(self):
         User.objects.create_user(username="tester", password="StrongPass123!")
@@ -2277,7 +2344,7 @@ class AIConfigurationDiagnosticsTests(TestCase):
 
 class SessionConfigurationDiagnosticsTests(TestCase):
     @override_settings(
-        SESSION_ENGINE="django.contrib.sessions.backends.signed_cookies",
+        SESSION_ENGINE="django.contrib.sessions.backends.db",
         SESSION_COOKIE_AGE=604800,
         SESSION_COOKIE_SECURE=True,
         SESSION_COOKIE_SAMESITE="Lax",
@@ -2294,11 +2361,12 @@ class SessionConfigurationDiagnosticsTests(TestCase):
 
         combined_output = "\n".join(captured.output)
         self.assertIn("Session startup diagnostics:", combined_output)
-        self.assertIn("engine=django.contrib.sessions.backends.signed_cookies", combined_output)
+        self.assertIn("engine=django.contrib.sessions.backends.db", combined_output)
         self.assertIn("cookie_age=604800", combined_output)
         self.assertIn("secure=True", combined_output)
         self.assertIn("proxy_ssl_header=('HTTP_X_FORWARDED_PROTO', 'https')", combined_output)
         self.assertIn("use_x_forwarded_host=True", combined_output)
+        self.assertIn("backend_health=healthy", combined_output)
 
     @override_settings(
         STORAGES={

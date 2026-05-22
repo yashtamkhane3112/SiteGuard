@@ -15,7 +15,7 @@ if SQLITE_PATH == DEFAULT_SQLITE_PATH:
 SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", default=True, cast=bool)
 SESSION_ENGINE = _config_text(
     "SESSION_ENGINE",
-    default="django.contrib.sessions.backends.signed_cookies",
+    default="django.contrib.sessions.backends.db",
 )
 SESSION_COOKIE_AGE = config("SESSION_COOKIE_AGE", default=1209600, cast=int)
 SESSION_COOKIE_SECURE = True

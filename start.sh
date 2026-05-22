@@ -29,13 +29,16 @@ else
   echo "Admin bootstrap skipped."
 fi
 
-echo "Checking auth table..."
+echo "Checking auth and session tables..."
 python manage.py shell --settings="${DJANGO_SETTINGS_MODULE}" -c "
 from django.db import connection
 cursor = connection.cursor()
 cursor.execute(\"SELECT name FROM sqlite_master WHERE type='table' AND name='auth_user';\")
 result = cursor.fetchone()
 assert result is not None, 'auth_user table missing'
+cursor.execute(\"SELECT name FROM sqlite_master WHERE type='table' AND name='django_session';\")
+result = cursor.fetchone()
+assert result is not None, 'django_session table missing'
 "
 
 echo "Collecting static..."
