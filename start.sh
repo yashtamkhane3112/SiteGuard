@@ -29,16 +29,18 @@ else
   echo "Admin bootstrap skipped."
 fi
 
-echo "Checking auth and session tables..."
+echo "Checking auth table and session backend..."
 python manage.py shell --settings="${DJANGO_SETTINGS_MODULE}" -c "
+from django.conf import settings
 from django.db import connection
-cursor = connection.cursor()
-cursor.execute(\"SELECT name FROM sqlite_master WHERE type='table' AND name='auth_user';\")
-result = cursor.fetchone()
-assert result is not None, 'auth_user table missing'
-cursor.execute(\"SELECT name FROM sqlite_master WHERE type='table' AND name='django_session';\")
-result = cursor.fetchone()
-assert result is not None, 'django_session table missing'
+table_names = set(connection.introspection.table_names())
+assert 'auth_user' in table_names, 'auth_user table missing'
+session_engine = getattr(settings, 'SESSION_ENGINE', '')
+if session_engine == 'django.contrib.sessions.backends.db':
+    assert 'django_session' in table_names, 'django_session table missing'
+    print('Session backend requires django_session and the table is present.')
+else:
+    print(f'Session backend {session_engine} does not require django_session persistence.')
 "
 
 echo "Collecting static..."

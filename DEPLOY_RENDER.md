@@ -97,6 +97,12 @@ Cron job:
 
 Do not override the web start command with `gunicorn siteguard.wsgi:application`. That bypasses startup migrations.
 
+Temporary production session workaround:
+
+- `SESSION_ENGINE=django.contrib.sessions.backends.signed_cookies`
+- This is intentionally temporary while Render production still uses SQLite on ephemeral storage
+- Long-term production persistence should move to PostgreSQL or a persistent Render disk
+
 ## Startup Sequence
 
 [`start.sh`](/E:/Testing%20django%202/Testing/siteguard/start.sh:1) performs:
@@ -104,7 +110,7 @@ Do not override the web start command with `gunicorn siteguard.wsgi:application`
 1. export production settings
 2. run migrations
 3. optionally run `python manage.py bootstrap_admin` only when `DJANGO_BOOTSTRAP_ADMIN=True`
-4. verify `auth_user`
+4. verify `auth_user` and confirm the configured session backend is compatible with startup
 5. collect static files
 6. start Gunicorn
 
@@ -150,6 +156,8 @@ Render free cron and web services do not share the same local SQLite file. The c
 - Render free tier storage remains ephemeral
 - Data can be lost on restart or redeploy
 - Startup migrations are mandatory every boot
+- Signed cookie sessions are the current temporary production workaround so user auth can survive web service restarts without relying on SQLite session rows
+- PostgreSQL remains the recommended long-term production migration path
 
 ## Health Check
 
@@ -173,8 +181,7 @@ Confirm these log lines:
 
 - `STARTUP SCRIPT RUNNING`
 - `Running migrations...`
-- `Checking auth table...`
-- `('auth_user',)`
+- `Checking auth table and session backend...`
 - `Collecting static...`
 - `Starting gunicorn...`
 

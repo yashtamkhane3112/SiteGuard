@@ -170,6 +170,56 @@ class AuthFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(int(fresh_client.session["_auth_user_id"]), user.id)
 
+    @override_settings(SESSION_ENGINE="django.contrib.sessions.backends.signed_cookies")
+    def test_signed_cookie_session_persists_across_new_client_with_same_cookie(self):
+        user = User.objects.create_user(username="signed-cookie-user", password="StrongPass123!")
+
+        login_response = self.client.post(
+            reverse("login"),
+            {
+                "username": "signed-cookie-user",
+                "password": "StrongPass123!",
+                "remember_me": "on",
+            },
+        )
+
+        self.assertRedirects(login_response, reverse("dashboard"))
+        fresh_client = self.client_class()
+        fresh_client.cookies = self.client.cookies
+
+        dashboard_response = fresh_client.get(reverse("dashboard"))
+        alerts_response = fresh_client.get(reverse("alerts"))
+
+        self.assertEqual(dashboard_response.status_code, 200)
+        self.assertEqual(alerts_response.status_code, 200)
+        self.assertEqual(int(fresh_client.session["_auth_user_id"]), user.id)
+
+    @override_settings(SESSION_ENGINE="django.contrib.sessions.backends.signed_cookies")
+    def test_tampered_signed_cookie_forces_reauthentication(self):
+        User.objects.create_user(username="tamper-user", password="StrongPass123!")
+
+        login_response = self.client.post(
+            reverse("login"),
+            {
+                "username": "tamper-user",
+                "password": "StrongPass123!",
+                "remember_me": "on",
+            },
+        )
+
+        self.assertRedirects(login_response, reverse("dashboard"))
+        original_cookie = self.client.cookies[settings.SESSION_COOKIE_NAME].value
+        tampered_cookie = f"{original_cookie[:-1]}x"
+
+        tampered_client = self.client_class()
+        tampered_client.cookies[settings.SESSION_COOKIE_NAME] = tampered_cookie
+
+        dashboard_response = tampered_client.get(reverse("dashboard"))
+
+        self.assertEqual(dashboard_response.status_code, 302)
+        self.assertEqual(dashboard_response.url, "/login/?next=/dashboard/")
+        self.assertNotIn("_auth_user_id", tampered_client.session)
+
     @override_settings(SESSION_ENGINE="django.contrib.sessions.backends.db")
     def test_authenticated_routes_survive_multiple_requests_with_db_sessions(self):
         User.objects.create_user(username="tester", password="StrongPass123!")
@@ -2344,16 +2394,19 @@ class AIConfigurationDiagnosticsTests(TestCase):
 
 class SessionConfigurationDiagnosticsTests(TestCase):
     @override_settings(
-        SESSION_ENGINE="django.contrib.sessions.backends.db",
+        SESSION_ENGINE="django.contrib.sessions.backends.signed_cookies",
         SESSION_COOKIE_AGE=604800,
         SESSION_COOKIE_SECURE=True,
+        SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_SAVE_EVERY_REQUEST=True,
         SESSION_EXPIRE_AT_BROWSER_CLOSE=False,
         CSRF_COOKIE_SECURE=True,
+        CSRF_COOKIE_HTTPONLY=True,
         CSRF_COOKIE_SAMESITE="Lax",
         SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https"),
         USE_X_FORWARDED_HOST=True,
+        SECRET_KEY="x" * 60,
     )
     def test_session_startup_diagnostics_log_runtime_configuration(self):
         with self.assertLogs("siteguard.runtime", level="INFO") as captured:
@@ -2361,11 +2414,13 @@ class SessionConfigurationDiagnosticsTests(TestCase):
 
         combined_output = "\n".join(captured.output)
         self.assertIn("Session startup diagnostics:", combined_output)
-        self.assertIn("engine=django.contrib.sessions.backends.db", combined_output)
+        self.assertIn("engine=django.contrib.sessions.backends.signed_cookies", combined_output)
         self.assertIn("cookie_age=604800", combined_output)
         self.assertIn("secure=True", combined_output)
+        self.assertIn("httponly=True", combined_output)
         self.assertIn("proxy_ssl_header=('HTTP_X_FORWARDED_PROTO', 'https')", combined_output)
         self.assertIn("use_x_forwarded_host=True", combined_output)
+        self.assertIn("secret_key_present=True", combined_output)
         self.assertIn("backend_health=healthy", combined_output)
 
     @override_settings(
