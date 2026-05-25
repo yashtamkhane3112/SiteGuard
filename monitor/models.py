@@ -194,7 +194,7 @@ class UserProfile(models.Model):
     ]
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
-    avatar = models.FileField(upload_to='avatars/', blank=True, null=True)
+    avatar = models.FileField(upload_to='avatars/', max_length=500, blank=True, null=True)
     timezone = models.CharField(max_length=64, default='UTC')
     email_alerts_enabled = models.BooleanField(default=True)
     ssl_alerts_enabled = models.BooleanField(default=True)

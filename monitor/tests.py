@@ -32,7 +32,7 @@ from monitor.apps import (
 )
 from monitor.emailing import build_password_reset_email_options, get_email_base_url, send_siteguard_email
 from monitor.error_analyzer import parse_log_content
-from monitor.forms import SiteGuardPasswordResetForm
+from monitor.forms import ProfileUpdateForm, SiteGuardPasswordResetForm
 from monitor.ai.prompts.builders import build_ai_instructions, build_report_prompt, sanitize_text
 from monitor.ai.providers.base import AIProviderError, AIProviderUnavailable
 from monitor.ai.providers.gemini_provider import GeminiProvider
@@ -1127,6 +1127,137 @@ class MonitorEmailAlertTests(TestCase):
         self.assertEqual(
             dedup_call.kwargs["extra"]["email_context"]["reason"],
             "matching_active_alert",
+        )
+
+    @patch("monitor.utils.check_ssl_status", return_value="Invalid")
+    @patch("monitor.utils.send_siteguard_email", return_value=True)
+    @patch("monitor.utils.requests.get")
+    def test_ssl_alert_sends_email_when_tls_check_fails(self, mock_get, mock_send_email, _mock_ssl):
+        mock_get.return_value = Mock(
+            status_code=200,
+            elapsed=Mock(total_seconds=Mock(return_value=0.080)),
+        )
+
+        run_single_check(self.website)
+
+        incident = Incident.objects.get(website=self.website, is_resolved=False)
+        alert = Alert.objects.get(website=self.website, incident=incident, alert_type=Alert.TYPE_SSL)
+        self.assertEqual(incident.incident_type, Incident.TYPE_SSL)
+        self.assertEqual(alert.status, Alert.STATUS_SENT)
+        self.assertEqual(mock_send_email.call_count, 1)
+
+    def test_create_or_update_alert_logs_delivery_evaluation_with_account_and_website_states(self):
+        incident = Incident.objects.create(
+            website=self.website,
+            title="Complete Outage",
+            incident_type=Incident.TYPE_OUTAGE,
+            status=Incident.STATUS_DOWN,
+            started_at=timezone.now(),
+            latest_response_time=0,
+        )
+
+        with patch("monitor.utils.logger.info") as mock_info, patch(
+            "monitor.utils.send_siteguard_email",
+            return_value=True,
+        ) as mock_send_email:
+            create_or_update_alert(
+                self.website,
+                Alert.TYPE_DOWN,
+                "Automated monitoring detected https://example.com as DOWN.",
+                incident=incident,
+                response_time=0,
+            )
+
+        self.assertEqual(mock_send_email.call_count, 1)
+        decision_call = next(
+            call for call in mock_info.call_args_list
+            if call.args and call.args[0] == "Operational alert delivery evaluated."
+        )
+        context = decision_call.kwargs["extra"]["email_context"]
+        self.assertTrue(context["should_email"])
+        self.assertEqual(context["reason"], "email_enabled")
+        self.assertEqual(context["recipient"], self.user.email)
+        self.assertTrue(context["website_alerts_enabled"])
+        self.assertTrue(context["website_email_notifications"])
+        self.assertTrue(context["profile_email_alerts_enabled"])
+        self.assertTrue(context["profile_incident_alerts_enabled"])
+
+    def test_create_or_update_alert_logs_ssl_alert_type_filter_suppression(self):
+        self.user.profile.ssl_alerts_enabled = False
+        self.user.profile.save(update_fields=["ssl_alerts_enabled"])
+        incident = Incident.objects.create(
+            website=self.website,
+            title="SSL Certificate Warning",
+            incident_type=Incident.TYPE_SSL,
+            status=Incident.STATUS_SLOW,
+            started_at=timezone.now(),
+            latest_response_time=12,
+        )
+
+        with patch("monitor.utils.logger.info") as mock_info, patch("monitor.utils.logger.warning") as mock_warning:
+            create_or_update_alert(
+                self.website,
+                Alert.TYPE_SSL,
+                "TLS handshake or certificate validation failed during certificate checks.",
+                incident=incident,
+                response_time=12,
+            )
+
+        decision_call = next(
+            call for call in mock_info.call_args_list
+            if call.args and call.args[0] == "Operational alert delivery evaluated."
+        )
+        self.assertEqual(
+            decision_call.kwargs["extra"]["email_context"]["reason"],
+            "account_ssl_alerts_disabled",
+        )
+        warning_call = next(
+            call for call in mock_warning.call_args_list
+            if call.args and call.args[0] == "Operational alert email skipped."
+        )
+        self.assertEqual(
+            warning_call.kwargs["extra"]["email_context"]["reason"],
+            "account_ssl_alerts_disabled",
+        )
+
+    def test_create_or_update_alert_logs_cooldown_suppression_for_reused_alert(self):
+        incident = Incident.objects.create(
+            website=self.website,
+            title="Complete Outage",
+            incident_type=Incident.TYPE_OUTAGE,
+            status=Incident.STATUS_DOWN,
+            started_at=timezone.now(),
+            latest_response_time=0,
+        )
+        alert = Alert.objects.create(
+            website=self.website,
+            incident=incident,
+            alert_type=Alert.TYPE_DOWN,
+            status=Alert.STATUS_SENT,
+            message="Original outage detail.",
+            sent_to=self.user.email,
+            response_time=0,
+        )
+
+        with patch("monitor.utils.logger.info") as mock_info, patch("monitor.utils.send_siteguard_email") as mock_send_email:
+            create_or_update_alert(
+                self.website,
+                Alert.TYPE_DOWN,
+                "Updated outage detail after the same active incident remained open.",
+                incident=incident,
+                response_time=0,
+            )
+
+        mock_send_email.assert_not_called()
+        alert.refresh_from_db()
+        self.assertEqual(alert.message, "Updated outage detail after the same active incident remained open.")
+        cooldown_call = next(
+            call for call in mock_info.call_args_list
+            if call.args and call.args[0] == "Operational alert email suppressed by cooldown state reuse."
+        )
+        self.assertEqual(
+            cooldown_call.kwargs["extra"]["email_context"]["reason"],
+            "reused_existing_alert",
         )
 
 
@@ -2938,6 +3069,34 @@ class AccountManagementTests(TestCase):
         snapshot = get_user_account_snapshot(self.user)
         self.assertTrue(snapshot["has_avatar"])
         self.assertTrue(snapshot["avatar_url"].startswith("/media/avatars/"))
+
+    def test_profile_avatar_field_supports_cloudinary_length_names(self):
+        avatar_field = UserProfile._meta.get_field("avatar")
+
+        self.assertEqual(avatar_field.max_length, 500)
+
+    def test_profile_update_persists_long_avatar_storage_name(self):
+        avatar = SimpleUploadedFile("avatar.png", TEST_PNG_BYTES, content_type="image/png")
+        long_avatar_name = "avatars/" + ("nested-folder/" * 20) + "cloudinary-avatar.png"
+        storage = UserProfile._meta.get_field("avatar").storage
+
+        with patch.object(storage, "save", return_value=long_avatar_name), patch.object(storage, "delete") as mock_delete:
+            form = ProfileUpdateForm(
+                data={
+                    "username": "account-user",
+                    "email": "account@example.com",
+                },
+                files={"avatar": avatar},
+                user=self.user,
+                profile=self.user.profile,
+            )
+
+            self.assertTrue(form.is_valid(), form.errors)
+            _user, profile = form.save()
+
+        self.assertEqual(profile.avatar.name, long_avatar_name)
+        self.assertGreater(len(long_avatar_name), 100)
+        mock_delete.assert_not_called()
 
     def test_profile_avatar_renders_after_upload_and_refresh(self):
         avatar = SimpleUploadedFile("avatar.png", TEST_PNG_BYTES, content_type="image/png")

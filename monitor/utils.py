@@ -907,82 +907,88 @@ def account_allows_email_alert(user, alert_type):
 def get_alert_delivery_decision(website, alert_type):
     user = website.user
     profile = get_or_create_user_profile(user)
+    base_decision = {
+        "alert_type": alert_type,
+        "recipient": user.email or "",
+        "website_alerts_enabled": website.alerts_enabled,
+        "website_email_notifications": website.email_notifications,
+        "user_email_present": bool(user.email),
+        "profile_email_alerts_enabled": profile.email_alerts_enabled,
+        "profile_incident_alerts_enabled": profile.incident_alerts_enabled,
+        "profile_ssl_alerts_enabled": profile.ssl_alerts_enabled,
+    }
     if not website.alerts_enabled:
         return {
+            **base_decision,
             "should_email": False,
             "reason": "website_alerts_disabled",
             "recipient": "",
-            "profile_email_alerts_enabled": profile.email_alerts_enabled,
-            "profile_incident_alerts_enabled": profile.incident_alerts_enabled,
-            "profile_ssl_alerts_enabled": profile.ssl_alerts_enabled,
-            "website_email_notifications": website.email_notifications,
-            "user_email_present": bool(user.email),
         }
     if not website.email_notifications:
         return {
+            **base_decision,
             "should_email": False,
             "reason": "website_email_notifications_disabled",
             "recipient": "",
-            "profile_email_alerts_enabled": profile.email_alerts_enabled,
-            "profile_incident_alerts_enabled": profile.incident_alerts_enabled,
-            "profile_ssl_alerts_enabled": profile.ssl_alerts_enabled,
-            "website_email_notifications": website.email_notifications,
-            "user_email_present": bool(user.email),
         }
     if not user.email:
         return {
+            **base_decision,
             "should_email": False,
             "reason": "user_email_missing",
             "recipient": "",
-            "profile_email_alerts_enabled": profile.email_alerts_enabled,
-            "profile_incident_alerts_enabled": profile.incident_alerts_enabled,
-            "profile_ssl_alerts_enabled": profile.ssl_alerts_enabled,
-            "website_email_notifications": website.email_notifications,
             "user_email_present": False,
         }
     if not profile.email_alerts_enabled:
         return {
+            **base_decision,
             "should_email": False,
             "reason": "account_email_alerts_disabled",
             "recipient": "",
-            "profile_email_alerts_enabled": profile.email_alerts_enabled,
-            "profile_incident_alerts_enabled": profile.incident_alerts_enabled,
-            "profile_ssl_alerts_enabled": profile.ssl_alerts_enabled,
-            "website_email_notifications": website.email_notifications,
-            "user_email_present": True,
         }
     if alert_type == Alert.TYPE_SSL and not profile.ssl_alerts_enabled:
         return {
+            **base_decision,
             "should_email": False,
             "reason": "account_ssl_alerts_disabled",
             "recipient": "",
-            "profile_email_alerts_enabled": profile.email_alerts_enabled,
-            "profile_incident_alerts_enabled": profile.incident_alerts_enabled,
-            "profile_ssl_alerts_enabled": profile.ssl_alerts_enabled,
-            "website_email_notifications": website.email_notifications,
-            "user_email_present": True,
         }
     if alert_type in {Alert.TYPE_DOWN, Alert.TYPE_SLOW, Alert.TYPE_RECOVERY} and not profile.incident_alerts_enabled:
         return {
+            **base_decision,
             "should_email": False,
             "reason": "account_incident_alerts_disabled",
             "recipient": "",
-            "profile_email_alerts_enabled": profile.email_alerts_enabled,
-            "profile_incident_alerts_enabled": profile.incident_alerts_enabled,
-            "profile_ssl_alerts_enabled": profile.ssl_alerts_enabled,
-            "website_email_notifications": website.email_notifications,
-            "user_email_present": True,
         }
     return {
+        **base_decision,
         "should_email": True,
         "reason": "email_enabled",
-        "recipient": user.email,
-        "profile_email_alerts_enabled": profile.email_alerts_enabled,
-        "profile_incident_alerts_enabled": profile.incident_alerts_enabled,
-        "profile_ssl_alerts_enabled": profile.ssl_alerts_enabled,
-        "website_email_notifications": website.email_notifications,
-        "user_email_present": True,
     }
+
+
+def log_alert_delivery_decision(website, incident, delivery_decision):
+    logger.info(
+        "Operational alert delivery evaluated.",
+        extra={
+            "email_context": {
+                "flow": "operational_alert",
+                "stage": "delivery_evaluated",
+                "website_id": website.id,
+                "incident_id": incident.id if incident else None,
+                "alert_type": delivery_decision["alert_type"],
+                "reason": delivery_decision["reason"],
+                "should_email": delivery_decision["should_email"],
+                "recipient": delivery_decision["recipient"],
+                "website_alerts_enabled": delivery_decision["website_alerts_enabled"],
+                "website_email_notifications": delivery_decision["website_email_notifications"],
+                "user_email_present": delivery_decision["user_email_present"],
+                "profile_email_alerts_enabled": delivery_decision["profile_email_alerts_enabled"],
+                "profile_incident_alerts_enabled": delivery_decision["profile_incident_alerts_enabled"],
+                "profile_ssl_alerts_enabled": delivery_decision["profile_ssl_alerts_enabled"],
+            }
+        },
+    )
 
 
 def get_incident_title(status):
@@ -1430,6 +1436,7 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
         return None
 
     delivery_decision = get_alert_delivery_decision(website, alert_type)
+    log_alert_delivery_decision(website, incident, delivery_decision)
     sent_to = delivery_decision["recipient"]
     recent_cutoff = timezone.now() - ALERT_DEDUP_WINDOW
     active_alert_filters = {
@@ -1461,6 +1468,7 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
                     "website_id": website.id,
                     "incident_id": alert.incident_id,
                     "existing_status": alert.status,
+                    "recipient": sent_to,
                 }
             },
         )
@@ -1528,6 +1536,7 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
                     "website_id": website.id,
                     "incident_id": alert.incident_id,
                     "existing_status": alert.status,
+                    "recipient": sent_to,
                 }
             },
         )
