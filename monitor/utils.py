@@ -1508,6 +1508,9 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
         if alert.status == Alert.STATUS_FAILED and not sent_to:
             alert.status = Alert.STATUS_SENT
             update_fields.append('status')
+        elif alert.status == Alert.STATUS_FAILED and sent_to:
+            alert.status = Alert.STATUS_PENDING
+            update_fields.append('status')
         alert.save(update_fields=update_fields)
     else:
         alert = Alert.objects.create(
@@ -1580,42 +1583,75 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
             }
         },
     )
-    sent = send_alert_email(alert, recovery_time=recovery_time)
-    if sent:
-        alert.status = Alert.STATUS_SENT
-        alert.sent_to = sent_to
-        alert.save(update_fields=['status', 'sent_to'])
-        logger.info(
-            "Operational alert email dispatch succeeded.",
-            extra={
-                "email_context": {
-                    "flow": "operational_alert",
-                    "stage": "dispatch_success",
-                    "alert_id": alert.id,
-                    "alert_type": alert.alert_type,
-                    "website_id": website.id,
-                    "incident_id": alert.incident_id,
-                    "recipient": sent_to,
-                }
-            },
-        )
-    else:
-        alert.status = Alert.STATUS_FAILED
-        alert.save(update_fields=['status'])
-        logger.warning(
-            "Operational alert email delivery failed.",
-            extra={
-                "email_context": {
-                    "flow": "operational_alert",
-                    "alert_id": alert.id,
-                    "alert_type": alert.alert_type,
-                    "website_id": website.id,
-                }
-            },
-        )
-
-    create_notification_from_alert(alert)
+    schedule_alert_email_dispatch(alert, recovery_time=recovery_time, sent_to=sent_to)
     return alert
+
+
+def schedule_alert_email_dispatch(alert, *, recovery_time=None, sent_to=""):
+    alert_id = alert.id
+    alert_type = alert.alert_type
+    website_id = alert.website_id
+    incident_id = alert.incident_id
+
+    def _dispatch_after_commit():
+        committed_alert = Alert.objects.select_related('website', 'incident', 'website__user').filter(pk=alert_id).first()
+        if committed_alert is None:
+            logger.warning(
+                "Operational alert dispatch skipped after commit because the alert record is unavailable.",
+                extra={
+                    "email_context": {
+                        "flow": "operational_alert",
+                        "stage": "dispatch_missing_after_commit",
+                        "alert_id": alert_id,
+                        "alert_type": alert_type,
+                        "website_id": website_id,
+                        "incident_id": incident_id,
+                        "recipient": sent_to,
+                    }
+                },
+            )
+            return
+
+        sent = send_alert_email(committed_alert, recovery_time=recovery_time)
+        if sent:
+            committed_alert.status = Alert.STATUS_SENT
+            committed_alert.sent_to = sent_to
+            committed_alert.save(update_fields=['status', 'sent_to'])
+            logger.info(
+                "Operational alert email dispatch succeeded.",
+                extra={
+                    "email_context": {
+                        "flow": "operational_alert",
+                        "stage": "dispatch_success",
+                        "alert_id": committed_alert.id,
+                        "alert_type": committed_alert.alert_type,
+                        "website_id": committed_alert.website_id,
+                        "incident_id": committed_alert.incident_id,
+                        "recipient": sent_to,
+                    }
+                },
+            )
+        else:
+            committed_alert.status = Alert.STATUS_FAILED
+            committed_alert.save(update_fields=['status'])
+            logger.warning(
+                "Operational alert email delivery failed.",
+                extra={
+                    "email_context": {
+                        "flow": "operational_alert",
+                        "stage": "dispatch_failed",
+                        "alert_id": committed_alert.id,
+                        "alert_type": committed_alert.alert_type,
+                        "website_id": committed_alert.website_id,
+                        "incident_id": committed_alert.incident_id,
+                        "recipient": sent_to,
+                    }
+                },
+            )
+
+        create_notification_from_alert(committed_alert)
+
+    transaction.on_commit(_dispatch_after_commit)
 
 
 def cleanup_monitoring_state(user=None):

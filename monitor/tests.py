@@ -953,7 +953,8 @@ class MonitorEmailAlertTests(TestCase):
             elapsed=Mock(total_seconds=Mock(return_value=0.123)),
         )
 
-        run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
 
         self.assertEqual(mock_send_email.call_count, 1)
         kwargs = mock_send_email.call_args.kwargs
@@ -979,7 +980,8 @@ class MonitorEmailAlertTests(TestCase):
             elapsed=Mock(total_seconds=Mock(return_value=0.123)),
         )
 
-        run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
 
         kwargs = mock_send_email.call_args.kwargs
         self.assertIn("http://127.0.0.1:8000/alerts/", kwargs["text_body"])
@@ -1062,7 +1064,8 @@ class MonitorEmailAlertTests(TestCase):
         )
 
         stdout = io.StringIO()
-        call_command("monitor_sites", stdout=stdout)
+        with self.captureOnCommitCallbacks(execute=True):
+            call_command("monitor_sites", stdout=stdout)
 
         incident = Incident.objects.get(website=self.website, is_resolved=False)
         alert = Alert.objects.get(website=self.website, incident=incident, alert_type=Alert.TYPE_DOWN)
@@ -1105,7 +1108,8 @@ class MonitorEmailAlertTests(TestCase):
             status_code=500,
             elapsed=Mock(total_seconds=Mock(return_value=0.123)),
         )
-        run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
         mock_send_email.reset_mock()
         incident = Incident.objects.get(website=self.website, is_resolved=False)
         alert = Alert.objects.get(website=self.website, incident=incident, alert_type=Alert.TYPE_DOWN)
@@ -1138,7 +1142,8 @@ class MonitorEmailAlertTests(TestCase):
             elapsed=Mock(total_seconds=Mock(return_value=0.080)),
         )
 
-        run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
 
         incident = Incident.objects.get(website=self.website, is_resolved=False)
         alert = Alert.objects.get(website=self.website, incident=incident, alert_type=Alert.TYPE_SSL)
@@ -1160,13 +1165,14 @@ class MonitorEmailAlertTests(TestCase):
             "monitor.utils.send_siteguard_email",
             return_value=True,
         ) as mock_send_email:
-            create_or_update_alert(
-                self.website,
-                Alert.TYPE_DOWN,
-                "Automated monitoring detected https://example.com as DOWN.",
-                incident=incident,
-                response_time=0,
-            )
+            with self.captureOnCommitCallbacks(execute=True):
+                create_or_update_alert(
+                    self.website,
+                    Alert.TYPE_DOWN,
+                    "Automated monitoring detected https://example.com as DOWN.",
+                    incident=incident,
+                    response_time=0,
+                )
 
         self.assertEqual(mock_send_email.call_count, 1)
         decision_call = next(
@@ -1259,6 +1265,33 @@ class MonitorEmailAlertTests(TestCase):
             cooldown_call.kwargs["extra"]["email_context"]["reason"],
             "reused_existing_alert",
         )
+
+    @patch("monitor.utils.send_siteguard_email", return_value=True)
+    def test_alert_email_dispatch_waits_for_successful_transaction_commit(self, mock_send_email):
+        incident = Incident.objects.create(
+            website=self.website,
+            title="Complete Outage",
+            incident_type=Incident.TYPE_OUTAGE,
+            status=Incident.STATUS_DOWN,
+            started_at=timezone.now(),
+            latest_response_time=0,
+        )
+
+        with self.captureOnCommitCallbacks(execute=False) as callbacks:
+            with self.assertRaises(RuntimeError):
+                with transaction.atomic():
+                    create_or_update_alert(
+                        self.website,
+                        Alert.TYPE_DOWN,
+                        "Automated monitoring detected https://example.com as DOWN.",
+                        incident=incident,
+                        response_time=0,
+                    )
+                    raise RuntimeError("force rollback")
+
+        self.assertEqual(Alert.objects.filter(website=self.website, incident=incident, alert_type=Alert.TYPE_DOWN).count(), 0)
+        self.assertEqual(len(callbacks), 0)
+        mock_send_email.assert_not_called()
 
 
 class MonitorStatusSyncTests(TestCase):
@@ -1432,8 +1465,10 @@ class IncidentSyncTests(TestCase):
         mock_get.side_effect = [first, second]
         MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=120)
 
-        run_single_check(self.website)
-        run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
 
         stages = [
             call.kwargs["extra"]["monitoring_context"]["stage"]
@@ -1464,7 +1499,8 @@ class IncidentSyncTests(TestCase):
             elapsed=Mock(total_seconds=Mock(return_value=0.250)),
         )
 
-        call_command("monitor_sites")
+        with self.captureOnCommitCallbacks(execute=True):
+            call_command("monitor_sites")
 
         self.assertEqual(mock_send_email.call_count, 1)
         scheduler_stages = [
@@ -1528,7 +1564,8 @@ class IncidentSyncTests(TestCase):
             elapsed=Mock(total_seconds=Mock(return_value=2.5)),
         )
 
-        run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
 
         incident = Incident.objects.get(website=self.website, is_resolved=False)
         self.assertEqual(incident.status, Incident.STATUS_SLOW)
@@ -1548,8 +1585,10 @@ class IncidentSyncTests(TestCase):
             elapsed=Mock(total_seconds=Mock(return_value=0.250)),
         )
 
-        run_single_check(self.website)
-        run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
 
         self.assertEqual(Incident.objects.filter(website=self.website, is_resolved=False).count(), 1)
         incident = Incident.objects.get(website=self.website, is_resolved=False)
@@ -1567,13 +1606,15 @@ class IncidentSyncTests(TestCase):
             status_code=503,
             elapsed=Mock(total_seconds=Mock(return_value=0.250)),
         )
-        run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
 
         mock_get.return_value = Mock(
             status_code=200,
             elapsed=Mock(total_seconds=Mock(return_value=0.150)),
         )
-        run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
 
         incident = Incident.objects.get(website=self.website)
         self.assertTrue(incident.is_resolved)
@@ -1630,13 +1671,15 @@ class AlertSyncTests(TestCase):
             status_code=503,
             elapsed=Mock(total_seconds=Mock(return_value=0.2)),
         )
-        run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
 
         mock_get.return_value = Mock(
             status_code=200,
             elapsed=Mock(total_seconds=Mock(return_value=0.1)),
         )
-        run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
 
         self.assertTrue(Alert.objects.filter(website=self.website, alert_type=Alert.TYPE_RECOVERY).exists())
         self.assertGreaterEqual(mock_send_email.call_count, 2)
@@ -1687,8 +1730,10 @@ class AlertSyncTests(TestCase):
             elapsed=Mock(total_seconds=Mock(return_value=0.2)),
         )
 
-        run_single_check(self.website)
-        run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
 
         self.assertEqual(Alert.objects.filter(website=self.website, alert_type=Alert.TYPE_SSL).count(), 1)
         self.assertEqual(Incident.objects.filter(website=self.website, incident_type=Incident.TYPE_SSL).count(), 1)
@@ -1698,7 +1743,8 @@ class AlertSyncTests(TestCase):
     def test_ssl_request_exception_still_creates_ssl_alert_and_incident(self, _mock_get, _mock_send_email):
         MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=100)
 
-        run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
 
         self.assertEqual(Alert.objects.filter(website=self.website, alert_type=Alert.TYPE_SSL).count(), 1)
         self.assertEqual(Incident.objects.filter(website=self.website, incident_type=Incident.TYPE_SSL).count(), 1)
@@ -1731,7 +1777,8 @@ class AlertSyncTests(TestCase):
             elapsed=Mock(total_seconds=Mock(return_value=0.321)),
         )
 
-        run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
 
         alert = Alert.objects.get(website=self.website, alert_type=Alert.TYPE_DOWN)
         self.assertIn("HTTP 503", alert.message)
@@ -1744,7 +1791,8 @@ class AlertSyncTests(TestCase):
     def test_timeout_alert_message_includes_timeout_reason(self, _mock_get, _mock_send_email, _mock_ssl):
         MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=100)
 
-        run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
 
         alert = Alert.objects.get(website=self.website, alert_type=Alert.TYPE_DOWN)
         self.assertIn("timed out", alert.message.lower())
@@ -3629,8 +3677,10 @@ class NotificationAndSearchTests(TestCase):
             elapsed=Mock(total_seconds=Mock(return_value=0.2)),
         )
 
-        run_single_check(self.website)
-        run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
 
         notifications = Notification.objects.filter(user=self.user, notification_type=Notification.TYPE_OUTAGE)
         self.assertEqual(notifications.count(), 1)
@@ -3643,13 +3693,15 @@ class NotificationAndSearchTests(TestCase):
             status_code=503,
             elapsed=Mock(total_seconds=Mock(return_value=0.2)),
         )
-        run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
 
         mock_get.return_value = Mock(
             status_code=200,
             elapsed=Mock(total_seconds=Mock(return_value=0.1)),
         )
-        run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
 
         self.assertTrue(Notification.objects.filter(user=self.user, notification_type=Notification.TYPE_RECOVERY).exists())
 
