@@ -1986,9 +1986,20 @@ def check_now(request, website_id):
         id=website_id,
         user=request.user,
     )
+    logger.info(
+        "Manual monitoring check requested.",
+        extra={
+            "monitoring_context": {
+                "stage": "check_now_start",
+                "website_id": website.id,
+                "user_id": request.user.id,
+                "path": request.path,
+            }
+        },
+    )
 
     try:
-        run_single_check(website)
+        log, _response = run_single_check(website)
     except Exception:
         logger.exception(
             "Manual monitoring check failed.",
@@ -1999,6 +2010,19 @@ def check_now(request, website_id):
             f"Check started for {website.url}, but the verification run did not complete successfully.",
         )
     else:
+        logger.info(
+            "Manual monitoring check completed.",
+            extra={
+                "monitoring_context": {
+                    "stage": "check_now_complete",
+                    "website_id": website.id,
+                    "user_id": request.user.id,
+                    "log_id": log.id if log else None,
+                    "status": get_site_status(log) if log else "",
+                    "response_time": getattr(log, "response_time", None),
+                }
+            },
+        )
         messages.success(request, f"Checked {website.url}")
     return redirect('status')
 

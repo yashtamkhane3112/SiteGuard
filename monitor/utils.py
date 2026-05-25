@@ -43,6 +43,19 @@ logger = logging.getLogger(__name__)
 _logged_missing_media_names = set()
 
 
+def log_monitoring_trace(stage, **context):
+    logger.info(
+        "Monitoring trace: %s",
+        stage,
+        extra={
+            "monitoring_context": {
+                "stage": stage,
+                **context,
+            }
+        },
+    )
+
+
 def get_site_status(log):
     if not log:
         return "DOWN"
@@ -1419,6 +1432,15 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
         normalize_incident(incident)
         website = incident.website
 
+    log_monitoring_trace(
+        "alert_entry",
+        website_id=website.id,
+        incident_id=incident.id if incident else None,
+        alert_type=alert_type,
+        response_time=get_numeric_response_time(response_time, default=None),
+        has_recovery_time=bool(recovery_time),
+    )
+
     if not website.alerts_enabled:
         logger.info(
             "Operational alert suppressed before creation.",
@@ -1724,17 +1746,51 @@ def sync_incident_state(website, previous_log, current_log, *, status_code=None,
         website=website,
         is_resolved=False,
     ).exclude(incident_type=Incident.TYPE_SSL).order_by('-started_at')
+    active_incident_count = active_incidents.count()
+
+    log_monitoring_trace(
+        "incident_state_entry",
+        website_id=website.id,
+        current_log_id=current_log.id,
+        previous_log_id=previous_log.id if previous_log else None,
+        previous_status=previous_status,
+        current_status=current_status,
+        active_incident_count=active_incident_count,
+        status_code=status_code,
+        reason=reason,
+    )
 
     if current_status == MonitorLog.STATUS_UP:
+        log_monitoring_trace(
+            "incident_state_resolve_active",
+            website_id=website.id,
+            current_log_id=current_log.id,
+            active_incident_count=active_incident_count,
+        )
         for incident in active_incidents:
             resolve_incident(incident, current_log, create_recovery_alert=True, status_code=status_code)
         return
 
     if current_status not in {MonitorLog.STATUS_DOWN, MonitorLog.STATUS_SLOW}:
+        log_monitoring_trace(
+            "incident_state_non_actionable_return",
+            website_id=website.id,
+            current_log_id=current_log.id,
+            current_status=current_status,
+        )
         return
 
     incident_type = get_incident_type(current_status)
     active_incident = active_incidents.filter(incident_type=incident_type).first()
+    log_monitoring_trace(
+        "incident_state_candidate_selected",
+        website_id=website.id,
+        current_log_id=current_log.id,
+        incident_type=incident_type,
+        active_incident_id=active_incident.id if active_incident else None,
+        previous_status=previous_status,
+        current_status=current_status,
+    )
 
     for incident in active_incidents.exclude(pk=active_incident.pk if active_incident else None):
         resolve_incident(
@@ -1755,15 +1811,45 @@ def sync_incident_state(website, previous_log, current_log, *, status_code=None,
                 started_at=current_log.checked_at,
                 latest_response_time=current_log.response_time,
             )
+            log_monitoring_trace(
+                "incident_state_created",
+                website_id=website.id,
+                current_log_id=current_log.id,
+                incident_id=active_incident.id,
+                incident_type=incident_type,
+            )
         except IntegrityError:
             active_incident = active_incidents.filter(incident_type=incident_type).first()
+            log_monitoring_trace(
+                "incident_state_create_integrity_fallback",
+                website_id=website.id,
+                current_log_id=current_log.id,
+                incident_type=incident_type,
+                active_incident_id=active_incident.id if active_incident else None,
+            )
 
     if active_incident is None:
+        log_monitoring_trace(
+            "incident_state_no_active_incident_return",
+            website_id=website.id,
+            current_log_id=current_log.id,
+            incident_type=incident_type,
+        )
         return
 
     is_new_incident = (
         active_incident.created_at == active_incident.updated_at
         and active_incident.started_at == current_log.checked_at
+    )
+    log_monitoring_trace(
+        "incident_state_incident_ready",
+        website_id=website.id,
+        current_log_id=current_log.id,
+        incident_id=active_incident.id,
+        incident_type=active_incident.incident_type,
+        is_new_incident=is_new_incident,
+        previous_status=previous_status,
+        current_status=current_status,
     )
 
     if is_new_incident:
@@ -1782,12 +1868,31 @@ def sync_incident_state(website, previous_log, current_log, *, status_code=None,
             or current_log.response_time is None
             or current_log.response_time > get_monitor_threshold(website)
         ):
+            log_monitoring_trace(
+                "incident_state_alert_triggered",
+                website_id=website.id,
+                current_log_id=current_log.id,
+                incident_id=active_incident.id,
+                incident_type=active_incident.incident_type,
+                alert_type=Alert.TYPE_DOWN if current_status == MonitorLog.STATUS_DOWN else Alert.TYPE_SLOW,
+            )
             create_or_update_alert(
                 website,
                 Alert.TYPE_DOWN if current_status == MonitorLog.STATUS_DOWN else Alert.TYPE_SLOW,
                 detail,
                 incident=active_incident,
                 response_time=current_log.response_time,
+            )
+        else:
+            log_monitoring_trace(
+                "incident_state_alert_skipped",
+                website_id=website.id,
+                current_log_id=current_log.id,
+                incident_id=active_incident.id,
+                incident_type=active_incident.incident_type,
+                reason="threshold_not_exceeded",
+                response_time=current_log.response_time,
+                threshold=get_monitor_threshold(website),
             )
         return
 
@@ -1797,6 +1902,14 @@ def sync_incident_state(website, previous_log, current_log, *, status_code=None,
     active_incident.save(update_fields=['status', 'title', 'latest_response_time', 'updated_at'])
 
     if previous_status != current_status:
+        log_monitoring_trace(
+            "incident_state_transition_event_only",
+            website_id=website.id,
+            current_log_id=current_log.id,
+            incident_id=active_incident.id,
+            previous_status=previous_status,
+            current_status=current_status,
+        )
         create_incident_event(
             active_incident,
             IncidentEvent.TYPE_MONITORING,
@@ -1810,10 +1923,35 @@ def sync_incident_state(website, previous_log, current_log, *, status_code=None,
                 reason=f"{reason} Previous state was {previous_status}." if reason else f"Previous state was {previous_status}.",
             ),
         )
+        return
+
+    log_monitoring_trace(
+        "incident_state_existing_incident_no_new_alert",
+        website_id=website.id,
+        current_log_id=current_log.id,
+        incident_id=active_incident.id,
+        previous_status=previous_status,
+        current_status=current_status,
+        reason="active_incident_already_open_same_state",
+    )
 
 
 def sync_ssl_state(website, current_log, ssl_status, *, status_code=None, reason=''):
+    log_monitoring_trace(
+        "ssl_state_entry",
+        website_id=website.id,
+        current_log_id=current_log.id,
+        ssl_status=ssl_status,
+        status_code=status_code,
+        reason=reason,
+    )
     if ssl_status not in {"Valid", "Invalid"}:
+        log_monitoring_trace(
+            "ssl_state_non_actionable_return",
+            website_id=website.id,
+            current_log_id=current_log.id,
+            ssl_status=ssl_status,
+        )
         return
 
     if ssl_status == "Invalid":
@@ -1835,9 +1973,22 @@ def sync_ssl_state(website, current_log, ssl_status, *, status_code=None, reason
         incident_type=Incident.TYPE_SSL,
         is_resolved=False,
     ).order_by('-started_at').first()
+    log_monitoring_trace(
+        "ssl_state_candidate_selected",
+        website_id=website.id,
+        current_log_id=current_log.id,
+        ssl_status=ssl_status,
+        active_ssl_incident_id=active_ssl_incident.id if active_ssl_incident else None,
+    )
 
     if ssl_status == "Valid":
         if active_ssl_incident is not None:
+            log_monitoring_trace(
+                "ssl_state_resolve_active",
+                website_id=website.id,
+                current_log_id=current_log.id,
+                incident_id=active_ssl_incident.id,
+            )
             resolve_incident(
                 active_ssl_incident,
                 current_log,
@@ -1855,6 +2006,12 @@ def sync_ssl_state(website, current_log, ssl_status, *, status_code=None, reason
                 ),
                 status_code=status_code,
             )
+        else:
+            log_monitoring_trace(
+                "ssl_state_valid_no_active_incident_return",
+                website_id=website.id,
+                current_log_id=current_log.id,
+            )
         return
 
     if active_ssl_incident is None:
@@ -1867,19 +2024,43 @@ def sync_ssl_state(website, current_log, ssl_status, *, status_code=None, reason
                 started_at=current_log.checked_at,
                 latest_response_time=current_log.response_time,
             )
+            log_monitoring_trace(
+                "ssl_state_created",
+                website_id=website.id,
+                current_log_id=current_log.id,
+                incident_id=active_ssl_incident.id,
+            )
         except IntegrityError:
             active_ssl_incident = Incident.objects.select_for_update().filter(
                 website=website,
                 incident_type=Incident.TYPE_SSL,
                 is_resolved=False,
             ).order_by('-started_at').first()
+            log_monitoring_trace(
+                "ssl_state_create_integrity_fallback",
+                website_id=website.id,
+                current_log_id=current_log.id,
+                active_ssl_incident_id=active_ssl_incident.id if active_ssl_incident else None,
+            )
 
     if active_ssl_incident is None:
+        log_monitoring_trace(
+            "ssl_state_no_active_incident_return",
+            website_id=website.id,
+            current_log_id=current_log.id,
+        )
         return
 
     is_new_incident = (
         active_ssl_incident.created_at == active_ssl_incident.updated_at
         and active_ssl_incident.started_at == current_log.checked_at
+    )
+    log_monitoring_trace(
+        "ssl_state_incident_ready",
+        website_id=website.id,
+        current_log_id=current_log.id,
+        incident_id=active_ssl_incident.id,
+        is_new_incident=is_new_incident,
     )
 
     if is_new_incident:
@@ -1894,6 +2075,13 @@ def sync_ssl_state(website, current_log, ssl_status, *, status_code=None, reason
                 status_code=status_code,
                 reason=reason or "TLS handshake or certificate validation failed during monitoring.",
             ),
+        )
+        log_monitoring_trace(
+            "ssl_state_alert_triggered",
+            website_id=website.id,
+            current_log_id=current_log.id,
+            incident_id=active_ssl_incident.id,
+            alert_type=Alert.TYPE_SSL,
         )
         create_or_update_alert(
             website,
@@ -1913,6 +2101,13 @@ def sync_ssl_state(website, current_log, ssl_status, *, status_code=None, reason
 
     active_ssl_incident.latest_response_time = current_log.response_time
     active_ssl_incident.save(update_fields=['latest_response_time', 'updated_at'])
+    log_monitoring_trace(
+        "ssl_state_existing_incident_no_new_alert",
+        website_id=website.id,
+        current_log_id=current_log.id,
+        incident_id=active_ssl_incident.id,
+        reason="active_ssl_incident_already_open",
+    )
 
 
 def get_monitor_threshold(website):
@@ -1928,6 +2123,13 @@ def run_single_check(website, timeout=5):
     status_code = None
     reason = ''
     ssl_reason = ''
+    log_monitoring_trace(
+        "run_single_check_start",
+        website_id=website.id,
+        url=url,
+        timeout=timeout,
+        initiated_by="shared_monitoring_flow",
+    )
 
     try:
         response = requests.get(url, timeout=timeout)
@@ -1955,11 +2157,40 @@ def run_single_check(website, timeout=5):
             status=status,
             response_time=round(response_time_ms, 2),
         )
+        log_monitoring_trace(
+            "run_single_check_result_persisted",
+            website_id=website.id,
+            current_log_id=log.id,
+            status=status,
+            response_time=round(response_time_ms, 2),
+            status_code=status_code,
+            ssl_status=ssl_status,
+            reason=reason,
+            ssl_reason=ssl_reason,
+        )
         with transaction.atomic():
             locked_website = Website.objects.select_for_update().select_related("user").get(pk=website.pk)
             previous_log = MonitorLog.objects.filter(website=locked_website).exclude(pk=log.pk).order_by('-checked_at', '-id').first()
+            log_monitoring_trace(
+                "run_single_check_transition_evaluation",
+                website_id=locked_website.id,
+                current_log_id=log.id,
+                previous_log_id=previous_log.id if previous_log else None,
+                previous_status=get_site_status(previous_log),
+                current_status=get_site_status(log),
+                status_code=status_code,
+                ssl_status=ssl_status,
+            )
             sync_incident_state(locked_website, previous_log, log, status_code=status_code, reason=reason)
             sync_ssl_state(locked_website, log, ssl_status, status_code=status_code, reason=ssl_reason)
+        log_monitoring_trace(
+            "run_single_check_complete",
+            website_id=website.id,
+            current_log_id=log.id,
+            status=get_site_status(log),
+            status_code=status_code,
+            ssl_status=ssl_status,
+        )
         return log, response
     except Exception as exc:
         reason = _describe_exception_reason(exc, timeout)
@@ -1971,12 +2202,39 @@ def run_single_check(website, timeout=5):
             status=MonitorLog.STATUS_DOWN,
             response_time=0,
         )
+        log_monitoring_trace(
+            "run_single_check_exception_persisted",
+            website_id=website.id,
+            current_log_id=log.id,
+            exception_type=exc.__class__.__name__,
+            reason=reason,
+            ssl_status=ssl_status,
+            ssl_reason=ssl_reason,
+        )
         with transaction.atomic():
             locked_website = Website.objects.select_for_update().select_related("user").get(pk=website.pk)
             previous_log = MonitorLog.objects.filter(website=locked_website).exclude(pk=log.pk).order_by('-checked_at', '-id').first()
+            log_monitoring_trace(
+                "run_single_check_exception_transition_evaluation",
+                website_id=locked_website.id,
+                current_log_id=log.id,
+                previous_log_id=previous_log.id if previous_log else None,
+                previous_status=get_site_status(previous_log),
+                current_status=get_site_status(log),
+                ssl_status=ssl_status,
+                reason=reason,
+            )
             if ssl_status != "Invalid":
                 sync_incident_state(locked_website, previous_log, log, status_code=status_code, reason=reason)
             sync_ssl_state(locked_website, log, ssl_status, status_code=status_code, reason=ssl_reason)
+        log_monitoring_trace(
+            "run_single_check_exception_complete",
+            website_id=website.id,
+            current_log_id=log.id,
+            status=get_site_status(log),
+            ssl_status=ssl_status,
+            reason=reason,
+        )
         return log, None
 
 

@@ -1330,10 +1330,33 @@ class MonitorStatusSyncTests(TestCase):
 
     @patch("monitor.views.run_single_check")
     def test_check_now_runs_shared_monitoring_logic_and_redirects(self, mock_run_single_check):
+        mock_run_single_check.return_value = (
+            MonitorLog(website=self.gmail, status=MonitorLog.STATUS_UP, response_time=120, id=88),
+            Mock(status_code=200),
+        )
         response = self.client.post(reverse("check_now", args=[self.gmail.id]))
 
         mock_run_single_check.assert_called_once_with(self.gmail)
         self.assertRedirects(response, reverse("status"))
+
+    @patch("monitor.views.logger.info")
+    @patch("monitor.views.run_single_check")
+    def test_check_now_logs_start_and_completion(self, mock_run_single_check, mock_info):
+        mock_run_single_check.return_value = (
+            MonitorLog(website=self.gmail, status=MonitorLog.STATUS_DOWN, response_time=0, id=77),
+            None,
+        )
+
+        response = self.client.post(reverse("check_now", args=[self.gmail.id]))
+
+        self.assertRedirects(response, reverse("status"))
+        stages = [
+            call.kwargs["extra"]["monitoring_context"]["stage"]
+            for call in mock_info.call_args_list
+            if call.kwargs.get("extra", {}).get("monitoring_context")
+        ]
+        self.assertIn("check_now_start", stages)
+        self.assertIn("check_now_complete", stages)
 
     @patch("monitor.views.check_ssl_status", return_value="Valid")
     @patch("monitor.views.get_favicon_url", return_value="https://favicon.test/icon.png")
@@ -1393,6 +1416,71 @@ class IncidentSyncTests(TestCase):
         self.assertEqual(incident.title, "Complete Outage")
         self.assertEqual(incident.events.count(), 1)
         self.assertEqual(incident.events.first().event_type, IncidentEvent.TYPE_DETECTED)
+
+    @patch("monitor.utils.logger.info")
+    @patch("monitor.utils.requests.get")
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    def test_existing_down_incident_logs_no_new_alert_trace(self, _mock_ssl, mock_get, mock_info):
+        first = Mock(
+            status_code=503,
+            elapsed=Mock(total_seconds=Mock(return_value=0.250)),
+        )
+        second = Mock(
+            status_code=503,
+            elapsed=Mock(total_seconds=Mock(return_value=0.275)),
+        )
+        mock_get.side_effect = [first, second]
+        MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=120)
+
+        run_single_check(self.website)
+        run_single_check(self.website)
+
+        stages = [
+            call.kwargs["extra"]["monitoring_context"]["stage"]
+            for call in mock_info.call_args_list
+            if call.kwargs.get("extra", {}).get("monitoring_context")
+        ]
+        self.assertIn("incident_state_alert_triggered", stages)
+        self.assertIn("incident_state_existing_incident_no_new_alert", stages)
+
+    @patch("monitor.management.commands.monitor_sites.logger.info")
+    @patch("monitor.utils.logger.info")
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    @patch("monitor.utils.send_siteguard_email", return_value=True)
+    @patch("monitor.utils.requests.get")
+    def test_monitor_command_logs_scheduler_trace_for_down_alerts(
+        self,
+        mock_get,
+        mock_send_email,
+        _mock_ssl,
+        mock_utils_info,
+        mock_scheduler_info,
+    ):
+        self.website.user.email = "alerts@example.com"
+        self.website.user.save(update_fields=["email"])
+        MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=100)
+        mock_get.return_value = Mock(
+            status_code=503,
+            elapsed=Mock(total_seconds=Mock(return_value=0.250)),
+        )
+
+        call_command("monitor_sites")
+
+        self.assertEqual(mock_send_email.call_count, 1)
+        scheduler_stages = [
+            call.kwargs["extra"]["monitoring_context"]["stage"]
+            for call in mock_scheduler_info.call_args_list
+            if call.kwargs.get("extra", {}).get("monitoring_context")
+        ]
+        utility_stages = [
+            call.kwargs["extra"]["monitoring_context"]["stage"]
+            for call in mock_utils_info.call_args_list
+            if call.kwargs.get("extra", {}).get("monitoring_context")
+        ]
+        self.assertIn("scheduler_start", scheduler_stages)
+        self.assertIn("scheduler_check_complete", scheduler_stages)
+        self.assertIn("run_single_check_transition_evaluation", utility_stages)
+        self.assertIn("incident_state_alert_triggered", utility_stages)
 
     def test_incidents_page_includes_read_only_ai_analysis_controls(self):
         Incident.objects.create(
