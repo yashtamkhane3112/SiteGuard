@@ -2,7 +2,7 @@ from django.core.exceptions import ImproperlyConfigured
 from urllib.parse import urlparse
 
 from .base import *  # noqa: F401,F403
-from .validation import validate_production_configuration
+from .validation import build_production_database_config, validate_production_configuration
 from .base import _config_text
 
 DEBUG = False
@@ -10,7 +10,13 @@ DEBUG = False
 if SQLITE_PATH == DEFAULT_SQLITE_PATH:
     SQLITE_PATH = BASE_DIR / "data" / "siteguard.sqlite3"
     SQLITE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    DATABASES["default"]["NAME"] = SQLITE_PATH
+
+DATABASE_URL = _config_text("DATABASE_URL")
+DATABASES["default"] = build_production_database_config(
+    database_url=DATABASE_URL,
+    sqlite_path=SQLITE_PATH,
+    sqlite_timeout=SQLITE_TIMEOUT,
+)
 
 SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", default=True, cast=bool)
 SESSION_ENGINE = _config_text(

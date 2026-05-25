@@ -4,7 +4,7 @@ from email.utils import formataddr
 
 from decouple import Csv, config
 
-from .validation import resolve_email_backend
+from .validation import build_sqlite_database_config, resolve_email_backend
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -106,15 +106,13 @@ ASGI_APPLICATION = "siteguard.asgi.application"
 DEFAULT_SQLITE_PATH = BASE_DIR / "db.sqlite3"
 SQLITE_PATH = Path(config("SQLITE_PATH", default=str(DEFAULT_SQLITE_PATH)))
 SQLITE_PATH.parent.mkdir(parents=True, exist_ok=True)
+SQLITE_TIMEOUT = config("SQLITE_TIMEOUT", default=20, cast=int)
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": SQLITE_PATH,
-        "OPTIONS": {
-            "timeout": config("SQLITE_TIMEOUT", default=20, cast=int),
-        },
-    }
+    "default": build_sqlite_database_config(
+        sqlite_path=SQLITE_PATH,
+        sqlite_timeout=SQLITE_TIMEOUT,
+    )
 }
 
 PASSWORD_HASHERS = [

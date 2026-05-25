@@ -29,16 +29,20 @@ else
   echo "Admin bootstrap skipped."
 fi
 
-echo "Checking auth and session tables..."
+echo "Checking database readiness..."
 python manage.py shell --settings="${DJANGO_SETTINGS_MODULE}" -c "
+from django.conf import settings
+from django.contrib.auth.models import User
+from django.contrib.sessions.models import Session
 from django.db import connection
-cursor = connection.cursor()
-cursor.execute(\"SELECT name FROM sqlite_master WHERE type='table' AND name='auth_user';\")
-result = cursor.fetchone()
-assert result is not None, 'auth_user table missing'
-cursor.execute(\"SELECT name FROM sqlite_master WHERE type='table' AND name='django_session';\")
-result = cursor.fetchone()
-assert result is not None, 'django_session table missing'
+with connection.cursor() as cursor:
+    cursor.execute(\"SELECT 1\")
+    result = cursor.fetchone()
+    assert result is not None and result[0] == 1, 'database connection probe failed'
+table_names = set(connection.introspection.table_names())
+assert User._meta.db_table in table_names, 'auth_user table missing'
+if getattr(settings, 'SESSION_ENGINE', '') == 'django.contrib.sessions.backends.db':
+    assert Session._meta.db_table in table_names, 'django_session table missing'
 "
 
 echo "Collecting static..."

@@ -1,6 +1,8 @@
 from email.utils import parseaddr
+from pathlib import Path
 from urllib.parse import urlparse
 
+import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
 
 
@@ -23,6 +25,65 @@ PRODUCTION_BREVO_EMAIL_BACKENDS = {
     "brevo_api",
     "monitor.emailing.BrevoEmailBackend",
 }
+
+
+def build_sqlite_database_config(*, sqlite_path, sqlite_timeout):
+    return {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": Path(sqlite_path),
+        "OPTIONS": {
+            "timeout": int(sqlite_timeout),
+        },
+    }
+
+
+def build_production_database_config(
+    *,
+    database_url,
+    sqlite_path,
+    sqlite_timeout,
+    conn_max_age=600,
+    conn_health_checks=True,
+):
+    normalized_database_url = (database_url or "").strip()
+    if not normalized_database_url:
+        return build_sqlite_database_config(
+            sqlite_path=sqlite_path,
+            sqlite_timeout=sqlite_timeout,
+        )
+
+    database_config = dj_database_url.parse(
+        normalized_database_url,
+        conn_max_age=conn_max_age,
+        conn_health_checks=conn_health_checks,
+    )
+    database_config.setdefault("OPTIONS", {})
+    if database_config.get("ENGINE") == "django.db.backends.postgresql":
+        database_config["OPTIONS"].setdefault("connect_timeout", 10)
+        database_config["OPTIONS"].setdefault("sslmode", "require")
+    return database_config
+
+
+def get_database_configuration_diagnostics(database_config):
+    database_config = database_config or {}
+    options = database_config.get("OPTIONS", {}) or {}
+    engine = str(database_config.get("ENGINE", "") or "")
+    host = str(database_config.get("HOST", "") or "")
+    name = str(database_config.get("NAME", "") or "")
+    ssl_mode = options.get("sslmode") or options.get("ssl_mode") or ""
+
+    if engine == "django.db.backends.sqlite3":
+        host = "local-file"
+        ssl_mode = "disabled"
+    elif not ssl_mode:
+        ssl_mode = "default"
+
+    return {
+        "engine": engine,
+        "host": host or "(not set)",
+        "name": name or "(not set)",
+        "ssl_mode": ssl_mode or "(not set)",
+    }
 
 
 def resolve_email_backend(*, debug, configured_backend, brevo_api_key):

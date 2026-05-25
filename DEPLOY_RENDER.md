@@ -2,11 +2,14 @@
 
 ## Overview
 
-SiteGuard runs on Render free tier with:
+SiteGuard runs on Render with:
 
 - one Django web service
 - one Render cron job
-- SQLite
+- Neon PostgreSQL for production data
+- database-backed Django sessions
+- Cloudinary media storage
+- Brevo API email transport
 - WhiteNoise
 - Gunicorn
 - Python 3.12.3
@@ -21,6 +24,7 @@ Set these on the Render web service and cron job:
 - `CSRF_TRUSTED_ORIGINS=https://<render-hostname>`
 - `APP_BASE_URL=https://<render-hostname>`
 - `CRON_SECRET=<long random secret>`
+- `DATABASE_URL=<neon postgres url>`
 - `EMAIL_BACKEND=brevo_api`
 - `BREVO_API_KEY=<brevo api key>`
 - `BREVO_API_URL=https://api.brevo.com/v3/smtp/email`
@@ -44,7 +48,7 @@ Recommended:
 - `SITE_NAME=SiteGuard`
 - `AI_FEATURES_ENABLED=False`
 - `AI_PROVIDER=gemini`
-- `GEMINI_MODEL=gemini-1.5-flash`
+- `GEMINI_MODEL=gemini-2.5-flash`
 - `AI_REQUEST_TIMEOUT=20`
 - `AI_MAX_TOKENS=900`
 - `AI_RETRY_ATTEMPTS=2`
@@ -55,7 +59,7 @@ Optional AI operational intelligence on the web service only:
 - `AI_FEATURES_ENABLED=True`
 - `GEMINI_API_KEY=<google ai studio api key>`
 
-Gemini support is installed through the official `google-generativeai` Python SDK in `requirements.txt`. The web service initializes it with `GEMINI_API_KEY` and creates the configured `GEMINI_MODEL`, which defaults to `gemini-1.5-flash`.
+Gemini support is installed through the official `google-generativeai` Python SDK in `requirements.txt`. The web service initializes it with `GEMINI_API_KEY` and should use `GEMINI_MODEL=gemini-2.5-flash` in production.
 Startup logs include AI diagnostics for the resolved provider, resolved Gemini model, and whether the Gemini API key is present. Use `python manage.py test_ai_provider --settings=siteguard.settings.prod` on the web service to validate the active runtime configuration.
 
 OpenAI remains available as a non-default provider by setting:
@@ -78,6 +82,9 @@ Web service:
 
 - Build command: `pip install -r requirements.txt`
 - Start command: `bash ./start.sh`
+- `DATABASE_URL` must point to the active Neon PostgreSQL connection string
+- `SESSION_ENGINE=django.contrib.sessions.backends.db`
+- Neon should remain on SSL-enabled connections
 
 Optional one-time admin bootstrap on the web service only:
 
@@ -104,7 +111,7 @@ Do not override the web start command with `gunicorn siteguard.wsgi:application`
 1. export production settings
 2. run migrations
 3. optionally run `python manage.py bootstrap_admin` only when `DJANGO_BOOTSTRAP_ADMIN=True`
-4. verify `auth_user`
+4. run a database connectivity probe and verify `auth_user` plus `django_session` when DB sessions are enabled
 5. collect static files
 6. start Gunicorn
 
@@ -142,13 +149,14 @@ Expected startup log lines when using the deploy/start integration:
 
 ## Why the Cron Uses HTTP
 
-Render free cron and web services do not share the same local SQLite file. The cron therefore calls the protected internal endpoint on the web service, which executes `monitor_sites` inside the same runtime environment as the application database.
+The Render cron job calls the protected internal endpoint on the web service, which executes `monitor_sites` inside the same application runtime and against the same Neon-backed Django configuration.
 
-## SQLite Notes
+## Database Notes
 
-- Production defaults to `data/siteguard.sqlite3`
-- Render free tier storage remains ephemeral
-- Data can be lost on restart or redeploy
+- Production reads `DATABASE_URL` and uses Neon PostgreSQL when it is present
+- Local development still defaults to SQLite
+- Startup diagnostics log the resolved database engine, host, name, SSL mode, and connection health
+- Startup checks are backend-neutral and do not assume SQLite
 - Startup migrations are mandatory every boot
 
 ## Health Check
@@ -173,8 +181,9 @@ Confirm these log lines:
 
 - `STARTUP SCRIPT RUNNING`
 - `Running migrations...`
-- `Checking auth table...`
-- `('auth_user',)`
+- `Database startup diagnostics:`
+- `connection_health=healthy`
+- `Checking database readiness...`
 - `Collecting static...`
 - `Starting gunicorn...`
 
@@ -208,3 +217,9 @@ python manage.py collectstatic --settings=siteguard.settings.prod --noinput
 python manage.py monitor_sites --settings=siteguard.settings.prod
 python manage.py test_email your@email.com --kind operational --settings=siteguard.settings.prod
 ```
+
+## Neon Safety Notes
+
+- Keep `DATABASE_URL` on the Render web and cron services in sync with the active Neon database
+- Use the Neon SSL-enabled URL so Django resolves `sslmode=require`
+- Do not replace `bash ./start.sh` with a raw Gunicorn start command, because that bypasses migrations and startup validation

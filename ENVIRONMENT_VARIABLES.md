@@ -8,6 +8,7 @@
 - `CSRF_TRUSTED_ORIGINS`
 - `APP_BASE_URL`
 - `CRON_SECRET`
+- `DATABASE_URL`
 - `EMAIL_BACKEND=brevo_api`
 - `BREVO_API_KEY`
 - `CLOUDINARY_CLOUD_NAME`
@@ -57,7 +58,7 @@
 - `AI_RETRY_ATTEMPTS`
 - `AI_RETRY_BACKOFF_SECONDS`
 
-Default production SQLite path is `data/siteguard.sqlite3` unless `SQLITE_PATH` is explicitly set.
+Default production SQLite path is `data/siteguard.sqlite3` unless `SQLITE_PATH` is explicitly set. Production should use `DATABASE_URL` for Neon PostgreSQL.
 
 Notes:
 
@@ -65,15 +66,16 @@ Notes:
 - Local development defaults to `django.core.mail.backends.console.EmailBackend` unless you explicitly force another backend.
 - Gmail SMTP is intended for local development only.
 - Production should use the Brevo HTTPS API backend and `BREVO_API_KEY`.
+- Production should use the Neon PostgreSQL `DATABASE_URL` with SSL enabled.
 - Password reset emails use the active local request host during `DEBUG=True` development flows, so local forgot-password links stay on `127.0.0.1`, `localhost`, or the host you are actively using.
 - Production password reset and operational email links use `APP_BASE_URL` / `CANONICAL_BASE_URL`, which must stay HTTPS on Render.
 - Render terminates HTTPS at the proxy. Keep `SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https")` and `USE_X_FORWARDED_HOST=True` so Django treats forwarded requests as secure.
 - Production now defaults to `SESSION_ENGINE=django.contrib.sessions.backends.db`.
 - Keep `python manage.py migrate` in the Render startup flow so the `django_session` table exists before serving traffic.
-- If you use SQLite on Render for session persistence, keep the database on a persistent disk path such as `data/siteguard.sqlite3`.
+- Startup diagnostics now log the database engine, host, database name, SSL mode, and connection health.
 - `SESSION_COOKIE_AGE` defaults to 14 days and `SESSION_SAVE_EVERY_REQUEST=True` refreshes active sessions without weakening HTTPS-only cookie behavior in production.
 - AI operational intelligence is disabled by default. Set `AI_FEATURES_ENABLED=True`, `AI_PROVIDER=gemini`, and `GEMINI_API_KEY` on the web service to enable on-demand report, error, and incident analysis.
-- Gemini is the default provider and defaults to `GEMINI_MODEL=gemini-1.5-flash`.
+- Production should set `GEMINI_MODEL=gemini-2.5-flash`.
 - Gemini calls use the official `google-generativeai` Python SDK with `configure(api_key=...)` and `GenerativeModel(...)`.
 - Gemini transient quota/service failures such as `429`, `500`, `502`, `503`, and `504` are retried with `AI_RETRY_ATTEMPTS` and `AI_RETRY_BACKOFF_SECONDS`.
 - Gemini auth failures, unavailable models, malformed responses, and timeouts are handled gracefully and cached as failed AI generation without breaking monitoring or report pages.

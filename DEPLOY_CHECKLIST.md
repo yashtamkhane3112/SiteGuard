@@ -7,6 +7,8 @@
 - `DJANGO_SETTINGS_MODULE=siteguard.settings.prod`
 - `DEBUG=False`
 - `BOOTSTRAP_ADMIN_ENABLED=False`
+- `DATABASE_URL=<neon postgres url>`
+- `SESSION_ENGINE=django.contrib.sessions.backends.db`
 
 ## Commands
 
@@ -18,8 +20,9 @@
 
 - logs show `STARTUP SCRIPT RUNNING`
 - logs show `Running migrations...`
-- logs show `Checking auth table...`
-- logs show `('auth_user',)`
+- logs show `Database startup diagnostics:`
+- logs show `connection_health=healthy`
+- logs show `Checking database readiness...`
 
 ## Auth Verification
 
@@ -42,6 +45,8 @@
 4. add a website
 5. trigger cron endpoint
 6. confirm logs and monitoring data update
+7. confirm uploads still store through Cloudinary raw storage
+8. confirm authenticated sessions survive refresh/restart behavior
 
 ## Local Environment Alignment
 

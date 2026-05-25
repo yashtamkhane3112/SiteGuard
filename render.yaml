@@ -52,6 +52,8 @@ services:
         value: "[SiteGuard] "
       - key: SITE_NAME
         value: SiteGuard
+      - key: DATABASE_URL
+        sync: false
       - key: SESSION_ENGINE
         value: django.contrib.sessions.backends.db
       - key: SESSION_COOKIE_AGE
@@ -71,7 +73,7 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
-        value: gemini-1.5-flash
+        value: gemini-2.5-flash
       - key: AI_REQUEST_TIMEOUT
         value: "20"
       - key: AI_MAX_TOKENS
@@ -106,6 +108,8 @@ services:
       - key: APP_BASE_URL
         sync: false
       - key: CRON_SECRET
+        sync: false
+      - key: DATABASE_URL
         sync: false
       - key: EMAIL_BACKEND
         value: brevo_api
