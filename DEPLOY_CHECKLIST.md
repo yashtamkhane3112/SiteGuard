@@ -7,6 +7,8 @@
 - `DJANGO_SETTINGS_MODULE=siteguard.settings.prod`
 - `DEBUG=False`
 - `BOOTSTRAP_ADMIN_ENABLED=False`
+- `DATABASE_URL=<Render internal PostgreSQL URL>`
+- `SESSION_ENGINE=django.contrib.sessions.backends.signed_cookies`
 
 ## Commands
 
@@ -18,8 +20,9 @@
 
 - logs show `STARTUP SCRIPT RUNNING`
 - logs show `Running migrations...`
-- logs show `Checking auth table...`
-- logs show `('auth_user',)`
+- logs show `Database startup diagnostics:`
+- logs show `connection_health=healthy`
+- logs show `Checking database readiness...`
 
 ## Auth Verification
 
@@ -42,6 +45,8 @@
 4. add a website
 5. trigger cron endpoint
 6. confirm logs and monitoring data update
+7. upload a diagnostic log file and confirm Cloudinary-backed storage still works
+8. send a password reset and confirm Brevo delivery still uses the production HTTPS host
 
 ## Local Environment Alignment
 

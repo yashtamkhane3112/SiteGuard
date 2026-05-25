@@ -26,6 +26,7 @@ from django.utils import timezone
 
 from monitor.apps import (
     log_ai_startup_diagnostics,
+    log_database_startup_diagnostics,
     log_analyzer_storage_startup_diagnostics,
     log_session_startup_diagnostics,
 )
@@ -40,7 +41,12 @@ from monitor.ai.services.analysis import generate_report_analysis, get_report_ai
 from monitor.models import AIAnalysisCache, Alert, Incident, IncidentEvent, MonitorLog, Notification, ParsedError, UploadedLog, UserProfile, Website
 from monitor.storage import AnalyzerUploadStorage, get_uploaded_log_storage, get_uploaded_log_storage_metadata
 from siteguard.settings.base import _normalize_config_text
-from siteguard.settings.validation import validate_production_configuration
+from siteguard.settings.validation import (
+    build_production_database_config,
+    build_sqlite_database_config,
+    get_database_configuration_diagnostics,
+    validate_production_configuration,
+)
 from monitor.utils import (
     analyze_domain,
     build_notification_activity_center,
@@ -2343,6 +2349,78 @@ class AIConfigurationDiagnosticsTests(TestCase):
 
 
 class SessionConfigurationDiagnosticsTests(TestCase):
+    def test_build_production_database_config_parses_database_url(self):
+        database_config = build_production_database_config(
+            database_url="postgresql://siteguard:secret@db.render.internal:5432/siteguard_prod?sslmode=require",
+            sqlite_path="db.sqlite3",
+            sqlite_timeout=20,
+        )
+
+        self.assertEqual(database_config["ENGINE"], "django.db.backends.postgresql")
+        self.assertEqual(database_config["HOST"], "db.render.internal")
+        self.assertEqual(database_config["PORT"], 5432)
+        self.assertEqual(database_config["NAME"], "siteguard_prod")
+        self.assertEqual(database_config["USER"], "siteguard")
+        self.assertEqual(database_config["OPTIONS"]["sslmode"], "require")
+        self.assertEqual(database_config["OPTIONS"]["connect_timeout"], 10)
+        self.assertEqual(database_config["CONN_MAX_AGE"], 600)
+        self.assertTrue(database_config["CONN_HEALTH_CHECKS"])
+
+    def test_build_production_database_config_falls_back_to_sqlite_without_database_url(self):
+        database_config = build_production_database_config(
+            database_url="",
+            sqlite_path="data/siteguard.sqlite3",
+            sqlite_timeout=30,
+        )
+
+        self.assertEqual(database_config, build_sqlite_database_config(
+            sqlite_path="data/siteguard.sqlite3",
+            sqlite_timeout=30,
+        ))
+
+    def test_get_database_configuration_diagnostics_reports_postgres_details(self):
+        diagnostics = get_database_configuration_diagnostics(
+            {
+                "ENGINE": "django.db.backends.postgresql",
+                "HOST": "db.render.internal",
+                "NAME": "siteguard_prod",
+                "OPTIONS": {"sslmode": "require"},
+            }
+        )
+
+        self.assertEqual(diagnostics["engine"], "django.db.backends.postgresql")
+        self.assertEqual(diagnostics["host"], "db.render.internal")
+        self.assertEqual(diagnostics["name"], "siteguard_prod")
+        self.assertEqual(diagnostics["ssl_mode"], "require")
+
+    @override_settings(
+        DATABASES={
+            "default": {
+                "ENGINE": "django.db.backends.postgresql",
+                "HOST": "db.render.internal",
+                "NAME": "siteguard_prod",
+                "OPTIONS": {"sslmode": "require"},
+            }
+        }
+    )
+    @patch("monitor.apps.connection")
+    def test_database_startup_diagnostics_log_runtime_configuration(self, mock_connection):
+        mock_cursor = Mock()
+        mock_cursor.fetchone.return_value = (1,)
+        mock_connection.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_connection.introspection.table_names.return_value = ["auth_user", "django_session"]
+
+        with self.assertLogs("siteguard.runtime", level="INFO") as captured:
+            log_database_startup_diagnostics()
+
+        combined_output = "\n".join(captured.output)
+        self.assertIn("Database startup diagnostics:", combined_output)
+        self.assertIn("engine=django.db.backends.postgresql", combined_output)
+        self.assertIn("host=db.render.internal", combined_output)
+        self.assertIn("name=siteguard_prod", combined_output)
+        self.assertIn("ssl_mode=require", combined_output)
+        self.assertIn("connection_health=healthy", combined_output)
+
     @override_settings(
         SESSION_ENGINE="django.contrib.sessions.backends.db",
         SESSION_COOKIE_AGE=604800,

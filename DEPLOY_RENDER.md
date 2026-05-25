@@ -6,7 +6,8 @@ SiteGuard runs on Render free tier with:
 
 - one Django web service
 - one Render cron job
-- SQLite
+- PostgreSQL for production data
+- signed-cookie sessions temporarily retained during the migration phase
 - WhiteNoise
 - Gunicorn
 - Python 3.12.3
@@ -21,6 +22,7 @@ Set these on the Render web service and cron job:
 - `CSRF_TRUSTED_ORIGINS=https://<render-hostname>`
 - `APP_BASE_URL=https://<render-hostname>`
 - `CRON_SECRET=<long random secret>`
+- `DATABASE_URL=<Render internal PostgreSQL URL>`
 - `EMAIL_BACKEND=brevo_api`
 - `BREVO_API_KEY=<brevo api key>`
 - `BREVO_API_URL=https://api.brevo.com/v3/smtp/email`
@@ -78,6 +80,8 @@ Web service:
 
 - Build command: `pip install -r requirements.txt`
 - Start command: `bash ./start.sh`
+- `DATABASE_URL` should be set on the web service to the Render internal PostgreSQL URL
+- Keep `SESSION_ENGINE=django.contrib.sessions.backends.signed_cookies` for now
 
 Optional one-time admin bootstrap on the web service only:
 
@@ -104,7 +108,7 @@ Do not override the web start command with `gunicorn siteguard.wsgi:application`
 1. export production settings
 2. run migrations
 3. optionally run `python manage.py bootstrap_admin` only when `DJANGO_BOOTSTRAP_ADMIN=True`
-4. verify `auth_user`
+4. run a database connectivity probe, verify `auth_user`, and verify `django_session` only when DB-backed sessions are enabled
 5. collect static files
 6. start Gunicorn
 
@@ -144,12 +148,13 @@ Expected startup log lines when using the deploy/start integration:
 
 Render free cron and web services do not share the same local SQLite file. The cron therefore calls the protected internal endpoint on the web service, which executes `monitor_sites` inside the same runtime environment as the application database.
 
-## SQLite Notes
+## Database Notes
 
-- Production defaults to `data/siteguard.sqlite3`
-- Render free tier storage remains ephemeral
-- Data can be lost on restart or redeploy
-- Startup migrations are mandatory every boot
+- Local development still defaults to SQLite
+- Production uses `DATABASE_URL` when present
+- If `DATABASE_URL` is absent, production falls back to `data/siteguard.sqlite3`
+- Startup logs now emit database diagnostics for engine, host, database name, SSL mode, and connection health
+- Startup migrations remain mandatory every boot
 
 ## Health Check
 
@@ -173,8 +178,7 @@ Confirm these log lines:
 
 - `STARTUP SCRIPT RUNNING`
 - `Running migrations...`
-- `Checking auth table...`
-- `('auth_user',)`
+- `Checking database readiness...`
 - `Collecting static...`
 - `Starting gunicorn...`
 
@@ -208,3 +212,17 @@ python manage.py collectstatic --settings=siteguard.settings.prod --noinput
 python manage.py monitor_sites --settings=siteguard.settings.prod
 python manage.py test_email your@email.com --kind operational --settings=siteguard.settings.prod
 ```
+
+## PostgreSQL Cutover Steps
+
+1. Confirm the Render web service has `DATABASE_URL` set to the internal PostgreSQL URL.
+2. Confirm `SESSION_ENGINE=django.contrib.sessions.backends.signed_cookies` remains set on the web service.
+3. Deploy the `postgres-migration` branch.
+4. Watch startup logs for:
+   - `Database startup diagnostics:`
+   - `connection_health=healthy`
+   - `Running migrations...`
+   - `Checking database readiness...`
+5. Open `/health/` and confirm `status: ok`.
+6. Verify signup, login, monitoring, Cloudinary upload, password reset, and operations dashboard flows.
+7. Keep signed-cookie sessions in place until PostgreSQL runtime stability is confirmed, then switch `SESSION_ENGINE` back to `django.contrib.sessions.backends.db` in a later deployment.

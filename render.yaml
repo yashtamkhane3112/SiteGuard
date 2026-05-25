@@ -52,8 +52,10 @@ services:
         value: "[SiteGuard] "
       - key: SITE_NAME
         value: SiteGuard
+      - key: DATABASE_URL
+        sync: false
       - key: SESSION_ENGINE
-        value: django.contrib.sessions.backends.db
+        value: django.contrib.sessions.backends.signed_cookies
       - key: SESSION_COOKIE_AGE
         value: "1209600"
       - key: SESSION_SAVE_EVERY_REQUEST

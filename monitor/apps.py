@@ -5,6 +5,8 @@ from django.db.utils import OperationalError, ProgrammingError
 import logging
 import warnings
 
+from siteguard.settings.validation import get_database_configuration_diagnostics
+
 
 logger = logging.getLogger("siteguard.runtime")
 
@@ -38,6 +40,42 @@ def log_ai_startup_diagnostics():
             "ai_provider": provider_name,
             "gemini_model": resolved_model or "",
             "gemini_api_key_present": bool(getattr(settings, "GEMINI_API_KEY", "")),
+        },
+    )
+
+
+def log_database_startup_diagnostics():
+    database_settings = (getattr(settings, "DATABASES", {}) or {}).get("default", {}) or {}
+    diagnostics = get_database_configuration_diagnostics(database_settings)
+    connection_health = "unknown"
+    connection_error = ""
+    auth_user_table_exists = None
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+        auth_user_table_exists = "auth_user" in set(connection.introspection.table_names())
+        connection_health = "healthy"
+    except (OperationalError, ProgrammingError) as exc:
+        connection_health = "unavailable"
+        connection_error = str(exc)
+
+    logger.info(
+        "Database startup diagnostics: engine=%s host=%s name=%s ssl_mode=%s connection_health=%s",
+        diagnostics["engine"],
+        diagnostics["host"],
+        diagnostics["name"],
+        diagnostics["ssl_mode"],
+        connection_health,
+        extra={
+            "database_backend": diagnostics["engine"],
+            "database_host": diagnostics["host"],
+            "database_name": diagnostics["name"],
+            "database_ssl_mode": diagnostics["ssl_mode"],
+            "database_connection_health": connection_health,
+            "database_connection_error": connection_error,
+            "database_auth_user_table_exists": auth_user_table_exists,
         },
     )
 
@@ -160,6 +198,7 @@ class MonitorConfig(AppConfig):
         global _startup_diagnostics_logged
         if not _startup_diagnostics_logged:
             log_ai_startup_diagnostics()
+            log_database_startup_diagnostics()
             log_session_startup_diagnostics()
             log_analyzer_storage_startup_diagnostics()
             _startup_diagnostics_logged = True
