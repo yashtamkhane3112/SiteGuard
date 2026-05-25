@@ -72,7 +72,7 @@ Notes:
 - Production uses `DATABASE_URL` when it is present and otherwise falls back to SQLite.
 - Render PostgreSQL diagnostics log the backend engine, database host, database name, SSL mode, and connection health at startup.
 - Keep `python manage.py migrate` in the Render startup flow before serving traffic.
-- The current Render session workaround should remain `SESSION_ENGINE=django.contrib.sessions.backends.signed_cookies` until a later cutover moves sessions back into PostgreSQL.
+- Production sessions should use `SESSION_ENGINE=django.contrib.sessions.backends.db` so authenticated sessions persist in the database across worker restarts and redeploys.
 - `SESSION_COOKIE_AGE` defaults to 14 days and `SESSION_SAVE_EVERY_REQUEST=True` refreshes active sessions without weakening HTTPS-only cookie behavior in production.
 - AI operational intelligence is disabled by default. Set `AI_FEATURES_ENABLED=True`, `AI_PROVIDER=gemini`, and `GEMINI_API_KEY` on the web service to enable on-demand report, error, and incident analysis.
 - Gemini is the default provider and defaults to `GEMINI_MODEL=gemini-1.5-flash`.

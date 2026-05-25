@@ -55,7 +55,7 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: SESSION_ENGINE
-        value: django.contrib.sessions.backends.signed_cookies
+        value: django.contrib.sessions.backends.db
       - key: SESSION_COOKIE_AGE
         value: "1209600"
       - key: SESSION_SAVE_EVERY_REQUEST

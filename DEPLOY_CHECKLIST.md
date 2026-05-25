@@ -8,7 +8,7 @@
 - `DEBUG=False`
 - `BOOTSTRAP_ADMIN_ENABLED=False`
 - `DATABASE_URL=<Render internal PostgreSQL URL>`
-- `SESSION_ENGINE=django.contrib.sessions.backends.signed_cookies`
+- `SESSION_ENGINE=django.contrib.sessions.backends.db`
 
 ## Commands
 

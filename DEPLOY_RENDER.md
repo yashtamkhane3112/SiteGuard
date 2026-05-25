@@ -81,7 +81,7 @@ Web service:
 - Build command: `pip install -r requirements.txt`
 - Start command: `bash ./start.sh`
 - `DATABASE_URL` should be set on the web service to the Render internal PostgreSQL URL
-- Keep `SESSION_ENGINE=django.contrib.sessions.backends.signed_cookies` for now
+- Set `SESSION_ENGINE=django.contrib.sessions.backends.db`
 
 Optional one-time admin bootstrap on the web service only:
 
@@ -216,7 +216,7 @@ python manage.py test_email your@email.com --kind operational --settings=sitegua
 ## PostgreSQL Cutover Steps
 
 1. Confirm the Render web service has `DATABASE_URL` set to the internal PostgreSQL URL.
-2. Confirm `SESSION_ENGINE=django.contrib.sessions.backends.signed_cookies` remains set on the web service.
+2. Confirm `SESSION_ENGINE=django.contrib.sessions.backends.db` is set on the web service.
 3. Deploy the `postgres-migration` branch.
 4. Watch startup logs for:
    - `Database startup diagnostics:`
@@ -225,4 +225,4 @@ python manage.py test_email your@email.com --kind operational --settings=sitegua
    - `Checking database readiness...`
 5. Open `/health/` and confirm `status: ok`.
 6. Verify signup, login, monitoring, Cloudinary upload, password reset, and operations dashboard flows.
-7. Keep signed-cookie sessions in place until PostgreSQL runtime stability is confirmed, then switch `SESSION_ENGINE` back to `django.contrib.sessions.backends.db` in a later deployment.
+7. Verify authenticated sessions survive worker restarts and redeploys by confirming the same account remains logged in after a restart event.
