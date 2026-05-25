@@ -904,6 +904,87 @@ def account_allows_email_alert(user, alert_type):
     return True
 
 
+def get_alert_delivery_decision(website, alert_type):
+    user = website.user
+    profile = get_or_create_user_profile(user)
+    if not website.alerts_enabled:
+        return {
+            "should_email": False,
+            "reason": "website_alerts_disabled",
+            "recipient": "",
+            "profile_email_alerts_enabled": profile.email_alerts_enabled,
+            "profile_incident_alerts_enabled": profile.incident_alerts_enabled,
+            "profile_ssl_alerts_enabled": profile.ssl_alerts_enabled,
+            "website_email_notifications": website.email_notifications,
+            "user_email_present": bool(user.email),
+        }
+    if not website.email_notifications:
+        return {
+            "should_email": False,
+            "reason": "website_email_notifications_disabled",
+            "recipient": "",
+            "profile_email_alerts_enabled": profile.email_alerts_enabled,
+            "profile_incident_alerts_enabled": profile.incident_alerts_enabled,
+            "profile_ssl_alerts_enabled": profile.ssl_alerts_enabled,
+            "website_email_notifications": website.email_notifications,
+            "user_email_present": bool(user.email),
+        }
+    if not user.email:
+        return {
+            "should_email": False,
+            "reason": "user_email_missing",
+            "recipient": "",
+            "profile_email_alerts_enabled": profile.email_alerts_enabled,
+            "profile_incident_alerts_enabled": profile.incident_alerts_enabled,
+            "profile_ssl_alerts_enabled": profile.ssl_alerts_enabled,
+            "website_email_notifications": website.email_notifications,
+            "user_email_present": False,
+        }
+    if not profile.email_alerts_enabled:
+        return {
+            "should_email": False,
+            "reason": "account_email_alerts_disabled",
+            "recipient": "",
+            "profile_email_alerts_enabled": profile.email_alerts_enabled,
+            "profile_incident_alerts_enabled": profile.incident_alerts_enabled,
+            "profile_ssl_alerts_enabled": profile.ssl_alerts_enabled,
+            "website_email_notifications": website.email_notifications,
+            "user_email_present": True,
+        }
+    if alert_type == Alert.TYPE_SSL and not profile.ssl_alerts_enabled:
+        return {
+            "should_email": False,
+            "reason": "account_ssl_alerts_disabled",
+            "recipient": "",
+            "profile_email_alerts_enabled": profile.email_alerts_enabled,
+            "profile_incident_alerts_enabled": profile.incident_alerts_enabled,
+            "profile_ssl_alerts_enabled": profile.ssl_alerts_enabled,
+            "website_email_notifications": website.email_notifications,
+            "user_email_present": True,
+        }
+    if alert_type in {Alert.TYPE_DOWN, Alert.TYPE_SLOW, Alert.TYPE_RECOVERY} and not profile.incident_alerts_enabled:
+        return {
+            "should_email": False,
+            "reason": "account_incident_alerts_disabled",
+            "recipient": "",
+            "profile_email_alerts_enabled": profile.email_alerts_enabled,
+            "profile_incident_alerts_enabled": profile.incident_alerts_enabled,
+            "profile_ssl_alerts_enabled": profile.ssl_alerts_enabled,
+            "website_email_notifications": website.email_notifications,
+            "user_email_present": True,
+        }
+    return {
+        "should_email": True,
+        "reason": "email_enabled",
+        "recipient": user.email,
+        "profile_email_alerts_enabled": profile.email_alerts_enabled,
+        "profile_incident_alerts_enabled": profile.incident_alerts_enabled,
+        "profile_ssl_alerts_enabled": profile.ssl_alerts_enabled,
+        "website_email_notifications": website.email_notifications,
+        "user_email_present": True,
+    }
+
+
 def get_incident_title(status):
     if status == MonitorLog.STATUS_DOWN:
         return "Complete Outage"
@@ -1297,6 +1378,20 @@ def _build_alert_email_bodies(alert, *, recovery_time=None):
 def send_alert_email(alert, recovery_time=None):
     subject = _get_alert_subject(alert)
     text_body, html_body = _build_alert_email_bodies(alert, recovery_time=recovery_time)
+    logger.info(
+        "Operational alert email dispatch starting.",
+        extra={
+            "email_context": {
+                "flow": "operational_alert",
+                "stage": "dispatch_start",
+                "alert_id": alert.id,
+                "alert_type": alert.alert_type,
+                "website_id": alert.website_id,
+                "incident_id": alert.incident_id,
+                "recipient": alert.website.user.email,
+            }
+        },
+    )
     return send_siteguard_email(
         subject=subject,
         text_body=text_body,
@@ -1319,15 +1414,23 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
         website = incident.website
 
     if not website.alerts_enabled:
+        logger.info(
+            "Operational alert suppressed before creation.",
+            extra={
+                "email_context": {
+                    "flow": "operational_alert",
+                    "stage": "suppressed_pre_creation",
+                    "reason": "website_alerts_disabled",
+                    "website_id": website.id,
+                    "alert_type": alert_type,
+                    "incident_id": incident.id if incident else None,
+                }
+            },
+        )
         return None
 
-    sent_to = (
-        website.user.email
-        if website.email_notifications
-        and website.user.email
-        and account_allows_email_alert(website.user, alert_type)
-        else ''
-    )
+    delivery_decision = get_alert_delivery_decision(website, alert_type)
+    sent_to = delivery_decision["recipient"]
     recent_cutoff = timezone.now() - ALERT_DEDUP_WINDOW
     active_alert_filters = {
         'website': website,
@@ -1346,6 +1449,21 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
         and alert.status in {Alert.STATUS_SENT, Alert.STATUS_PENDING}
         and alert.message == message
     ):
+        logger.info(
+            "Operational alert email suppressed by deduplication.",
+            extra={
+                "email_context": {
+                    "flow": "operational_alert",
+                    "stage": "dedup_suppressed",
+                    "reason": "matching_active_alert",
+                    "alert_id": alert.id,
+                    "alert_type": alert.alert_type,
+                    "website_id": website.id,
+                    "incident_id": alert.incident_id,
+                    "existing_status": alert.status,
+                }
+            },
+        )
         if response_time is not None and alert.response_time != response_time:
             alert.response_time = get_numeric_response_time(response_time, default=None)
             alert.save(update_fields=['response_time'])
@@ -1373,20 +1491,83 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
         )
 
     if not sent_to:
+        logger.warning(
+            "Operational alert email skipped.",
+            extra={
+                "email_context": {
+                    "flow": "operational_alert",
+                    "stage": "dispatch_skipped",
+                    "reason": delivery_decision["reason"],
+                    "alert_id": alert.id,
+                    "alert_type": alert.alert_type,
+                    "website_id": website.id,
+                    "incident_id": alert.incident_id,
+                    "website_email_notifications": delivery_decision["website_email_notifications"],
+                    "user_email_present": delivery_decision["user_email_present"],
+                    "profile_email_alerts_enabled": delivery_decision["profile_email_alerts_enabled"],
+                    "profile_incident_alerts_enabled": delivery_decision["profile_incident_alerts_enabled"],
+                    "profile_ssl_alerts_enabled": delivery_decision["profile_ssl_alerts_enabled"],
+                }
+            },
+        )
         alert.status = Alert.STATUS_SENT
         alert.save(update_fields=['status'])
         create_notification_from_alert(alert)
         return alert
 
     if reused_existing_alert and alert.status in {Alert.STATUS_SENT, Alert.STATUS_PENDING}:
+        logger.info(
+            "Operational alert email suppressed by cooldown state reuse.",
+            extra={
+                "email_context": {
+                    "flow": "operational_alert",
+                    "stage": "cooldown_suppressed",
+                    "reason": "reused_existing_alert",
+                    "alert_id": alert.id,
+                    "alert_type": alert.alert_type,
+                    "website_id": website.id,
+                    "incident_id": alert.incident_id,
+                    "existing_status": alert.status,
+                }
+            },
+        )
         create_notification_from_alert(alert)
         return alert
 
+    logger.info(
+        "Operational alert email dispatch attempting.",
+        extra={
+            "email_context": {
+                "flow": "operational_alert",
+                "stage": "dispatch_attempt",
+                "alert_id": alert.id,
+                "alert_type": alert.alert_type,
+                "website_id": website.id,
+                "incident_id": alert.incident_id,
+                "recipient": sent_to,
+                "delivery_reason": delivery_decision["reason"],
+            }
+        },
+    )
     sent = send_alert_email(alert, recovery_time=recovery_time)
     if sent:
         alert.status = Alert.STATUS_SENT
         alert.sent_to = sent_to
         alert.save(update_fields=['status', 'sent_to'])
+        logger.info(
+            "Operational alert email dispatch succeeded.",
+            extra={
+                "email_context": {
+                    "flow": "operational_alert",
+                    "stage": "dispatch_success",
+                    "alert_id": alert.id,
+                    "alert_type": alert.alert_type,
+                    "website_id": website.id,
+                    "incident_id": alert.incident_id,
+                    "recipient": sent_to,
+                }
+            },
+        )
     else:
         alert.status = Alert.STATUS_FAILED
         alert.save(update_fields=['status'])

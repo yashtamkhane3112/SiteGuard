@@ -51,6 +51,7 @@ from monitor.utils import (
     analyze_domain,
     build_notification_activity_center,
     cleanup_monitoring_state,
+    create_or_update_alert,
     create_notification_from_alert,
     get_favicon_url,
     get_notification_destination,
@@ -1050,6 +1051,83 @@ class MonitorEmailAlertTests(TestCase):
         mock_send_email.assert_not_called()
         alert.refresh_from_db()
         self.assertTrue(alert.is_read)
+
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    @patch("monitor.utils.send_siteguard_email", return_value=True)
+    @patch("monitor.utils.requests.get")
+    def test_monitor_command_reproduces_down_detection_and_email_attempt(self, mock_get, mock_send_email, _mock_ssl):
+        mock_get.return_value = Mock(
+            status_code=503,
+            elapsed=Mock(total_seconds=Mock(return_value=0.250)),
+        )
+
+        stdout = io.StringIO()
+        call_command("monitor_sites", stdout=stdout)
+
+        incident = Incident.objects.get(website=self.website, is_resolved=False)
+        alert = Alert.objects.get(website=self.website, incident=incident, alert_type=Alert.TYPE_DOWN)
+        self.assertEqual(incident.incident_type, Incident.TYPE_OUTAGE)
+        self.assertEqual(alert.status, Alert.STATUS_SENT)
+        self.assertEqual(mock_send_email.call_count, 1)
+        self.assertIn("Starting monitoring cycle...", stdout.getvalue())
+
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    @patch("monitor.utils.send_siteguard_email", return_value=True)
+    @patch("monitor.utils.requests.get")
+    def test_alert_logs_suppression_reason_when_email_notifications_disabled(self, mock_get, mock_send_email, _mock_ssl):
+        self.website.email_notifications = False
+        self.website.save(update_fields=["email_notifications"])
+        MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=123)
+        mock_get.return_value = Mock(
+            status_code=500,
+            elapsed=Mock(total_seconds=Mock(return_value=0.123)),
+        )
+
+        with patch("monitor.utils.logger.warning") as mock_warning:
+            run_single_check(self.website)
+
+        self.assertFalse(mock_send_email.called)
+        warning_call = next(
+            call for call in mock_warning.call_args_list
+            if call.args and call.args[0] == "Operational alert email skipped."
+        )
+        self.assertEqual(
+            warning_call.kwargs["extra"]["email_context"]["reason"],
+            "website_email_notifications_disabled",
+        )
+
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    @patch("monitor.utils.send_siteguard_email", return_value=True)
+    @patch("monitor.utils.requests.get")
+    def test_alert_logs_dedup_suppression_when_matching_active_alert_exists(self, mock_get, mock_send_email, _mock_ssl):
+        MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=123)
+        mock_get.return_value = Mock(
+            status_code=500,
+            elapsed=Mock(total_seconds=Mock(return_value=0.123)),
+        )
+        run_single_check(self.website)
+        mock_send_email.reset_mock()
+        incident = Incident.objects.get(website=self.website, is_resolved=False)
+        alert = Alert.objects.get(website=self.website, incident=incident, alert_type=Alert.TYPE_DOWN)
+
+        with patch("monitor.utils.logger.info") as mock_info:
+            create_or_update_alert(
+                self.website,
+                Alert.TYPE_DOWN,
+                alert.message,
+                incident=incident,
+                response_time=alert.response_time,
+            )
+
+        self.assertFalse(mock_send_email.called)
+        dedup_call = next(
+            call for call in mock_info.call_args_list
+            if call.args and call.args[0] == "Operational alert email suppressed by deduplication."
+        )
+        self.assertEqual(
+            dedup_call.kwargs["extra"]["email_context"]["reason"],
+            "matching_active_alert",
+        )
 
 
 class MonitorStatusSyncTests(TestCase):
