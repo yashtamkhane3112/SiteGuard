@@ -141,6 +141,7 @@
             </section>
             {% endfor %}
           </div>
+          {% include "monitor/partials/pagination.html" with pagination_label="Notification pages" %}
           {% else %}
           <div class="dash-panel notification-empty-state notification-empty-state-ops">
             <i data-lucide="inbox"></i>

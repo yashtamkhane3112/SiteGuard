@@ -2,19 +2,19 @@
 
 ## Version
 
-`v1`
+`v2.1.0-production-stable`
 
 ## Highlights
 
-- fixed Render startup order so migrations run before Gunicorn
-- verified `auth_user` existence during startup
-- stabilized production SQLite path
-- added `/health/` for deployment verification
-- added production logging configuration
-- expanded admin coverage for operational models
-- added CI workflow for migration and static smoke checks
-- added deployment and operations documentation
+- fixed PostgreSQL-sensitive first-incident gating so first `UNKNOWN -> DOWN` transitions create incidents, alerts, notifications, and operational emails reliably on Neon PostgreSQL
+- preserved alert durability by keeping alert persistence ahead of `transaction.on_commit` notification and Brevo email dispatch
+- verified operational alerts, password resets, DB-backed sessions, Cloudinary-backed media, and Render deployment behavior
+- removed Django startup database access from `AppConfig.ready()` by deferring DB/session diagnostics to a safe runtime connection signal
+- added production-grade server-side pagination for logs, alerts, incidents, notifications, weekly report history, and analyzer investigation groups
+- moved notification priority ordering into SQL and tightened list-view rendering for better performance on larger datasets
+- improved responsive dark-theme pagination controls, list readability, and mobile layout consistency without changing backend monitoring behavior
+- normalized production documentation, branch history, contributor guidance, and SiteGuard branding across the repository
 
 ## Suggested Tag
 
-`v1.0.0-render-stable`
+`v2.1.0-production-stable`

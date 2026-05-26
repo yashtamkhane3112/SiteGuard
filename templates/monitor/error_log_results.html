@@ -527,6 +527,8 @@
               {% endfor %}
             </div>
 
+            {% include "monitor/partials/pagination.html" with pagination_label="Error investigation group pages" %}
+
             <div class="empty-state analyzer-filter-empty-state" id="investigation-empty" hidden>
               <i data-lucide="search-x"></i>
               <h6>No groups match the current filters</h6>

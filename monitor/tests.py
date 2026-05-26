@@ -659,6 +659,44 @@ class ErrorAnalyzerTests(TestCase):
         self.assertContains(response, "Likely root cause")
         self.assertContains(response, "Recurring only")
 
+    def test_error_analyzer_results_paginate_investigation_groups(self):
+        uploaded_log = UploadedLog.objects.create(
+            user=self.user,
+            filename="wide.log",
+            file=SimpleUploadedFile(
+                "wide.log",
+                b"\n".join(
+                    [
+                        f"Traceback {index}\ndjango.db.utils.OperationalError: issue {index}".encode()
+                        for index in range(9)
+                    ]
+                ),
+                content_type="text/plain",
+            ),
+            processed=True,
+        )
+        for index in range(9):
+            ParsedError.objects.create(
+                uploaded_log=uploaded_log,
+                error_type=f"OperationalError {index}",
+                raw_line=f"django.db.utils.OperationalError: issue {index}",
+                count=1,
+                first_seen_line=index + 1,
+                last_seen_line=index + 1,
+                category=ParsedError.CATEGORY_DATABASE,
+                severity=ParsedError.SEVERITY_CRITICAL,
+            )
+
+        first_page = self.client.get(reverse("error_log_results", args=[uploaded_log.id]))
+        second_page = self.client.get(reverse("error_log_results", args=[uploaded_log.id]), {"page": 2})
+
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(len(first_page.context["investigation_groups"]), 8)
+        self.assertEqual(first_page.context["page_obj"].paginator.count, 9)
+        self.assertEqual(second_page.status_code, 200)
+        self.assertEqual(len(second_page.context["investigation_groups"]), 1)
+        self.assertEqual(second_page.context["page_obj"].number, 2)
+
     def test_reports_view_includes_error_analytics_section(self):
         uploaded_log = UploadedLog.objects.create(
             user=self.user,
@@ -2288,6 +2326,69 @@ class ReportingViewsTests(TestCase):
         self.assertEqual(response.context["logs"][0]["url"], self.website.url)
         self.assertEqual(response.context["logs"][0]["response_time_display"], "120 ms")
 
+    def test_logs_page_paginates_large_monitor_history(self):
+        for index in range(26):
+            MonitorLog.objects.create(
+                website=self.website,
+                status=MonitorLog.STATUS_UP,
+                response_time=100 + index,
+            )
+
+        first_page = self.client.get(reverse("logs"))
+        second_page = self.client.get(reverse("logs"), {"page": 2})
+
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(len(first_page.context["logs"]), 25)
+        self.assertEqual(first_page.context["page_obj"].paginator.count, 26)
+        self.assertEqual(second_page.status_code, 200)
+        self.assertEqual(len(second_page.context["logs"]), 1)
+        self.assertEqual(second_page.context["page_obj"].number, 2)
+
+    def test_incidents_page_paginates_history_without_changing_summary_counts(self):
+        for index in range(11):
+            website = Website.objects.create(
+                user=self.user,
+                url=f"https://incident-{index}.example.com",
+            )
+            Incident.objects.create(
+                website=website,
+                title=f"Outage {index}",
+                incident_type=Incident.TYPE_OUTAGE,
+                status=Incident.STATUS_DOWN,
+                started_at=timezone.now() - timedelta(minutes=index),
+                latest_response_time=0,
+            )
+
+        first_page = self.client.get(reverse("incidents"))
+        second_page = self.client.get(reverse("incidents"), {"page": 2})
+
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(len(first_page.context["incidents"]), 10)
+        self.assertEqual(first_page.context["active_incidents"], 11)
+        self.assertEqual(second_page.status_code, 200)
+        self.assertEqual(len(second_page.context["incidents"]), 1)
+        self.assertEqual(second_page.context["page_obj"].number, 2)
+
+    def test_alerts_page_paginates_alert_stream(self):
+        for index in range(13):
+            Alert.objects.create(
+                website=self.website,
+                alert_type=Alert.TYPE_DOWN,
+                status=Alert.STATUS_SENT,
+                message=f"Alert {index}",
+                response_time=0,
+            )
+
+        first_page = self.client.get(reverse("alerts"))
+        second_page = self.client.get(reverse("alerts"), {"page": 2})
+
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(len(first_page.context["alerts"]), 12)
+        self.assertEqual(first_page.context["recent_alerts_count"], 13)
+        self.assertEqual(second_page.status_code, 200)
+        self.assertEqual(len(second_page.context["alerts"]), 1)
+        self.assertEqual(second_page.context["page_obj"].number, 2)
+
     def test_reports_page_calculates_real_analytics(self):
         MonitorLog.objects.create(
             website=self.website,
@@ -2363,6 +2464,17 @@ class ReportingViewsTests(TestCase):
         self.assertIn("ai_report_state", response.context)
         self.assertContains(response, "AI Operational Intelligence")
         self.assertContains(response, "Generate AI Summary")
+
+    def test_weekly_report_history_is_paginated(self):
+        first_page = self.client.get(reverse("weekly_reports"))
+        second_page = self.client.get(reverse("weekly_reports"), {"page": 2})
+
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(len(first_page.context["history"]), 8)
+        self.assertEqual(first_page.context["page_obj"].paginator.count, 24)
+        self.assertEqual(second_page.status_code, 200)
+        self.assertEqual(len(second_page.context["history"]), 8)
+        self.assertEqual(second_page.context["page_obj"].number, 2)
 
     @override_settings(AI_FEATURES_ENABLED=False)
     def test_ai_report_generation_falls_back_when_disabled(self):
@@ -4031,6 +4143,27 @@ class NotificationAndSearchTests(TestCase):
         self.assertEqual(response.context["notifications"][0].title, "SSL warning for example.com")
         self.assertEqual(len(response.context["notification_groups"]), 1)
         self.assertEqual(response.context["notification_groups"][0]["title"], "Unread")
+
+    def test_notifications_pagination_preserves_filters(self):
+        for index in range(21):
+            Notification.objects.create(
+                user=self.user,
+                title=f"Critical outage {index}",
+                message="example.com down",
+                notification_type=Notification.TYPE_OUTAGE,
+                severity=Notification.SEVERITY_CRITICAL,
+                related_website=self.website,
+            )
+
+        first_page = self.client.get(reverse("notifications"), {"severity": "critical", "unread": "1"})
+        second_page = self.client.get(reverse("notifications"), {"severity": "critical", "unread": "1", "page": 2})
+
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(len(first_page.context["notifications"]), 20)
+        self.assertEqual(first_page.context["pagination_query"], "severity=critical&unread=1")
+        self.assertEqual(second_page.status_code, 200)
+        self.assertEqual(len(second_page.context["notifications"]), 1)
+        self.assertEqual(second_page.context["page_obj"].number, 2)
 
     def test_create_notification_from_alert_reuses_recent_matching_notification(self):
         incident = Incident.objects.create(

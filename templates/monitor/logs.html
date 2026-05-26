@@ -102,10 +102,15 @@
               class="p-4 border-bottom"
               style="border-color: rgba(255, 255, 255, 0.05) !important"
             >
-              <h5 class="panel-title m-0">Monitoring Log Entries</h5>
-              <p class="panel-subtitle mt-1 m-0">
-                Latest 100 checks across your monitored websites
-              </p>
+              <div class="list-panel-head">
+                <div>
+                  <h5 class="panel-title m-0">Monitoring Log Entries</h5>
+                  <p class="panel-subtitle mt-1 m-0">
+                    Paginated monitoring history across your monitored websites
+                  </p>
+                </div>
+                <span class="utility-chip font-mono">{{ page_obj.paginator.count }} checks</span>
+              </div>
             </div>
 
             <div class="table-responsive">
@@ -147,6 +152,8 @@
               </table>
             </div>
           </div>
+
+          {% include "monitor/partials/pagination.html" with pagination_label="Monitoring logs pages" %}
         </div>
       </main>
     </div>

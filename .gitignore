@@ -40,6 +40,7 @@ db.sqlite3-journal
 /release_snapshots/
 /SiteGuard-release-v1.zip
 /SiteGuard-production-stable-final.zip
+/SiteGuard-v2.1.0-production-stable.zip
 /backups/releases/
 /backups/*.tmp
 /evidence-prod-*.sqlite3

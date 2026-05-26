@@ -234,7 +234,7 @@
                 <h5 class="panel-title m-0">Report History</h5>
                 <p class="panel-subtitle mt-1 m-0">Browse recent generated weekly snapshots.</p>
               </div>
-              <span class="status-badge badge-info">{{ history|length }} tracked weeks</span>
+              <span class="status-badge badge-info">{{ page_obj.paginator.count }} tracked weeks</span>
             </div>
             <div class="notification-page-groups">
               {% for item in history %}
@@ -258,6 +258,7 @@
               </a>
               {% endfor %}
             </div>
+            {% include "monitor/partials/pagination.html" with pagination_label="Weekly report history pages" %}
           </section>
         </div>
       </main>

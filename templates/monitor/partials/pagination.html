@@ -1,0 +1,31 @@
+{% if page_obj and page_obj.paginator.num_pages > 1 %}
+<nav class="sg-pagination" aria-label="{{ pagination_label|default:'Pagination' }}">
+  <div class="sg-pagination__summary">
+    <span>Showing {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ page_obj.paginator.count }}</span>
+    <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+  </div>
+  <div class="sg-pagination__controls">
+    {% if page_obj.has_previous %}
+    <a class="sg-pagination__link" href="?{% if pagination_query %}{{ pagination_query }}&{% endif %}{{ page_param|default:'page' }}={{ page_obj.previous_page_number }}">Previous</a>
+    {% else %}
+    <span class="sg-pagination__link is-disabled">Previous</span>
+    {% endif %}
+
+    <div class="sg-pagination__pages">
+      {% for page_number in page_numbers %}
+        {% if page_number %}
+        <a class="sg-pagination__page{% if page_number == page_obj.number %} is-active{% endif %}" href="?{% if pagination_query %}{{ pagination_query }}&{% endif %}{{ page_param|default:'page' }}={{ page_number }}">{{ page_number }}</a>
+        {% else %}
+        <span class="sg-pagination__ellipsis">…</span>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    {% if page_obj.has_next %}
+    <a class="sg-pagination__link" href="?{% if pagination_query %}{{ pagination_query }}&{% endif %}{{ page_param|default:'page' }}={{ page_obj.next_page_number }}">Next</a>
+    {% else %}
+    <span class="sg-pagination__link is-disabled">Next</span>
+    {% endif %}
+  </div>
+</nav>
+{% endif %}

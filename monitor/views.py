@@ -23,7 +23,7 @@ from django.core.exceptions import ValidationError
 from django.urls import reverse
 from django.db import connection
 from django.db.utils import OperationalError, ProgrammingError
-from django.db.models import Avg, Count, Q, Sum
+from django.db.models import Avg, Case, Count, IntegerField, Q, Sum, Value, When
 from django.views.decorators.http import require_GET
 from django.views.decorators.http import require_POST
 from django.utils import timezone
@@ -41,7 +41,7 @@ from .forms import (
     UploadedLogForm,
 )
 from .error_analyzer import build_upload_analytics, get_error_diagnostics, iter_error_entries, process_uploaded_log
-from .models import Alert, Incident, MonitorLog, ParsedError, UploadedLog, Website
+from .models import Alert, Incident, MonitorLog, Notification, ParsedError, UploadedLog, Website
 from .ai.services.analysis import (
     generate_error_upload_analysis,
     generate_incident_analysis,
@@ -62,7 +62,6 @@ from .utils import (
     get_favicon_url,
     get_latest_logs_by_website,
     get_notification_queryset,
-    notification_priority,
     get_or_create_user_profile,
     get_recent_searches,
     get_user_account_snapshot,
@@ -194,6 +193,40 @@ def serialize_log(log):
             else 'badge-slow' if status == 'SLOW'
             else 'badge-up'
         ),
+    }
+
+
+def _build_pagination_window(page_obj, radius=2):
+    if page_obj.paginator.num_pages <= 1:
+        return []
+
+    current_page = page_obj.number
+    last_page = page_obj.paginator.num_pages
+    pages = []
+
+    for page_number in range(1, last_page + 1):
+        if (
+            page_number == 1
+            or page_number == last_page
+            or abs(page_number - current_page) <= radius
+        ):
+            pages.append(page_number)
+        elif not pages or pages[-1] is not None:
+            pages.append(None)
+
+    return pages
+
+
+def _paginate_collection(request, collection, *, per_page, page_param='page'):
+    paginator = Paginator(collection, per_page)
+    page_obj = paginator.get_page(request.GET.get(page_param))
+    query_params = request.GET.copy()
+    query_params.pop(page_param, None)
+    return page_obj, {
+        'page_obj': page_obj,
+        'page_numbers': _build_pagination_window(page_obj),
+        'pagination_query': query_params.urlencode(),
+        'page_param': page_param,
     }
 
 
@@ -723,7 +756,7 @@ def build_weekly_report_context(user, week_key=None):
 
     history = []
     current_week_start = get_week_window()[0]
-    for offset in range(8):
+    for offset in range(24):
         history_start = current_week_start - timedelta(days=7 * offset)
         history_end = history_start + timedelta(days=7)
         week_logs = list(
@@ -2064,6 +2097,13 @@ def generate_report_ai_analysis(request):
 def weekly_reports(request, week_key=None):
     ensure_weekly_report_notification(request.user)
     context = build_weekly_report_context(request.user, week_key=week_key)
+    history_page_obj, pagination_context = _paginate_collection(
+        request,
+        context['history'],
+        per_page=8,
+    )
+    context.update(pagination_context)
+    context['history'] = list(history_page_obj.object_list)
     return render(request, 'monitor/weekly_report.html', context)
 
 
@@ -2183,12 +2223,19 @@ def error_log_results(request, upload_id):
     summary = build_error_analyzer_summary(uploaded_log)
     recent_uploads = UploadedLog.objects.filter(user=request.user).exclude(id=uploaded_log.id).order_by('-uploaded_at', '-id')[:8]
     workspace_summary = build_error_analyzer_workspace_summary(request.user)
+    investigation_page_obj, pagination_context = _paginate_collection(
+        request,
+        summary['investigation_groups'],
+        per_page=8,
+    )
+    summary['investigation_groups'] = list(investigation_page_obj.object_list)
 
     context = {
         'uploaded_log': uploaded_log,
         'recent_uploads': recent_uploads,
         'workspace_insights': workspace_summary['workspace_insights'],
         'ai_error_state': get_error_upload_ai_state(request.user, uploaded_log, summary),
+        **pagination_context,
         **summary,
     }
     return render(request, 'monitor/error_log_results.html', context)
@@ -2221,28 +2268,31 @@ def generate_error_upload_ai_analysis(request, upload_id):
 @login_required
 def incidents(request):
     cleanup_monitoring_state(user=request.user)
-    incidents = list(Incident.objects.filter(
+    incidents_qs = Incident.objects.filter(
         website__user=request.user
-    ).select_related('website').prefetch_related('events').order_by('-started_at', '-created_at'))
+    ).select_related('website').prefetch_related('events').order_by('-started_at', '-created_at')
+    page_obj, pagination_context = _paginate_collection(request, incidents_qs, per_page=10)
+    incidents = list(page_obj.object_list)
     for incident in incidents:
         set_display_domain(incident.website)
 
     week_ago = timezone.now() - timedelta(days=7)
-    active_incidents = sum(1 for incident in incidents if not incident.is_resolved)
-    resolved_this_week = sum(
-        1 for incident in incidents
-        if incident.is_resolved and incident.resolved_at and incident.resolved_at >= week_ago
-    )
+    active_incidents = incidents_qs.filter(is_resolved=False).count()
+    resolved_this_week = incidents_qs.filter(
+        is_resolved=True,
+        resolved_at__gte=week_ago,
+    ).count()
 
-    resolved_incidents = [
-        incident for incident in incidents
-        if incident.is_resolved and incident.resolved_at is not None
-    ]
+    resolved_incidents = list(
+        incidents_qs.filter(is_resolved=True).exclude(
+            resolved_at__isnull=True,
+        ).values_list('started_at', 'resolved_at')
+    )
     average_resolution_time = "0m"
     if resolved_incidents:
         average_seconds = sum(
-            max(int((incident.resolved_at - incident.started_at).total_seconds()), 0)
-            for incident in resolved_incidents
+            max(int((resolved_at - started_at).total_seconds()), 0)
+            for started_at, resolved_at in resolved_incidents
         ) / len(resolved_incidents)
         average_resolution_time = format_duration_value(average_seconds)
 
@@ -2262,6 +2312,7 @@ def incidents(request):
         'active_incidents': active_incidents,
         'resolved_this_week': resolved_this_week,
         'average_resolution_time': average_resolution_time,
+        **pagination_context,
     }
     return render(request, 'monitor/incidents.html', context)
 
@@ -2293,14 +2344,16 @@ def logs(request):
     cleanup_monitoring_state(user=request.user)
     logs_qs = MonitorLog.objects.filter(
         website__user=request.user
-    ).select_related('website').order_by('-checked_at')[:100]
-    logs_data = [serialize_log(log) for log in logs_qs]
+    ).select_related('website').order_by('-checked_at', '-id')
+    page_obj, pagination_context = _paginate_collection(request, logs_qs, per_page=25)
+    logs_data = [serialize_log(log) for log in page_obj.object_list]
 
     context = {
         'logs': logs_data,
-        'down_count': sum(1 for log in logs_data if log['status'] == 'DOWN'),
-        'slow_count': sum(1 for log in logs_data if log['status'] == 'SLOW'),
-        'up_count': sum(1 for log in logs_data if log['status'] == 'UP'),
+        'down_count': logs_qs.filter(status=MonitorLog.STATUS_DOWN).count(),
+        'slow_count': logs_qs.filter(status=MonitorLog.STATUS_SLOW).count(),
+        'up_count': logs_qs.filter(status=MonitorLog.STATUS_UP).count(),
+        **pagination_context,
     }
     return render(request, 'monitor/logs.html', context)
 
@@ -2430,9 +2483,23 @@ def notifications(request):
             | Q(related_website__url__icontains=selected_query)
         )
 
-    ordered_notifications = sorted(notifications_qs, key=notification_priority, reverse=True)
-    paginator = Paginator(ordered_notifications, 20)
-    page_obj = paginator.get_page(request.GET.get('page'))
+    notifications_qs = notifications_qs.annotate(
+        unread_rank=Case(
+            When(is_read=False, then=Value(1)),
+            default=Value(0),
+            output_field=IntegerField(),
+        ),
+        severity_rank=Case(
+            When(severity=Notification.SEVERITY_CRITICAL, then=Value(4)),
+            When(severity=Notification.SEVERITY_WARNING, then=Value(3)),
+            When(severity=Notification.SEVERITY_SUCCESS, then=Value(2)),
+            When(severity=Notification.SEVERITY_INFO, then=Value(1)),
+            default=Value(0),
+            output_field=IntegerField(),
+        ),
+    ).order_by('-unread_rank', '-severity_rank', '-created_at', '-id')
+
+    page_obj, pagination_context = _paginate_collection(request, notifications_qs, per_page=20)
     page_notifications = list(page_obj.object_list)
     for notification in page_notifications:
         notification.action_url = get_notification_destination(notification)
@@ -2446,6 +2513,7 @@ def notifications(request):
         'selected_query': selected_query,
         'unread_only': unread_only,
         'unread_count': get_unread_notification_count(request.user),
+        **pagination_context,
     }
     return render(request, 'monitor/notifications.html', context)
 
@@ -2613,7 +2681,10 @@ def alerts(request):
     ).count()
     recovery_alerts = alerts_qs.filter(alert_type=Alert.TYPE_RECOVERY).count()
     failed_alerts = alerts_qs.filter(status=Alert.STATUS_FAILED).count()
-    recent_alerts = alerts_qs[:20]
+    page_obj, pagination_context = _paginate_collection(request, alerts_qs, per_page=12)
+    recent_alerts = list(page_obj.object_list)
+    for alert in recent_alerts:
+        set_display_domain(alert.website)
     average_response_impact = alerts_qs.exclude(response_time__isnull=True).aggregate(
         avg=Avg('response_time')
     )['avg'] or 0
@@ -2626,6 +2697,7 @@ def alerts(request):
         'failed_alerts': failed_alerts,
         'average_response_impact': round(average_response_impact, 2),
         'websites': websites,
+        **pagination_context,
     }
     return render(request, 'monitor/alerts.html', context)
 
