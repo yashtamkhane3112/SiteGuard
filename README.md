@@ -1,155 +1,66 @@
 # SiteGuard
 
-SiteGuard is a Django SaaS project for monitoring websites, tracking uptime and incidents, and surfacing alerts, notifications, and account-scoped operational history.
+SiteGuard is a Django 5 monitoring platform for website uptime, incident management, operational alerts, notifications, and AI-assisted troubleshooting. Production runs on Render with Neon PostgreSQL, database-backed sessions, Cloudinary media storage, Brevo transactional email, and optional Gemini operational intelligence.
 
-## Screenshots
+## Production Stack
 
-Add production screenshots before publishing:
+- Django 5 on Python 3.12
+- Render web service plus Render cron trigger
+- Neon PostgreSQL in production
+- SQLite only for local development
+- Django DB-backed sessions
+- Cloudinary media storage and raw analyzer uploads
+- Brevo transactional email
+- Gemini AI for optional report, incident, and error analysis
 
-- `docs/screenshots/homepage.png`
-- `docs/screenshots/dashboard.png`
-- `docs/screenshots/incidents.png`
-- `docs/screenshots/alerts.png`
+## Core Lifecycle
 
-## Features
+1. `monitor_sites` or `check_now` runs a monitoring check.
+2. A `MonitorLog` row is persisted first.
+3. Incident state transitions evaluate `UNKNOWN`, `UP`, `DOWN`, `SLOW`, `RECOVERY`, and `SSL_FAILURE`.
+4. New alert rows are persisted before notifications or operational email dispatch.
+5. `transaction.on_commit` creates notifications and sends operational email only after the alert row is durable.
 
-- account signup, login, logout, and profile management
-- per-user website monitoring
-- uptime, latency, and slow-response tracking
-- incidents, alerts, and notifications
-- search and utilities
-- Render-safe startup with enforced migrations
-- WhiteNoise static serving
-- cron-triggered monitoring within the web runtime
-- health endpoint for operational verification
+The first `UNKNOWN -> DOWN` transition now creates the full lifecycle on PostgreSQL: incident, alert, notification, and email.
 
-## Tech Stack
+## Local Development
 
-- Python 3.12
-- Django 5
-- SQLite
-- Gunicorn
-- WhiteNoise
-- Render
-
-## Local Setup
-
-Use Python `3.12.3` locally to match Render production.
-
-Do not use Python `3.14` with this repository while it is pinned to Django `5.0.4`. Django `5.0` officially supports Python `3.10`, `3.11`, and `3.12`, not `3.14`.
-
-```bash
+```powershell
 py -3.12 -m venv .venv
-.\.venv\Scripts\activate
-python --version
-pip install --upgrade pip
-pip install -r requirements.txt
-copy .env.example .env
-python manage.py migrate
-python manage.py runserver
-```
-
-For real local email delivery instead of console output, keep `EMAIL_BACKEND` blank in `.env` and set Brevo API values for `BREVO_API_KEY`, `DEFAULT_FROM_EMAIL`, and `SERVER_EMAIL`. The project now defaults to the Brevo Transactional Email HTTPS API (`https://api.brevo.com/v3/smtp/email`). Local development auto-switches to the API only when the key exists; otherwise it safely falls back to the console backend.
-
-Brevo API local setup:
-
-1. Create a Brevo API key.
-2. Put the key in `BREVO_API_KEY`.
-3. Optionally keep `BREVO_API_URL=https://api.brevo.com/v3/smtp/email`.
-4. Set `DEFAULT_FROM_EMAIL` and `SERVER_EMAIL` to the same verified sender identity.
-6. Local password reset emails use the active request host while `DEBUG=True`, so start the app on the exact host you want in the email, such as `http://127.0.0.1:8000` or `http://localhost:8000`.
-7. Keep `APP_BASE_URL` pointed at your production HTTPS origin for Render production mail.
-
-Local email verification:
-
-```bash
-python manage.py test_email your@email.com
-python manage.py test_email your@email.com --kind operational --site https://example.com
-python manage.py test_email your@email.com --kind password_reset
-```
-
-If `python --version` still prints `Python 3.14.x`, you are not using the project virtual environment. In that case run commands explicitly through the venv:
-
-```bash
-.\.venv\Scripts\python.exe --version
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe manage.py check
+Copy-Item .env.example .env
+.\.venv\Scripts\python.exe manage.py migrate
 .\.venv\Scripts\python.exe manage.py runserver
 ```
 
-If you already created a virtual environment with Python `3.14`, remove it and recreate it on Python `3.12.3`:
+Local development defaults to SQLite and console email unless you explicitly configure Brevo or SMTP values in `.env`.
 
-```bash
-deactivate
-Remove-Item -Recurse -Force .venv
-py -3.12 -m venv .venv
-.\.venv\Scripts\activate
-python --version
-pip install --upgrade pip
-pip install -r requirements.txt
+## Validation Commands
+
+```powershell
+.\.venv\Scripts\python.exe manage.py test
+.\.venv\Scripts\python.exe manage.py check
+.\.venv\Scripts\python.exe manage.py check --deploy --settings=siteguard.settings.prod
+.\.venv\Scripts\python.exe manage.py collectstatic --dry-run --noinput --settings=siteguard.settings.prod
+.\.venv\Scripts\python.exe manage.py showmigrations monitor --settings=siteguard.settings.prod
 ```
 
-`Pillow` is required because profile avatar uploads use Django image validation. Do not remove it from `requirements.txt`, and do not rely on a global Python installation for image support.
+## Documentation
 
-Local production checks:
+- [DEPLOYMENT.md](DEPLOYMENT.md)
+- [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md)
+- [ARCHITECTURE.md](ARCHITECTURE.md)
+- [ALERT_LIFECYCLE.md](ALERT_LIFECYCLE.md)
+- [BRANCH_HISTORY.md](BRANCH_HISTORY.md)
+- [PRODUCTION_CHECKLIST.md](PRODUCTION_CHECKLIST.md)
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+- [AGENTS.md](AGENTS.md)
 
-```bash
-python manage.py migrate --settings=siteguard.settings.prod --noinput
-python manage.py collectstatic --settings=siteguard.settings.prod --noinput
-python manage.py check --deploy --settings=siteguard.settings.prod
-```
+## Operational Notes
 
-## Render Deployment
-
-- Build command: `pip install -r requirements.txt`
-- Start command: `bash ./start.sh`
-
-See [DEPLOY_RENDER.md](/E:/Testing%20django%202/Testing/siteguard/DEPLOY_RENDER.md:1) and [DEPLOY_CHECKLIST.md](/E:/Testing%20django%202/Testing/siteguard/DEPLOY_CHECKLIST.md:1).
-
-## Environment Variables
-
-Required production variables:
-
-- `SECRET_KEY`
-- `ALLOWED_HOSTS`
-- `CSRF_TRUSTED_ORIGINS`
-- `APP_BASE_URL`
-- Brevo API variables for production mail delivery: `BREVO_API_KEY`, `BREVO_API_URL`, `DEFAULT_FROM_EMAIL`
-- `CRON_SECRET`
-- `DJANGO_SETTINGS_MODULE=siteguard.settings.prod`
-
-See [ENVIRONMENT_VARIABLES.md](/E:/Testing%20django%202/Testing/siteguard/ENVIRONMENT_VARIABLES.md:1) for the full list.
-
-## Startup Flow
-
-The production startup sequence is:
-
-1. export `DJANGO_SETTINGS_MODULE=siteguard.settings.prod`
-2. run migrations
-3. verify `auth_user` exists
-4. collect static files
-5. start Gunicorn
-
-## Monitoring Architecture
-
-- the web service owns the active SQLite database
-- the cron service does not write directly to SQLite
-- cron calls `/internal/run-monitoring/<CRON_SECRET>/`
-- the web app runs `monitor_sites` inside the same runtime
-
-## Future Roadmap
-
-- PostgreSQL support
-- durable backups
-- stronger auth and full 2FA
-- richer logging and audit trails
-- API-ready service boundaries
-- expanded CI/CD
-
-## Production Notes
-
-- Render free tier storage is ephemeral
-- migrations must run during startup
-- `/health/` provides a basic app and database check
-- keep `BOOTSTRAP_ADMIN_ENABLED=False` in production
-- Render production already uses Python `3.12.3`, which is the correct stable target for this Django version
+- Keep `start.sh` as the Render web start command so migrations, admin bootstrap checks, and static collection run consistently.
+- Keep `DATABASE_URL` pointed at Neon in production.
+- Keep `SESSION_ENGINE=django.contrib.sessions.backends.db` in production.
+- Keep `MONITOR_ALERT_ON_INITIAL_DOWN=True` unless you intentionally want first-down suppression.
+- Startup diagnostics are safe for Django initialization and defer DB/session probing until a real connection exists.

@@ -39,8 +39,11 @@ db.sqlite3-journal
 /release_exports/
 /release_snapshots/
 /SiteGuard-release-v1.zip
+/SiteGuard-production-stable-final.zip
 /backups/releases/
 /backups/*.tmp
+/evidence-prod-*.sqlite3
+/investigate-prod.sqlite3
 
 # Environment variables
 .env

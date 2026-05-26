@@ -1,52 +1,41 @@
 # Troubleshooting
 
-## `auth_user` Missing Table
+## Startup Fails on Render
 
-Symptoms:
+- Confirm the start command is `bash ./start.sh`.
+- Confirm `DJANGO_SETTINGS_MODULE=siteguard.settings.prod`.
+- Confirm `SECRET_KEY`, `APP_BASE_URL`, `ALLOWED_HOSTS`, and `CRON_SECRET` are present.
 
-- homepage works
-- signup/login GET works
-- signup/login POST fails
-- `django.db.utils.OperationalError: no such table: auth_user`
+## Database Problems
 
-Fix:
+- Production must use Neon via `DATABASE_URL`.
+- Local development should stay on SQLite unless you intentionally validate against PostgreSQL.
+- If alerts work locally but not in production, inspect monitoring traces around incident creation and `alert_on_commit_callback_fired`.
 
-- ensure Render start command is `bash ./start.sh`
-- redeploy
-- confirm logs show `Checking auth table...`
+## Alerts Not Appearing
 
-## Static File Issues
+Check, in order:
 
-- confirm `Collecting static...` appears in startup logs
-- confirm WhiteNoise is enabled
-- confirm `/static/` files do not return 404
+1. `MonitorLog` row exists
+2. `Incident` row exists
+3. `Alert` row exists in `monitor_alert`
+4. `Notification` row exists
+5. `/alerts/` renders the alert for the correct user
 
-## CSRF Issues
+The major production bug was a PostgreSQL-sensitive new-incident gate. That has been fixed by explicit lifecycle tracking rather than timestamp equality.
 
-- `CSRF_TRUSTED_ORIGINS` must include the full Render origin
-- `ALLOWED_HOSTS` must include the hostname
-- use the canonical HTTPS URL
+## Email Problems
 
-## Render Startup Issues
+- Password reset and operational alert emails share the same final transport layer.
+- Validate Brevo with `python manage.py test_email you@example.com`.
+- Confirm `DEFAULT_FROM_EMAIL`, `SERVER_EMAIL`, and `BREVO_API_KEY` are valid.
 
-- confirm `start.sh` exists at repo root
-- confirm dashboard start command is exactly `bash ./start.sh`
-- confirm the file is executable in git
+## Media Problems
 
-## Migration Failures
+- Cloudinary is required in production.
+- Analyzer uploads use raw Cloudinary storage.
+- Missing avatars or upload failures usually indicate missing Cloudinary credentials or an incorrect storage backend.
 
-- inspect deploy logs for the migrate step
-- verify production settings are loaded
-- verify `SECRET_KEY` and `ALLOWED_HOSTS` are set
+## Startup Warning
 
-## SQLite Notes
-
-- data can be lost on restart or redeploy
-- startup migrations are required every boot
-
-## Deployment Debugging
-
-- open `/health/`
-- inspect deploy logs
-- verify `render.yaml` and `Procfile`
-- verify committed migrations under `monitor/migrations/`
+If you ever see `Accessing the database during app initialization is discouraged`, re-check `monitor/apps.py`. `AppConfig.ready()` must not execute ORM queries, cursor probes, or table introspection.

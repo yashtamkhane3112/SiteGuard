@@ -1,10 +1,10 @@
 # Repository Guidelines
 
 ## Project Structure
-`siteguard/` contains Django 5 project settings, URL wiring, and WSGI/ASGI entrypoints. `monitor/` is the core app for website checks, incidents, alerts, notifications, email delivery, AI analysis, and management commands. Templates live in `templates/`, static assets in `static/`, and tests are currently concentrated in `monitor/tests.py`. Runtime output directories such as `media/`, `staticfiles/`, and `data/` are not source files.
+`siteguard/` contains Django 5 settings, validation helpers, and ASGI/WSGI entrypoints. `monitor/` is the main application for monitoring, incidents, alerts, notifications, email transport, AI analysis, Cloudinary storage integration, and management commands. Templates live in `templates/`, source assets in `static/`, and regression coverage is concentrated in `monitor/tests.py`.
 
 ## Development Commands
-Use Python 3.12 and the repo-local virtualenv.
+Use Python 3.12 and the repo-local virtual environment.
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
@@ -14,27 +14,27 @@ Use Python 3.12 and the repo-local virtualenv.
 .\.venv\Scripts\python.exe manage.py test_email you@example.com --kind operational --site https://example.com
 ```
 
-Production runs on Render with Neon PostgreSQL, DB-backed sessions, Cloudinary media plus raw analyzer uploads, Brevo transactional email, and Gemini operational intelligence. SQLite is local-only.
+SQLite is local-only. Production uses Render, Neon PostgreSQL, DB-backed sessions, Cloudinary media plus raw analyzer uploads, Brevo transactional email, and optional Gemini operational intelligence.
 
 ## Testing and Deployment Validation
-Run the full regression suite before shipping monitoring, alert, session, email, storage, or settings changes.
+Run the full suite before shipping changes to monitoring, email, storage, settings, or session behavior.
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py test
 .\.venv\Scripts\python.exe manage.py check
-.\.venv\Scripts\python.exe manage.py migrate --settings=siteguard.settings.prod --noinput
 .\.venv\Scripts\python.exe manage.py check --deploy --settings=siteguard.settings.prod
-.\.venv\Scripts\python.exe manage.py collectstatic --noinput --settings=siteguard.settings.prod
+.\.venv\Scripts\python.exe manage.py collectstatic --dry-run --noinput --settings=siteguard.settings.prod
+.\.venv\Scripts\python.exe manage.py showmigrations monitor --settings=siteguard.settings.prod
 ```
 
 ## Branching and Commits
-Work branch-first. Never commit directly to `main`; create or continue a feature/fix branch and open a PR. Recent history uses short imperative subjects such as `Persist alerts before sending operational emails` and `Make initial down alerts explicit`.
+Default workflow is branch-first. Keep `main` as the production authority and land direct commits there only for explicit stabilization or release work. Use short imperative commit subjects such as `Persist alerts before sending operational emails` or `Defer startup database diagnostics safely`.
 
-## Monitoring Lifecycle Expectations
-Keep state handling explicit: `UNKNOWN`, `UP`, `DOWN`, `SLOW`, `RECOVERY`, and `SSL_FAILURE`. Persist monitor logs before transition evaluation. Preserve `transaction.on_commit` behavior so alert rows exist before notifications or operational emails fire. Do not break dedup, cooldown, recovery, SSL, or repeated-DOWN suppression paths.
+## Monitoring Lifecycle
+Preserve explicit handling for `UNKNOWN`, `UP`, `DOWN`, `SLOW`, `RECOVERY`, and `SSL_FAILURE`. `MonitorLog` persistence must happen before transition evaluation. Alert rows must exist before `transaction.on_commit` creates notifications or sends operational email.
 
-## Production Safety Rules
-Treat production tracing as part of the feature. Keep structured logging and diagnostics intact for monitoring transitions, email dispatch, storage, sessions, and deploy validation. Validate changes against Neon/PostgreSQL behavior, not only SQLite.
+## Production Safety
+Do not reintroduce startup DB access in `AppConfig.ready()`. Validate behavior against PostgreSQL, not only SQLite. Preserve dedup, cooldown, repeated-DOWN suppression, recovery alerts, notification persistence, startup diagnostics, and structured monitoring traces.
 
-## Environment and Debugging Expectations
-Do not commit secrets. Start from `.env.example`; production validation requires correct values for `APP_BASE_URL`, `CRON_SECRET`, secret keys, Brevo settings, Cloudinary settings, and `DJANGO_SETTINGS_MODULE=siteguard.settings.prod`. When debugging, include the exact command run, the affected path, and whether the issue reproduces on the full test suite.
+## Contributor Expectations
+Do not commit secrets. Use `.env.example` as the baseline. When debugging or changing production behavior, record the exact command run, the affected path, and whether the change was validated on the full suite and production deploy checks.
