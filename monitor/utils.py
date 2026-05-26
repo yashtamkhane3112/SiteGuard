@@ -41,6 +41,7 @@ NOTIFICATION_RETENTION_DAYS = 45
 WEEKLY_REPORT_TITLE_RE = re.compile(r"Weekly report ready for (?P<week>\d{4}-W\d{2})")
 logger = logging.getLogger(__name__)
 _logged_missing_media_names = set()
+SITE_STATUS_UNKNOWN = "UNKNOWN"
 
 
 def log_monitoring_trace(stage, **context):
@@ -70,6 +71,16 @@ def get_site_status(log):
         return "SLOW"
 
     return "UP"
+
+
+def get_transition_status(log):
+    if not log:
+        return SITE_STATUS_UNKNOWN
+    return get_site_status(log)
+
+
+def should_create_initial_down_alert():
+    return getattr(settings, "MONITOR_ALERT_ON_INITIAL_DOWN", True)
 
 
 def get_latest_logs_by_website(logs):
@@ -1776,7 +1787,7 @@ def resolve_incident(incident, current_log, create_recovery_alert=False, message
 
 
 def sync_incident_state(website, previous_log, current_log, *, status_code=None, reason=''):
-    previous_status = get_site_status(previous_log)
+    previous_status = get_transition_status(previous_log)
     current_status = get_site_status(current_log)
     active_incidents = Incident.objects.select_for_update().filter(
         website=website,
@@ -1899,11 +1910,24 @@ def sync_incident_state(website, previous_log, current_log, *, status_code=None,
             reason=reason,
         )
         create_incident_event(active_incident, IncidentEvent.TYPE_DETECTED, detail)
-        if (
+        should_create_alert = (
             current_status == MonitorLog.STATUS_DOWN
             or current_log.response_time is None
             or current_log.response_time > get_monitor_threshold(website)
-        ):
+        )
+        if previous_log is None and current_status == MonitorLog.STATUS_DOWN and not should_create_initial_down_alert():
+            should_create_alert = False
+            log_monitoring_trace(
+                "incident_state_initial_down_alert_suppressed",
+                website_id=website.id,
+                current_log_id=current_log.id,
+                incident_id=active_incident.id,
+                incident_type=active_incident.incident_type,
+                previous_status=previous_status,
+                current_status=current_status,
+                reason="initial_down_alerts_disabled",
+            )
+        if should_create_alert:
             log_monitoring_trace(
                 "incident_state_alert_triggered",
                 website_id=website.id,
@@ -1926,7 +1950,7 @@ def sync_incident_state(website, previous_log, current_log, *, status_code=None,
                 current_log_id=current_log.id,
                 incident_id=active_incident.id,
                 incident_type=active_incident.incident_type,
-                reason="threshold_not_exceeded",
+                reason="threshold_not_exceeded" if current_status != MonitorLog.STATUS_DOWN else "initial_down_alerts_disabled",
                 response_time=current_log.response_time,
                 threshold=get_monitor_threshold(website),
             )
@@ -2212,7 +2236,7 @@ def run_single_check(website, timeout=5):
                 website_id=locked_website.id,
                 current_log_id=log.id,
                 previous_log_id=previous_log.id if previous_log else None,
-                previous_status=get_site_status(previous_log),
+                previous_status=get_transition_status(previous_log),
                 current_status=get_site_status(log),
                 status_code=status_code,
                 ssl_status=ssl_status,
@@ -2255,7 +2279,7 @@ def run_single_check(website, timeout=5):
                 website_id=locked_website.id,
                 current_log_id=log.id,
                 previous_log_id=previous_log.id if previous_log else None,
-                previous_status=get_site_status(previous_log),
+                previous_status=get_transition_status(previous_log),
                 current_status=get_site_status(log),
                 ssl_status=ssl_status,
                 reason=reason,

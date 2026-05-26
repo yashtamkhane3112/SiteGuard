@@ -57,6 +57,7 @@ from monitor.utils import (
     get_notification_destination,
     get_recent_notifications,
     get_site_status,
+    get_transition_status,
     get_user_account_snapshot,
     normalize_domain_display,
     run_single_check,
@@ -1316,6 +1317,9 @@ class MonitorStatusSyncTests(TestCase):
         self.assertEqual(get_site_status(down_log), "DOWN")
         self.assertEqual(get_site_status(no_response_log), "DOWN")
 
+    def test_transition_status_resolver_uses_unknown_for_missing_log(self):
+        self.assertEqual(get_transition_status(None), "UNKNOWN")
+
     def test_dashboard_status_page_and_json_use_same_latest_status_per_site(self):
         MonitorLog.objects.create(website=self.gmail, status=MonitorLog.STATUS_UP, response_time=2501)
         MonitorLog.objects.create(website=self.gmail, status=MonitorLog.STATUS_UP, response_time=110)
@@ -1766,6 +1770,68 @@ class AlertSyncTests(TestCase):
         self.assertContains(response, "https://example.com")
         self.assertContains(response, alert.message)
         self.assertEqual(response.context["recent_alerts_count"], 1)
+
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    @patch("monitor.utils.send_siteguard_email", return_value=True)
+    @patch("monitor.utils.requests.get")
+    def test_unknown_to_down_creates_alert_notification_and_email(self, mock_get, mock_send_email, _mock_ssl):
+        mock_get.return_value = Mock(
+            status_code=503,
+            elapsed=Mock(total_seconds=Mock(return_value=0.2)),
+        )
+
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
+
+        incident = Incident.objects.get(website=self.website, is_resolved=False)
+        alert = Alert.objects.get(website=self.website, incident=incident, alert_type=Alert.TYPE_DOWN)
+
+        self.assertEqual(incident.incident_type, Incident.TYPE_OUTAGE)
+        self.assertEqual(alert.status, Alert.STATUS_SENT)
+        self.assertEqual(Notification.objects.filter(user=self.user, related_incident=incident, notification_type=Notification.TYPE_OUTAGE).count(), 1)
+        self.assertEqual(mock_send_email.call_count, 1)
+
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    @patch("monitor.utils.send_siteguard_email", return_value=True)
+    @patch("monitor.utils.requests.get")
+    def test_initial_down_repeated_checks_do_not_spam(self, mock_get, mock_send_email, _mock_ssl):
+        first = Mock(
+            status_code=503,
+            elapsed=Mock(total_seconds=Mock(return_value=0.2)),
+        )
+        second = Mock(
+            status_code=503,
+            elapsed=Mock(total_seconds=Mock(return_value=0.25)),
+        )
+        mock_get.side_effect = [first, second]
+
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
+        with self.captureOnCommitCallbacks(execute=True):
+            run_single_check(self.website)
+
+        self.assertEqual(Alert.objects.filter(website=self.website, alert_type=Alert.TYPE_DOWN).count(), 1)
+        self.assertEqual(Notification.objects.filter(user=self.user, notification_type=Notification.TYPE_OUTAGE).count(), 1)
+        self.assertEqual(mock_send_email.call_count, 1)
+
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    @patch("monitor.utils.send_siteguard_email", return_value=True)
+    @patch("monitor.utils.requests.get")
+    def test_initial_add_website_down_creates_alert_lifecycle(self, mock_get, mock_send_email, _mock_ssl):
+        mock_get.return_value = Mock(
+            status_code=503,
+            elapsed=Mock(total_seconds=Mock(return_value=0.2)),
+        )
+
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse("add_website"), {"url": "example.net"})
+
+        self.assertRedirects(response, reverse("dashboard"))
+        website = Website.objects.get(user=self.user, url="https://example.net")
+        incident = Incident.objects.get(website=website, is_resolved=False)
+        self.assertTrue(Alert.objects.filter(website=website, incident=incident, alert_type=Alert.TYPE_DOWN).exists())
+        self.assertTrue(Notification.objects.filter(user=self.user, related_website=website, notification_type=Notification.TYPE_OUTAGE).exists())
+        self.assertEqual(mock_send_email.call_count, 1)
 
     @patch("monitor.utils.check_ssl_status", return_value="Valid")
     @patch("monitor.utils.send_siteguard_email", return_value=True)

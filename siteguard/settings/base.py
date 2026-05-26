@@ -227,6 +227,7 @@ AI_MAX_TOKENS = config("AI_MAX_TOKENS", default=900, cast=int)
 AI_RETRY_ATTEMPTS = config("AI_RETRY_ATTEMPTS", default=2, cast=int)
 AI_RETRY_BACKOFF_SECONDS = config("AI_RETRY_BACKOFF_SECONDS", default=0.5, cast=float)
 AI_DEBUG_RAW_OUTPUT = config("AI_DEBUG_RAW_OUTPUT", default=False, cast=bool)
+MONITOR_ALERT_ON_INITIAL_DOWN = config("MONITOR_ALERT_ON_INITIAL_DOWN", default=True, cast=bool)
 EMAIL_CONFIGURED = bool(
     DEFAULT_FROM_EMAIL and (
         (EMAIL_BACKEND == "brevo_api" and BREVO_API_KEY)
