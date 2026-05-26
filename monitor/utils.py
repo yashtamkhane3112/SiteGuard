@@ -1443,6 +1443,8 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
         normalize_incident(incident)
         website = incident.website
 
+    global_alert_count_before = Alert.objects.count()
+    user_alert_count_before = Alert.objects.filter(website__user=website.user).count()
     log_monitoring_trace(
         "alert_entry",
         website_id=website.id,
@@ -1450,6 +1452,8 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
         alert_type=alert_type,
         response_time=get_numeric_response_time(response_time, default=None),
         has_recovery_time=bool(recovery_time),
+        global_alert_count_before=global_alert_count_before,
+        user_alert_count_before=user_alert_count_before,
     )
 
     if not website.alerts_enabled:
@@ -1481,8 +1485,19 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
     else:
         active_alert_filters['created_at__gte'] = recent_cutoff
 
-    alert = Alert.objects.select_for_update().filter(**active_alert_filters).order_by('-created_at', '-id').first()
+    candidate_queryset = Alert.objects.select_for_update().filter(**active_alert_filters)
+    candidate_count = candidate_queryset.count()
+    alert = candidate_queryset.order_by('-created_at', '-id').first()
     reused_existing_alert = alert is not None
+    log_monitoring_trace(
+        "alert_candidate_query_evaluated",
+        website_id=website.id,
+        incident_id=incident.id if incident else None,
+        alert_type=alert_type,
+        candidate_count=candidate_count,
+        reused_existing_alert=reused_existing_alert,
+        candidate_alert_id=alert.id if alert else None,
+    )
 
     if (
         alert
@@ -1508,7 +1523,15 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
         if response_time is not None and alert.response_time != response_time:
             alert.response_time = get_numeric_response_time(response_time, default=None)
             alert.save(update_fields=['response_time'])
-        create_notification_from_alert(alert)
+        notification = create_notification_from_alert(alert)
+        log_monitoring_trace(
+            "alert_dedup_notification_processed",
+            website_id=website.id,
+            alert_id=alert.id,
+            notification_id=notification.id if notification else None,
+            global_alert_count_after=Alert.objects.count(),
+            user_alert_count_after=Alert.objects.filter(website__user=website.user).count(),
+        )
         return alert
 
     if alert and alert.status in {Alert.STATUS_SENT, Alert.STATUS_PENDING, Alert.STATUS_FAILED}:
@@ -1523,6 +1546,16 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
             alert.status = Alert.STATUS_PENDING
             update_fields.append('status')
         alert.save(update_fields=update_fields)
+        log_monitoring_trace(
+            "alert_row_updated",
+            website_id=website.id,
+            alert_id=alert.id,
+            incident_id=alert.incident_id,
+            alert_type=alert.alert_type,
+            alert_status=alert.status,
+            global_alert_count_after=Alert.objects.count(),
+            user_alert_count_after=Alert.objects.filter(website__user=website.user).count(),
+        )
     else:
         alert = Alert.objects.create(
             website=website,
@@ -1532,6 +1565,16 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
             message=message,
             sent_to=sent_to,
             response_time=get_numeric_response_time(response_time, default=None),
+        )
+        log_monitoring_trace(
+            "alert_row_created",
+            website_id=website.id,
+            alert_id=alert.id,
+            incident_id=alert.incident_id,
+            alert_type=alert.alert_type,
+            alert_status=alert.status,
+            global_alert_count_after=Alert.objects.count(),
+            user_alert_count_after=Alert.objects.filter(website__user=website.user).count(),
         )
 
     if not sent_to:
@@ -1556,7 +1599,22 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
         )
         alert.status = Alert.STATUS_SENT
         alert.save(update_fields=['status'])
-        create_notification_from_alert(alert)
+        log_monitoring_trace(
+            "alert_row_saved_without_email_dispatch",
+            website_id=website.id,
+            alert_id=alert.id,
+            incident_id=alert.incident_id,
+            alert_type=alert.alert_type,
+            alert_status=alert.status,
+        )
+        notification = create_notification_from_alert(alert)
+        log_monitoring_trace(
+            "alert_notification_processed_without_email_dispatch",
+            website_id=website.id,
+            alert_id=alert.id,
+            notification_id=notification.id if notification else None,
+            final_user_alert_count=Alert.objects.filter(website__user=website.user).count(),
+        )
         return alert
 
     if reused_existing_alert and alert.status in {Alert.STATUS_SENT, Alert.STATUS_PENDING}:
@@ -1576,7 +1634,14 @@ def create_or_update_alert(website, alert_type, message, incident=None, response
                 }
             },
         )
-        create_notification_from_alert(alert)
+        notification = create_notification_from_alert(alert)
+        log_monitoring_trace(
+            "alert_cooldown_notification_processed",
+            website_id=website.id,
+            alert_id=alert.id,
+            notification_id=notification.id if notification else None,
+            final_user_alert_count=Alert.objects.filter(website__user=website.user).count(),
+        )
         return alert
 
     logger.info(
@@ -1603,9 +1668,26 @@ def schedule_alert_email_dispatch(alert, *, recovery_time=None, sent_to=""):
     alert_type = alert.alert_type
     website_id = alert.website_id
     incident_id = alert.incident_id
+    website_user_id = alert.website.user_id
 
     def _dispatch_after_commit():
+        log_monitoring_trace(
+            "alert_on_commit_callback_fired",
+            alert_id=alert_id,
+            alert_type=alert_type,
+            website_id=website_id,
+            incident_id=incident_id,
+            global_alert_count_at_callback=Alert.objects.count(),
+            user_alert_count_at_callback=Alert.objects.filter(website__user_id=website_user_id).count(),
+        )
         committed_alert = Alert.objects.select_related('website', 'incident', 'website__user').filter(pk=alert_id).first()
+        log_monitoring_trace(
+            "alert_on_commit_reloaded",
+            alert_id=alert_id,
+            website_id=website_id,
+            incident_id=incident_id,
+            committed_alert_exists=bool(committed_alert),
+        )
         if committed_alert is None:
             logger.warning(
                 "Operational alert dispatch skipped after commit because the alert record is unavailable.",
@@ -1660,7 +1742,15 @@ def schedule_alert_email_dispatch(alert, *, recovery_time=None, sent_to=""):
                 },
             )
 
-        create_notification_from_alert(committed_alert)
+        notification = create_notification_from_alert(committed_alert)
+        log_monitoring_trace(
+            "alert_on_commit_notification_processed",
+            alert_id=committed_alert.id,
+            website_id=committed_alert.website_id,
+            incident_id=committed_alert.incident_id,
+            notification_id=notification.id if notification else None,
+            final_user_alert_count=Alert.objects.filter(website__user_id=website_user_id).count(),
+        )
 
     transaction.on_commit(_dispatch_after_commit)
 
