@@ -1755,6 +1755,44 @@ class AlertSyncTests(TestCase):
         self.assertEqual(Alert.objects.filter(website=self.website, alert_type=Alert.TYPE_DOWN).count(), 0)
         self.assertEqual(Incident.objects.filter(website=self.website, incident_type=Incident.TYPE_OUTAGE).count(), 0)
 
+    @patch("monitor.utils.logger.info")
+    @patch("monitor.utils.send_siteguard_email", return_value=True)
+    @patch("monitor.utils.requests.get", side_effect=requests.exceptions.SSLError("certificate verify failed"))
+    def test_ssl_alert_survives_incident_timestamp_drift_after_create(self, _mock_get, mock_send_email, mock_info):
+        MonitorLog.objects.create(website=self.website, status=MonitorLog.STATUS_UP, response_time=100)
+        original_create = Incident.objects.create
+
+        def create_with_timestamp_drift(*args, **kwargs):
+            incident = original_create(*args, **kwargs)
+            if incident.incident_type == Incident.TYPE_SSL:
+                Incident.objects.filter(pk=incident.pk).update(
+                    updated_at=incident.updated_at + timedelta(microseconds=5),
+                    started_at=incident.started_at + timedelta(microseconds=9),
+                )
+                incident.refresh_from_db()
+            return incident
+
+        with patch("monitor.utils.Incident.objects.create", side_effect=create_with_timestamp_drift):
+            with self.captureOnCommitCallbacks(execute=True):
+                run_single_check(self.website)
+
+        incident = Incident.objects.get(website=self.website, incident_type=Incident.TYPE_SSL)
+        stages = [
+            call.kwargs["extra"]["monitoring_context"]
+            for call in mock_info.call_args_list
+            if call.kwargs.get("extra", {}).get("monitoring_context")
+        ]
+        ready_trace = next(context for context in stages if context["stage"] == "ssl_state_incident_ready")
+
+        self.assertTrue(Alert.objects.filter(website=self.website, incident=incident, alert_type=Alert.TYPE_SSL).exists())
+        self.assertEqual(Notification.objects.filter(user=self.user, related_incident=incident, notification_type=Notification.TYPE_SSL).count(), 1)
+        self.assertEqual(mock_send_email.call_count, 1)
+        self.assertTrue(any(context["stage"] == "ssl_state_alert_triggered" for context in stages))
+        self.assertFalse(any(context["stage"] == "ssl_state_existing_incident_no_new_alert" for context in stages))
+        self.assertTrue(ready_trace["created_incident_this_cycle"])
+        self.assertFalse(ready_trace["created_equals_updated"])
+        self.assertFalse(ready_trace["started_equals_checked"])
+
     def test_alerts_page_renders_real_alert_data(self):
         alert = Alert.objects.create(
             website=self.website,
@@ -1877,6 +1915,51 @@ class AlertSyncTests(TestCase):
         self.assertTrue(Alert.objects.filter(website=website, incident=incident, alert_type=Alert.TYPE_DOWN).exists())
         self.assertTrue(Notification.objects.filter(user=self.user, related_website=website, notification_type=Notification.TYPE_OUTAGE).exists())
         self.assertEqual(mock_send_email.call_count, 1)
+
+    @patch("monitor.utils.logger.info")
+    @patch("monitor.utils.check_ssl_status", return_value="Valid")
+    @patch("monitor.utils.send_siteguard_email", return_value=True)
+    @patch("monitor.utils.requests.get", side_effect=requests.ConnectionError("connection refused"))
+    def test_initial_down_alert_survives_incident_timestamp_drift_after_create(
+        self,
+        _mock_get,
+        mock_send_email,
+        _mock_ssl,
+        mock_info,
+    ):
+        original_create = Incident.objects.create
+
+        def create_with_timestamp_drift(*args, **kwargs):
+            incident = original_create(*args, **kwargs)
+            Incident.objects.filter(pk=incident.pk).update(
+                updated_at=incident.updated_at + timedelta(microseconds=7),
+                started_at=incident.started_at + timedelta(microseconds=11),
+            )
+            incident.refresh_from_db()
+            return incident
+
+        with patch("monitor.utils.Incident.objects.create", side_effect=create_with_timestamp_drift):
+            with self.captureOnCommitCallbacks(execute=True):
+                run_single_check(self.website)
+
+        incident = Incident.objects.get(website=self.website, is_resolved=False)
+        alert = Alert.objects.get(website=self.website, incident=incident, alert_type=Alert.TYPE_DOWN)
+        stages = [
+            call.kwargs["extra"]["monitoring_context"]
+            for call in mock_info.call_args_list
+            if call.kwargs.get("extra", {}).get("monitoring_context")
+        ]
+        ready_trace = next(context for context in stages if context["stage"] == "incident_state_incident_ready")
+
+        self.assertEqual(alert.status, Alert.STATUS_SENT)
+        self.assertEqual(Notification.objects.filter(user=self.user, related_incident=incident, notification_type=Notification.TYPE_OUTAGE).count(), 1)
+        self.assertEqual(mock_send_email.call_count, 1)
+        self.assertIn("Connection was actively refused", alert.message)
+        self.assertTrue(any(context["stage"] == "incident_state_alert_triggered" for context in stages))
+        self.assertFalse(any(context["stage"] == "incident_state_transition_event_only" for context in stages))
+        self.assertTrue(ready_trace["created_incident_this_cycle"])
+        self.assertFalse(ready_trace["created_equals_updated"])
+        self.assertFalse(ready_trace["started_equals_checked"])
 
     @patch("monitor.utils.send_siteguard_email", return_value=True)
     def test_alert_row_exists_before_on_commit_callback_and_notification_is_created_after_commit(self, mock_send_email):

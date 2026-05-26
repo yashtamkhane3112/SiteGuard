@@ -1131,7 +1131,7 @@ def _describe_exception_reason(exc, timeout):
             return "Connection could not be established after retry attempts."
         return "Connection to the monitored host failed."
 
-    if isinstance(exc, requests.SSLError):
+    if isinstance(exc, requests.exceptions.SSLError):
         return "TLS handshake failed while connecting to the monitored host."
 
     return f"Monitoring request failed: {exc}"
@@ -1938,6 +1938,7 @@ def sync_incident_state(website, previous_log, current_log, *, status_code=None,
             status_code=status_code,
         )
 
+    created_incident_this_cycle = False
     if active_incident is None:
         try:
             active_incident = Incident.objects.create(
@@ -1948,6 +1949,7 @@ def sync_incident_state(website, previous_log, current_log, *, status_code=None,
                 started_at=current_log.checked_at,
                 latest_response_time=current_log.response_time,
             )
+            created_incident_this_cycle = True
             log_monitoring_trace(
                 "incident_state_created",
                 website_id=website.id,
@@ -1974,22 +1976,31 @@ def sync_incident_state(website, previous_log, current_log, *, status_code=None,
         )
         return
 
-    is_new_incident = (
-        active_incident.created_at == active_incident.updated_at
-        and active_incident.started_at == current_log.checked_at
-    )
+    created_equals_updated = active_incident.created_at == active_incident.updated_at
+    started_equals_checked = active_incident.started_at == current_log.checked_at
     log_monitoring_trace(
         "incident_state_incident_ready",
         website_id=website.id,
         current_log_id=current_log.id,
         incident_id=active_incident.id,
         incident_type=active_incident.incident_type,
-        is_new_incident=is_new_incident,
+        is_new_incident=created_incident_this_cycle,
+        created_incident_this_cycle=created_incident_this_cycle,
         previous_status=previous_status,
         current_status=current_status,
+        incident_created_at=active_incident.created_at.isoformat() if active_incident.created_at else "",
+        incident_updated_at=active_incident.updated_at.isoformat() if active_incident.updated_at else "",
+        incident_started_at=active_incident.started_at.isoformat() if active_incident.started_at else "",
+        current_log_checked_at=current_log.checked_at.isoformat() if current_log.checked_at else "",
+        incident_created_at_microsecond=active_incident.created_at.microsecond if active_incident.created_at else None,
+        incident_updated_at_microsecond=active_incident.updated_at.microsecond if active_incident.updated_at else None,
+        incident_started_at_microsecond=active_incident.started_at.microsecond if active_incident.started_at else None,
+        current_log_checked_at_microsecond=current_log.checked_at.microsecond if current_log.checked_at else None,
+        created_equals_updated=created_equals_updated,
+        started_equals_checked=started_equals_checked,
     )
 
-    if is_new_incident:
+    if created_incident_this_cycle:
         detail = build_monitoring_detail(
             website=website,
             status=current_status,
@@ -2059,6 +2070,10 @@ def sync_incident_state(website, previous_log, current_log, *, status_code=None,
             incident_id=active_incident.id,
             previous_status=previous_status,
             current_status=current_status,
+            created_incident_this_cycle=created_incident_this_cycle,
+            created_equals_updated=created_equals_updated,
+            started_equals_checked=started_equals_checked,
+            reason="existing_incident_transition_after_non_creation_path",
         )
         create_incident_event(
             active_incident,
@@ -2164,6 +2179,7 @@ def sync_ssl_state(website, current_log, ssl_status, *, status_code=None, reason
             )
         return
 
+    created_ssl_incident_this_cycle = False
     if active_ssl_incident is None:
         try:
             active_ssl_incident = Incident.objects.create(
@@ -2174,6 +2190,7 @@ def sync_ssl_state(website, current_log, ssl_status, *, status_code=None, reason
                 started_at=current_log.checked_at,
                 latest_response_time=current_log.response_time,
             )
+            created_ssl_incident_this_cycle = True
             log_monitoring_trace(
                 "ssl_state_created",
                 website_id=website.id,
@@ -2201,19 +2218,28 @@ def sync_ssl_state(website, current_log, ssl_status, *, status_code=None, reason
         )
         return
 
-    is_new_incident = (
-        active_ssl_incident.created_at == active_ssl_incident.updated_at
-        and active_ssl_incident.started_at == current_log.checked_at
-    )
+    ssl_created_equals_updated = active_ssl_incident.created_at == active_ssl_incident.updated_at
+    ssl_started_equals_checked = active_ssl_incident.started_at == current_log.checked_at
     log_monitoring_trace(
         "ssl_state_incident_ready",
         website_id=website.id,
         current_log_id=current_log.id,
         incident_id=active_ssl_incident.id,
-        is_new_incident=is_new_incident,
+        is_new_incident=created_ssl_incident_this_cycle,
+        created_incident_this_cycle=created_ssl_incident_this_cycle,
+        incident_created_at=active_ssl_incident.created_at.isoformat() if active_ssl_incident.created_at else "",
+        incident_updated_at=active_ssl_incident.updated_at.isoformat() if active_ssl_incident.updated_at else "",
+        incident_started_at=active_ssl_incident.started_at.isoformat() if active_ssl_incident.started_at else "",
+        current_log_checked_at=current_log.checked_at.isoformat() if current_log.checked_at else "",
+        incident_created_at_microsecond=active_ssl_incident.created_at.microsecond if active_ssl_incident.created_at else None,
+        incident_updated_at_microsecond=active_ssl_incident.updated_at.microsecond if active_ssl_incident.updated_at else None,
+        incident_started_at_microsecond=active_ssl_incident.started_at.microsecond if active_ssl_incident.started_at else None,
+        current_log_checked_at_microsecond=current_log.checked_at.microsecond if current_log.checked_at else None,
+        created_equals_updated=ssl_created_equals_updated,
+        started_equals_checked=ssl_started_equals_checked,
     )
 
-    if is_new_incident:
+    if created_ssl_incident_this_cycle:
         create_incident_event(
             active_ssl_incident,
             IncidentEvent.TYPE_DETECTED,
