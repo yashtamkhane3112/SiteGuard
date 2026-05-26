@@ -1,6 +1,7 @@
 from django.apps import AppConfig
 from django.conf import settings
 from django.db import connection
+from django.db.backends.signals import connection_created
 from django.db.utils import OperationalError, ProgrammingError
 import logging
 import warnings
@@ -12,6 +13,7 @@ logger = logging.getLogger("siteguard.runtime")
 
 
 _startup_diagnostics_logged = False
+_runtime_db_diagnostics_logged = False
 
 
 def _normalize_runtime_text(value):
@@ -157,6 +159,20 @@ def log_session_startup_diagnostics():
         )
 
 
+def _log_deferred_database_runtime_diagnostics(db_connection):
+    global _runtime_db_diagnostics_logged
+    if _runtime_db_diagnostics_logged or getattr(db_connection, "alias", "") != "default":
+        return
+
+    log_database_startup_diagnostics()
+    log_session_startup_diagnostics()
+    _runtime_db_diagnostics_logged = True
+
+
+def _handle_connection_created(sender, connection, **kwargs):
+    _log_deferred_database_runtime_diagnostics(connection)
+
+
 def log_analyzer_storage_startup_diagnostics():
     from .models import UploadedLog
 
@@ -198,9 +214,8 @@ class MonitorConfig(AppConfig):
         global _startup_diagnostics_logged
         if not _startup_diagnostics_logged:
             log_ai_startup_diagnostics()
-            log_database_startup_diagnostics()
-            log_session_startup_diagnostics()
             log_analyzer_storage_startup_diagnostics()
+            connection_created.connect(_handle_connection_created, dispatch_uid="monitor.runtime.connection_created")
             _startup_diagnostics_logged = True
 
         if getattr(settings, "DEBUG", False):

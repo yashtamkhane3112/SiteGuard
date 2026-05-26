@@ -1,4 +1,5 @@
 from datetime import timedelta
+from importlib import import_module
 import io
 import os
 import shutil
@@ -19,12 +20,15 @@ from django.core.management.base import CommandError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.exceptions import ImproperlyConfigured
 from django.db import IntegrityError, transaction
+from django.db.backends.signals import connection_created
 from django.test.client import RequestFactory
 from django.test import TestCase, override_settings
 from django.urls import resolve, reverse
 from django.utils import timezone
 
 from monitor.apps import (
+    MonitorConfig,
+    _handle_connection_created,
     log_ai_startup_diagnostics,
     log_database_startup_diagnostics,
     log_analyzer_storage_startup_diagnostics,
@@ -3035,6 +3039,46 @@ class SessionConfigurationDiagnosticsTests(TestCase):
         self.assertIn("delegate=cloudinary_storage.storage.RawMediaCloudinaryStorage", combined_output)
         self.assertIn("resource_type=raw", combined_output)
         self.assertIn("active_media_backend=cloudinary_storage.storage.MediaCloudinaryStorage", combined_output)
+
+    @override_settings(DEBUG=False)
+    @patch("monitor.apps.connection.introspection.table_names")
+    @patch("monitor.apps.connection.cursor")
+    def test_app_ready_does_not_probe_database(self, mock_cursor, mock_table_names):
+        import monitor.apps as monitor_apps
+
+        original_startup_logged = monitor_apps._startup_diagnostics_logged
+        original_runtime_logged = monitor_apps._runtime_db_diagnostics_logged
+        monitor_apps._startup_diagnostics_logged = False
+        monitor_apps._runtime_db_diagnostics_logged = False
+
+        try:
+            config = MonitorConfig("monitor", import_module("monitor"))
+            config.ready()
+        finally:
+            connection_created.disconnect(dispatch_uid="monitor.runtime.connection_created")
+            monitor_apps._startup_diagnostics_logged = original_startup_logged
+            monitor_apps._runtime_db_diagnostics_logged = original_runtime_logged
+
+        mock_cursor.assert_not_called()
+        mock_table_names.assert_not_called()
+
+    @patch("monitor.apps.log_session_startup_diagnostics")
+    @patch("monitor.apps.log_database_startup_diagnostics")
+    def test_connection_created_receiver_logs_deferred_database_diagnostics_once(self, mock_log_db, mock_log_session):
+        import monitor.apps as monitor_apps
+
+        original_runtime_logged = monitor_apps._runtime_db_diagnostics_logged
+        monitor_apps._runtime_db_diagnostics_logged = False
+
+        mock_connection = Mock(alias="default")
+        try:
+            _handle_connection_created(sender=object(), connection=mock_connection)
+            _handle_connection_created(sender=object(), connection=mock_connection)
+        finally:
+            monitor_apps._runtime_db_diagnostics_logged = original_runtime_logged
+
+        mock_log_db.assert_called_once_with()
+        mock_log_session.assert_called_once_with()
 
 
 class ProductionEmailValidationTests(TestCase):
