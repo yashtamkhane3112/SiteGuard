@@ -115,6 +115,13 @@ DATABASES = {
     )
 }
 
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "siteguard-default",
+    }
+}
+
 PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.PBKDF2PasswordHasher",
     "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
@@ -228,6 +235,17 @@ AI_RETRY_ATTEMPTS = config("AI_RETRY_ATTEMPTS", default=2, cast=int)
 AI_RETRY_BACKOFF_SECONDS = config("AI_RETRY_BACKOFF_SECONDS", default=0.5, cast=float)
 AI_DEBUG_RAW_OUTPUT = config("AI_DEBUG_RAW_OUTPUT", default=False, cast=bool)
 MONITOR_ALERT_ON_INITIAL_DOWN = config("MONITOR_ALERT_ON_INITIAL_DOWN", default=True, cast=bool)
+MONITOR_LOG_RETENTION_DAYS = config("MONITOR_LOG_RETENTION_DAYS", default=90, cast=int)
+MONITOR_LOG_RETENTION_BATCH_SIZE = config("MONITOR_LOG_RETENTION_BATCH_SIZE", default=500, cast=int)
+MONITOR_LOG_RETENTION_MAX_BATCHES = config("MONITOR_LOG_RETENTION_MAX_BATCHES", default=20, cast=int)
+MONITOR_DASHBOARD_LOG_WINDOW_DAYS = config("MONITOR_DASHBOARD_LOG_WINDOW_DAYS", default=30, cast=int)
+MONITOR_LOG_LIST_WINDOW_DAYS = config("MONITOR_LOG_LIST_WINDOW_DAYS", default=90, cast=int)
+MONITOR_RECENT_ACTIVITY_LIMIT = config("MONITOR_RECENT_ACTIVITY_LIMIT", default=20, cast=int)
+MONITOR_SSRF_MAX_REDIRECTS = config("MONITOR_SSRF_MAX_REDIRECTS", default=3, cast=int)
+AUTH_RATE_LIMIT_ATTEMPTS = config("AUTH_RATE_LIMIT_ATTEMPTS", default=5, cast=int)
+AUTH_RATE_LIMIT_WINDOW_SECONDS = config("AUTH_RATE_LIMIT_WINDOW_SECONDS", default=900, cast=int)
+SIGNUP_RATE_LIMIT_ATTEMPTS = config("SIGNUP_RATE_LIMIT_ATTEMPTS", default=5, cast=int)
+SIGNUP_RATE_LIMIT_WINDOW_SECONDS = config("SIGNUP_RATE_LIMIT_WINDOW_SECONDS", default=3600, cast=int)
 EMAIL_CONFIGURED = bool(
     DEFAULT_FROM_EMAIL and (
         (EMAIL_BACKEND == "brevo_api" and BREVO_API_KEY)

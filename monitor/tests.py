@@ -15,6 +15,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.contrib.sessions.models import Session
 from django.core import mail
+from django.core.cache import cache
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -64,6 +65,7 @@ from monitor.utils import (
     get_transition_status,
     get_user_account_snapshot,
     normalize_domain_display,
+    prune_expired_monitor_logs,
     run_single_check,
     safe_url_decode,
     safe_url_encode,
@@ -80,6 +82,7 @@ TEST_PNG_BYTES = base64.b64decode(
 class AuthFlowTests(TestCase):
     def setUp(self):
         self.request_factory = RequestFactory()
+        cache.clear()
 
     def test_login_page_creates_default_admin_user(self):
         with self.settings(BOOTSTRAP_ADMIN_ENABLED=True):
@@ -114,6 +117,31 @@ class AuthFlowTests(TestCase):
 
         self.assertRedirects(response, reverse("login"))
         self.assertTrue(User.objects.filter(username="newuser").exists())
+
+    @override_settings(SIGNUP_RATE_LIMIT_ATTEMPTS=1, SIGNUP_RATE_LIMIT_WINDOW_SECONDS=60)
+    def test_signup_rate_limit_returns_429_after_limit(self):
+        first = self.client.post(
+            reverse("signup"),
+            {
+                "username": "newuser",
+                "password1": "StrongPass123!",
+                "password2": "StrongPass123!",
+            },
+            REMOTE_ADDR="198.51.100.25",
+        )
+        second = self.client.post(
+            reverse("signup"),
+            {
+                "username": "anotheruser",
+                "password1": "StrongPass123!",
+                "password2": "StrongPass123!",
+            },
+            REMOTE_ADDR="198.51.100.25",
+        )
+
+        self.assertRedirects(first, reverse("login"))
+        self.assertEqual(second.status_code, 429)
+        self.assertContains(second, "Too many sign-up attempts", status_code=429)
 
     def test_login_redirects_to_dashboard_for_valid_credentials(self):
         User.objects.create_user(username="tester", password="StrongPass123!")
@@ -261,6 +289,31 @@ class AuthFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Invalid username or password.")
+
+    @override_settings(AUTH_RATE_LIMIT_ATTEMPTS=1, AUTH_RATE_LIMIT_WINDOW_SECONDS=60)
+    def test_login_rate_limit_returns_429_after_repeated_failures(self):
+        User.objects.create_user(username="tester", password="StrongPass123!")
+
+        first = self.client.post(
+            reverse("login"),
+            {
+                "username": "tester",
+                "password": "wrong-password",
+            },
+            REMOTE_ADDR="198.51.100.10",
+        )
+        second = self.client.post(
+            reverse("login"),
+            {
+                "username": "tester",
+                "password": "wrong-password",
+            },
+            REMOTE_ADDR="198.51.100.10",
+        )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 429)
+        self.assertContains(second, "Too many login attempts", status_code=429)
 
     def test_logout_redirects_to_login_and_clears_session(self):
         User.objects.create_user(username="tester", password="StrongPass123!")
@@ -1437,9 +1490,11 @@ class MonitorStatusSyncTests(TestCase):
         self.assertIn("check_now_start", stages)
         self.assertIn("check_now_complete", stages)
 
-    @patch("monitor.views.check_ssl_status", return_value="Valid")
     @patch("monitor.views.get_favicon_url", return_value="https://favicon.test/icon.png")
-    def test_dashboard_and_status_include_favicon_and_ssl_metadata(self, mock_favicon, mock_ssl):
+    def test_dashboard_and_status_include_favicon_and_cached_ssl_metadata(self, mock_favicon):
+        self.gmail.ssl_status = "Valid"
+        self.gmail.ssl_checked_at = timezone.now()
+        self.gmail.save(update_fields=["ssl_status", "ssl_checked_at"])
         MonitorLog.objects.create(website=self.gmail, status=MonitorLog.STATUS_UP, response_time=100)
 
         dashboard_response = self.client.get(reverse("dashboard"))
@@ -1460,6 +1515,58 @@ class MonitorStatusSyncTests(TestCase):
         self.assertEqual(status_site.ssl_status, "Valid")
         self.assertEqual(dashboard_site.display_domain, "gmail.com")
         self.assertEqual(status_site.display_domain, "gmail.com")
+
+
+class MonitoringHardeningTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="harden-user", password="StrongPass123!")
+        cache.clear()
+
+    @patch("monitor.utils.requests.get")
+    def test_run_single_check_blocks_private_monitor_targets(self, mock_get):
+        website = Website.objects.create(user=self.user, url="http://127.0.0.1")
+
+        log, response = run_single_check(website)
+        website.refresh_from_db()
+
+        self.assertIsNone(response)
+        self.assertEqual(log.status, MonitorLog.STATUS_DOWN)
+        self.assertEqual(website.ssl_status, "Unknown")
+        self.assertIn("Monitoring blocked", website.ssl_failure_reason)
+        mock_get.assert_not_called()
+
+    def test_prune_expired_monitor_logs_deletes_only_old_rows_in_batches(self):
+        website = Website.objects.create(user=self.user, url="https://example.com")
+        stale_log = MonitorLog.objects.create(website=website, status=MonitorLog.STATUS_UP, response_time=120)
+        fresh_log = MonitorLog.objects.create(website=website, status=MonitorLog.STATUS_UP, response_time=140)
+        MonitorLog.objects.filter(pk=stale_log.pk).update(checked_at=timezone.now() - timedelta(days=120))
+
+        deleted = prune_expired_monitor_logs(retention_days=90, batch_size=1, max_batches=5)
+
+        self.assertEqual(deleted, 1)
+        self.assertFalse(MonitorLog.objects.filter(pk=stale_log.pk).exists())
+        self.assertTrue(MonitorLog.objects.filter(pk=fresh_log.pk).exists())
+
+
+class MonitoringCommandHardeningTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="command-user", password="StrongPass123!")
+        self.website = Website.objects.create(user=self.user, url="https://example.com")
+
+    @patch("monitor.management.commands.monitor_sites.prune_expired_monitor_logs", return_value=3)
+    @patch("monitor.management.commands.monitor_sites.run_single_check")
+    def test_monitor_sites_prunes_expired_logs_after_cycle(self, mock_run_single_check, mock_prune):
+        mock_run_single_check.return_value = (
+            MonitorLog(website=self.website, status=MonitorLog.STATUS_UP, response_time=123, id=9),
+            Mock(status_code=200),
+        )
+        stdout = io.StringIO()
+
+        call_command("monitor_sites", stdout=stdout)
+
+        mock_run_single_check.assert_called_once_with(self.website, timeout=5)
+        mock_prune.assert_called_once_with()
+        self.assertIn("3 log(s) pruned", stdout.getvalue())
 
 
 class IncidentSyncTests(TestCase):
@@ -1939,10 +2046,11 @@ class AlertSyncTests(TestCase):
         self.assertEqual(Notification.objects.filter(user=self.user, notification_type=Notification.TYPE_OUTAGE).count(), 1)
         self.assertEqual(mock_send_email.call_count, 1)
 
+    @patch("monitor.views.validate_monitor_target", return_value=("example.net", ("93.184.216.34",)))
     @patch("monitor.utils.check_ssl_status", return_value="Valid")
     @patch("monitor.utils.send_siteguard_email", return_value=True)
     @patch("monitor.utils.requests.get")
-    def test_initial_add_website_down_creates_alert_lifecycle(self, mock_get, mock_send_email, _mock_ssl):
+    def test_initial_add_website_down_creates_alert_lifecycle(self, mock_get, mock_send_email, _mock_ssl, _mock_validate):
         mock_get.return_value = Mock(
             status_code=503,
             elapsed=Mock(total_seconds=Mock(return_value=0.2)),
@@ -4018,16 +4126,18 @@ class ImmediateMonitoringTests(TestCase):
         )
         self.client.login(username="instant-user", password="StrongPass123!")
 
+    @patch("monitor.views.validate_monitor_target", return_value=("example.com", ("93.184.216.34",)))
     @patch("monitor.views.run_single_check")
-    def test_add_website_runs_initial_monitoring_immediately(self, mock_run_single_check):
+    def test_add_website_runs_initial_monitoring_immediately(self, mock_run_single_check, _mock_validate):
         response = self.client.post(reverse("add_website"), {"url": "example.com"})
 
         self.assertRedirects(response, reverse("dashboard"))
         website = Website.objects.get(user=self.user, url="https://example.com")
         mock_run_single_check.assert_called_once_with(website)
 
+    @patch("monitor.views.validate_monitor_target", return_value=("example.com", ("93.184.216.34",)))
     @patch("monitor.views.run_single_check", side_effect=RuntimeError("network unavailable"))
-    def test_add_website_keeps_site_when_initial_check_fails(self, mock_run_single_check):
+    def test_add_website_keeps_site_when_initial_check_fails(self, mock_run_single_check, _mock_validate):
         response = self.client.post(reverse("add_website"), {"url": "example.com"}, follow=True)
 
         self.assertEqual(response.status_code, 200)

@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from collections import Counter, defaultdict
 from functools import lru_cache
 from hmac import compare_digest
@@ -17,13 +18,14 @@ from django.contrib.auth import authenticate, login as auth_login, logout as aut
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib import messages
+from django.core.cache import cache
 from django.core.management import call_command
 from django.core.paginator import Paginator
 from django.core.exceptions import ValidationError
 from django.urls import reverse
 from django.db import connection
 from django.db.utils import OperationalError, ProgrammingError
-from django.db.models import Avg, Case, Count, IntegerField, Q, Sum, Value, When
+from django.db.models import Avg, Case, Count, IntegerField, OuterRef, Q, Subquery, Sum, Value, When
 from django.views.decorators.http import require_GET
 from django.views.decorators.http import require_POST
 from django.utils import timezone
@@ -54,28 +56,30 @@ from .utils import (
     ALERT_DEDUP_WINDOW,
     analyze_domain,
     build_global_search_results,
-    check_ssl_status,
     cleanup_old_notifications,
     cleanup_monitoring_state,
     ensure_weekly_report_notification,
+    get_cached_ssl_status,
+    get_monitor_dashboard_log_window_days,
+    get_monitor_log_list_window_days,
+    get_monitor_recent_activity_limit,
     get_notification_destination,
     get_favicon_url,
-    get_latest_logs_by_website,
     get_notification_queryset,
     get_or_create_user_profile,
     get_recent_searches,
     get_user_account_snapshot,
     get_unread_notification_count,
-    remember_recent_search,
     normalize_domain_display,
     normalize_utility_domain,
-    send_alert_email,
+    remember_recent_search,
+    run_single_check,
     safe_url_decode,
     safe_url_encode,
-    get_valid_response_times,
+    send_alert_email,
+    validate_monitor_target,
     get_site_snapshot,
     get_site_status,
-    run_single_check,
 )
 
 logger = logging.getLogger(__name__)
@@ -142,6 +146,75 @@ def _auth_user_table_ready():
     except (OperationalError, ProgrammingError):
         logger.warning("Auth tables are not ready yet; skipping admin bootstrap.", exc_info=True)
         return False
+
+
+def _get_client_ip(request):
+    forwarded_for = (request.META.get("HTTP_X_FORWARDED_FOR") or "").split(",")[0].strip()
+    return forwarded_for or request.META.get("REMOTE_ADDR", "unknown")
+
+
+def _build_rate_limit_key(scope, request, *, identity=""):
+    return f"siteguard:rate-limit:{scope}:{_get_client_ip(request).lower()}:{(identity or '').strip().lower()}"
+
+
+def _is_rate_limited(scope, request, *, limit, identity=""):
+    if limit <= 0:
+        return False
+    return int(cache.get(_build_rate_limit_key(scope, request, identity=identity), 0) or 0) >= limit
+
+
+def _increment_rate_limit(scope, request, *, limit, window_seconds, identity=""):
+    if limit <= 0 or window_seconds <= 0:
+        return False
+
+    key = _build_rate_limit_key(scope, request, identity=identity)
+    added = cache.add(key, 1, window_seconds)
+    if added:
+        return False
+
+    try:
+        current = cache.incr(key)
+    except ValueError:
+        cache.set(key, 1, window_seconds)
+        current = 1
+    return int(current or 0) >= limit
+
+
+def _clear_rate_limit(scope, request, *, identity=""):
+    cache.delete(_build_rate_limit_key(scope, request, identity=identity))
+
+
+def _latest_monitor_log_subquery():
+    return MonitorLog.objects.filter(website_id=OuterRef('pk')).order_by('-checked_at', '-id')
+
+
+def _get_sites_with_latest_monitor_state(user):
+    latest_logs = _latest_monitor_log_subquery()
+    sites = list(
+        Website.objects.filter(user=user).annotate(
+            latest_log_status=Subquery(latest_logs.values('status')[:1]),
+            latest_log_response_time=Subquery(latest_logs.values('response_time')[:1]),
+            latest_log_checked_at=Subquery(latest_logs.values('checked_at')[:1]),
+        ).order_by('-created_at')
+    )
+
+    for site in sites:
+        snapshot = get_site_snapshot(
+            SimpleNamespace(
+                status=site.latest_log_status,
+                response_time=site.latest_log_response_time,
+                checked_at=site.latest_log_checked_at,
+            )
+            if site.latest_log_checked_at else None
+        )
+        site.status = snapshot['status']
+        site.response_time = snapshot['response_time']
+        site.last_checked = snapshot['last_checked']
+        site.display_domain = normalize_domain_display(site.url)
+        site.favicon = get_favicon_url(site.url)
+        site.ssl_status = get_cached_ssl_status(site)
+
+    return sites
 
 
 def format_duration_value(total_seconds):
@@ -1807,12 +1880,20 @@ def login(request):
 
         form = LoginForm(request.POST or None)
         if request.method == 'POST' and form.is_valid():
+            username = form.cleaned_data['username']
+            login_limit = max(int(getattr(django_settings, 'AUTH_RATE_LIMIT_ATTEMPTS', 5) or 5), 1)
+            login_window = max(int(getattr(django_settings, 'AUTH_RATE_LIMIT_WINDOW_SECONDS', 900) or 900), 1)
+            if _is_rate_limited('login', request, limit=login_limit, identity=username):
+                form.add_error(None, 'Too many login attempts. Try again in a few minutes.')
+                return render(request, 'monitor/login.html', {'form': form}, status=429)
+
             user = authenticate(
                 request,
-                username=form.cleaned_data['username'],
+                username=username,
                 password=form.cleaned_data['password'],
             )
             if user is not None:
+                _clear_rate_limit('login', request, identity=username)
                 remember_me = bool(form.cleaned_data.get('remember_me', True))
                 auth_login(request, user)
                 request.session.set_expiry(
@@ -1841,6 +1922,8 @@ def login(request):
                     },
                 )
                 return redirect('dashboard')
+
+            _increment_rate_limit('login', request, limit=login_limit, window_seconds=login_window, identity=username)
             form.add_error(None, 'Invalid username or password.')
 
         return render(request, 'monitor/login.html', {'form': form})
@@ -1856,7 +1939,15 @@ def signup(request):
             return redirect('dashboard')
 
         form = SignUpForm(request.POST or None)
+        if request.method == 'POST':
+            signup_limit = max(int(getattr(django_settings, 'SIGNUP_RATE_LIMIT_ATTEMPTS', 5) or 5), 1)
+            signup_window = max(int(getattr(django_settings, 'SIGNUP_RATE_LIMIT_WINDOW_SECONDS', 3600) or 3600), 1)
+            if _is_rate_limited('signup', request, limit=signup_limit):
+                form.add_error(None, 'Too many sign-up attempts from this network. Try again later.')
+                return render(request, 'monitor/signup.html', {'form': form}, status=429)
+
         if request.method == 'POST' and form.is_valid():
+            _increment_rate_limit('signup', request, limit=signup_limit, window_seconds=signup_window)
             form.save()
             return redirect('login')
 
@@ -1885,68 +1976,45 @@ def dashboard(request):
     Website.cleanup_existing(user=request.user)
     cleanup_monitoring_state(user=request.user)
 
-    websites = list(Website.objects.filter(user=request.user).order_by('-created_at'))
-    website_ids = [website.id for website in websites]
+    websites = _get_sites_with_latest_monitor_state(request.user)
+    dashboard_window_start = timezone.now() - timedelta(days=get_monitor_dashboard_log_window_days())
+    recent_logs_qs = MonitorLog.objects.filter(
+        website__user=request.user,
+        checked_at__gte=dashboard_window_start,
+    ).select_related('website').order_by('-checked_at', '-id')
 
-    all_logs = list(MonitorLog.objects.filter(
-        website_id__in=website_ids
-    ).select_related('website').order_by('-checked_at'))
-
-    latest_logs = get_latest_logs_by_website(all_logs)
-
-    # ✅ FIXED LOGS (NO TRUE ISSUE)
-    logs = []
-    for log in all_logs[:20]:
-        logs.append({
+    logs = [
+        {
             'url': log.website.url,
             'display_domain': normalize_domain_display(log.website.url),
             'status': get_site_status(log),
             'response_time': round(log.response_time, 2) if log.response_time is not None else 0,
             'checked_at': log.checked_at,
-        })
+        }
+        for log in recent_logs_qs[:get_monitor_recent_activity_limit()]
+    ]
 
-    # ✅ FIXED SITES
-    for website in websites:
-        snapshot = get_site_snapshot(latest_logs.get(website.id))
-        website.status = snapshot['status']
-        website.response_time = snapshot['response_time']
-        website.last_checked = snapshot['last_checked']
-        website.display_domain = normalize_domain_display(website.url)
-        website.favicon = get_favicon_url(website.url)
-        website.ssl_status = check_ssl_status(website.url)
-
-    # ✅ FIXED TOP STATUS (NO TRUE)
-    status = "UP"
+    latest_sites = [site for site in websites if site.last_checked]
+    status = 'UP'
     response_time = 0
-
-    if latest_logs:
-        statuses = [get_site_status(log) for log in latest_logs.values()]
-        valid_response_times = get_valid_response_times(latest_logs.values())
-
-        if "DOWN" in statuses:
-            status = "DOWN"
-        elif "SLOW" in statuses:
-            status = "SLOW"
-        else:
-            status = "UP"
-
+    if latest_sites:
+        statuses = [site.status for site in latest_sites]
+        valid_response_times = [site.response_time for site in latest_sites if site.response_time is not None]
+        if 'DOWN' in statuses:
+            status = 'DOWN'
+        elif 'SLOW' in statuses:
+            status = 'SLOW'
         if valid_response_times:
-            response_time = round(
-                sum(valid_response_times) / len(valid_response_times),
-                2
-            )
+            response_time = round(sum(valid_response_times) / len(valid_response_times), 2)
 
-    total_logs = len(all_logs)
-    up_logs = sum(1 for log in all_logs if log.status == MonitorLog.STATUS_UP)
-
+    total_logs = recent_logs_qs.count()
+    up_logs = recent_logs_qs.filter(status=MonitorLog.STATUS_UP).count()
     uptime = (up_logs / total_logs) * 100 if total_logs > 0 else 0
     incidents = Incident.objects.filter(
         website__user=request.user,
         is_resolved=False,
     ).count()
-
-    # ⚠️ IMPORTANT FIX HERE
-    has_slow = any(site.status == "SLOW" for site in websites)
+    has_slow = any(site.status == 'SLOW' for site in websites)
 
     context = {
         'sites': websites,
@@ -1965,25 +2033,17 @@ def dashboard(request):
 def dashboard_data(request):
     Website.cleanup_existing(user=request.user)
     cleanup_monitoring_state(user=request.user)
-    sites = list(Website.objects.filter(user=request.user).order_by('-created_at'))
-    website_ids = [site.id for site in sites]
-    all_logs = MonitorLog.objects.filter(
-        website_id__in=website_ids
-    ).order_by('-checked_at')
-    latest_logs = get_latest_logs_by_website(all_logs)
+    sites = _get_sites_with_latest_monitor_state(request.user)
     data = []
 
     for site in sites:
-        snapshot = get_site_snapshot(latest_logs.get(site.id))
-        site.display_domain = normalize_domain_display(site.url)
-
         data.append({
             'id': site.id,
             'url': site.url,
             'display_domain': site.display_domain,
-            'status': snapshot['status'],
-            'response_time': snapshot['response_time'],
-            'last_checked': snapshot['last_checked'].strftime('%Y-%m-%d %H:%M') if snapshot['last_checked'] else '',
+            'status': site.status,
+            'response_time': site.response_time,
+            'last_checked': site.last_checked.strftime('%Y-%m-%d %H:%M') if site.last_checked else '',
         })
 
     return JsonResponse({'sites': data})
@@ -1993,21 +2053,7 @@ def dashboard_data(request):
 def status(request):
     Website.cleanup_existing(user=request.user)
     cleanup_monitoring_state(user=request.user)
-    websites = list(Website.objects.filter(user=request.user).order_by('-created_at'))
-    website_ids = [website.id for website in websites]
-    latest_logs = get_latest_logs_by_website(MonitorLog.objects.filter(
-        website_id__in=website_ids
-    ).order_by('-checked_at'))
-
-    for site in websites:
-        snapshot = get_site_snapshot(latest_logs.get(site.id))
-        site.status = snapshot['status']
-        site.response_time = snapshot['response_time']
-        site.last_checked = snapshot['last_checked']
-        site.display_domain = normalize_domain_display(site.url)
-        site.favicon = get_favicon_url(site.url)
-        site.ssl_status = check_ssl_status(site.url)
-
+    websites = _get_sites_with_latest_monitor_state(request.user)
     return render(request, 'monitor/status.html', {'sites': websites})
 
 
@@ -2342,8 +2388,10 @@ def generate_incident_ai_analysis(request, incident_id):
 @login_required
 def logs(request):
     cleanup_monitoring_state(user=request.user)
+    logs_window_start = timezone.now() - timedelta(days=get_monitor_log_list_window_days())
     logs_qs = MonitorLog.objects.filter(
-        website__user=request.user
+        website__user=request.user,
+        checked_at__gte=logs_window_start,
     ).select_related('website').order_by('-checked_at', '-id')
     page_obj, pagination_context = _paginate_collection(request, logs_qs, per_page=25)
     logs_data = [serialize_log(log) for log in page_obj.object_list]
@@ -2892,8 +2940,9 @@ def add_website(request):
         try:
             clean_url = Website.normalize_url(raw_url)
             Website.validate_normalized_url(clean_url)
-        except ValidationError:
-            messages.error(request, 'Invalid URL')
+            validate_monitor_target(clean_url)
+        except ValidationError as exc:
+            messages.error(request, exc.messages[0] if getattr(exc, 'messages', None) else 'Invalid URL')
             return redirect('dashboard')
 
         if Website.objects.filter(user=request.user, url=clean_url).exists():

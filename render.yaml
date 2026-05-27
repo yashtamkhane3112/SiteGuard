@@ -30,6 +30,10 @@ services:
         sync: false
       - key: APP_BASE_URL
         sync: false
+      - key: MONITOR_LOG_RETENTION_DAYS
+        value: "90"
+      - key: MONITOR_LOG_RETENTION_BATCH_SIZE
+        value: "500"
       - key: CRON_SECRET
         sync: false
       - key: EMAIL_BACKEND
@@ -60,6 +64,34 @@ services:
         value: "1209600"
       - key: SESSION_SAVE_EVERY_REQUEST
         value: "True"
+      - key: MONITOR_LOG_RETENTION_DAYS
+        value: "90"
+      - key: MONITOR_LOG_RETENTION_BATCH_SIZE
+        value: "500"
+      - key: MONITOR_DASHBOARD_LOG_WINDOW_DAYS
+        value: "30"
+      - key: MONITOR_LOG_LIST_WINDOW_DAYS
+        value: "90"
+      - key: AUTH_RATE_LIMIT_ATTEMPTS
+        value: "5"
+      - key: AUTH_RATE_LIMIT_WINDOW_SECONDS
+        value: "900"
+      - key: SIGNUP_RATE_LIMIT_ATTEMPTS
+        value: "5"
+      - key: SIGNUP_RATE_LIMIT_WINDOW_SECONDS
+        value: "3600"
+      - key: WEB_CONCURRENCY
+        value: "2"
+      - key: GUNICORN_TIMEOUT
+        value: "90"
+      - key: GUNICORN_GRACEFUL_TIMEOUT
+        value: "30"
+      - key: GUNICORN_MAX_REQUESTS
+        value: "1000"
+      - key: GUNICORN_MAX_REQUESTS_JITTER
+        value: "100"
+      - key: GUNICORN_KEEPALIVE
+        value: "5"
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY

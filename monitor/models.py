@@ -103,6 +103,9 @@ class Website(models.Model):
     alerts_enabled = models.BooleanField(default=True)
     email_notifications = models.BooleanField(default=True)
     slow_alert_threshold = models.PositiveIntegerField(default=2000)
+    ssl_status = models.CharField(max_length=16, default='Unknown')
+    ssl_checked_at = models.DateTimeField(null=True, blank=True)
+    ssl_failure_reason = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     @classmethod
@@ -239,6 +242,7 @@ class MonitorLog(models.Model):
         ordering = ['-checked_at']
         indexes = [
             models.Index(fields=['website', '-checked_at'], name='monitor_mon_website_8e0d66_idx'),
+            models.Index(fields=['checked_at'], name='monitor_mon_checked_0c5f4e_idx'),
         ]
 
 

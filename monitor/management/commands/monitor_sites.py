@@ -9,7 +9,7 @@ import logging
 from django.core.management.base import BaseCommand
 
 from monitor.models import Website
-from monitor.utils import run_single_check
+from monitor.utils import prune_expired_monitor_logs, run_single_check
 
 
 logger = logging.getLogger(__name__)
@@ -41,14 +41,16 @@ class Command(BaseCommand):
             },
         )
 
+        checked_count = 0
+        error_count = 0
+
         if not websites.exists():
+            pruned_logs = prune_expired_monitor_logs()
             self.stdout.write(self.style.WARNING('No websites to monitor'))
+            self.stdout.write(self.style.SUCCESS(f'Pruned {pruned_logs} expired monitoring log(s).'))
             return
 
         self.stdout.write(self.style.SUCCESS(f'Starting to monitor {websites.count()} website(s)...'))
-
-        checked_count = 0
-        error_count = 0
 
         for website in websites:
             try:
@@ -83,6 +85,7 @@ class Command(BaseCommand):
                 )
                 self.stdout.write(self.style.ERROR(f'Checked: {website.url} | ERROR | {exc}'))
 
+        pruned_logs = prune_expired_monitor_logs()
         logger.info(
             "Scheduled monitoring cycle finished.",
             extra={
@@ -90,11 +93,12 @@ class Command(BaseCommand):
                     "stage": "scheduler_complete",
                     "checked_count": checked_count,
                     "error_count": error_count,
+                    "pruned_log_count": pruned_logs,
                 }
             },
         )
         self.stdout.write(
             self.style.SUCCESS(
-                f'Monitoring complete: {checked_count} checked, {error_count} errors'
+                f'Monitoring complete: {checked_count} checked, {error_count} errors, {pruned_logs} log(s) pruned'
             )
         )

@@ -6,7 +6,7 @@ import ssl
 from email.utils import format_datetime
 from datetime import datetime, timedelta, timezone as dt_timezone
 from time import perf_counter
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import quote, unquote, urljoin, urlparse
 
 import requests
 from django.conf import settings
@@ -18,6 +18,7 @@ from django.utils import timezone
 
 from .emailing import get_email_base_url, get_support_email, render_email_template, send_siteguard_email
 from .models import Alert, Incident, IncidentEvent, MonitorLog, Notification, UploadedLog, UserProfile, Website
+from .network_security import extract_hostname, is_blocked_hostname, is_blocked_ip, resolve_public_addresses
 
 try:
     import dns.resolver as dns_resolver
@@ -42,6 +43,78 @@ WEEKLY_REPORT_TITLE_RE = re.compile(r"Weekly report ready for (?P<week>\d{4}-W\d
 logger = logging.getLogger(__name__)
 _logged_missing_media_names = set()
 SITE_STATUS_UNKNOWN = "UNKNOWN"
+
+
+def get_monitor_log_retention_days():
+    return max(int(getattr(settings, "MONITOR_LOG_RETENTION_DAYS", 90) or 90), 1)
+
+
+def get_monitor_log_retention_batch_size():
+    return max(int(getattr(settings, "MONITOR_LOG_RETENTION_BATCH_SIZE", 500) or 500), 50)
+
+
+def get_monitor_log_retention_max_batches():
+    return max(int(getattr(settings, "MONITOR_LOG_RETENTION_MAX_BATCHES", 20) or 20), 1)
+
+
+def get_monitor_dashboard_log_window_days():
+    return max(int(getattr(settings, "MONITOR_DASHBOARD_LOG_WINDOW_DAYS", 30) or 30), 1)
+
+
+def get_monitor_log_list_window_days():
+    return max(int(getattr(settings, "MONITOR_LOG_LIST_WINDOW_DAYS", get_monitor_log_retention_days()) or get_monitor_log_retention_days()), 1)
+
+
+def get_monitor_recent_activity_limit():
+    return max(int(getattr(settings, "MONITOR_RECENT_ACTIVITY_LIMIT", 20) or 20), 1)
+
+
+def get_monitor_max_redirects():
+    return max(int(getattr(settings, "MONITOR_SSRF_MAX_REDIRECTS", 3) or 3), 0)
+
+
+def get_cached_ssl_status(website):
+    return (getattr(website, "ssl_status", "") or "Unknown").strip() or "Unknown"
+
+
+def _resolve_monitor_port(url):
+    parsed = urlparse(url if "://" in (url or "") else f"https://{url}")
+    if parsed.port:
+        return parsed.port
+    return 443 if parsed.scheme != "http" else 80
+
+
+def validate_monitor_target(url):
+    return resolve_public_addresses(url, port=_resolve_monitor_port(url))
+
+
+def perform_safe_monitor_request(url, *, timeout=5):
+    current_url = url
+    redirect_count = 0
+    while True:
+        validate_monitor_target(current_url)
+        response = requests.get(
+            current_url,
+            timeout=timeout,
+            allow_redirects=False,
+            headers={"User-Agent": "SiteGuard Monitor/1.0"},
+        )
+        location = getattr(response, "headers", {}).get("Location", "").strip()
+        if response.status_code in {301, 302, 303, 307, 308} and location:
+            if redirect_count >= get_monitor_max_redirects():
+                raise requests.TooManyRedirects("Monitoring target exceeded the safe redirect limit.")
+            current_url = urljoin(response.url or current_url, location)
+            redirect_count += 1
+            continue
+        return response
+
+
+def persist_website_ssl_state(website, ssl_status, ssl_reason=""):
+    next_status = (ssl_status or "Unknown").strip() or "Unknown"
+    website.ssl_status = next_status
+    website.ssl_checked_at = timezone.now()
+    website.ssl_failure_reason = ssl_reason if next_status != "Valid" else ""
+    website.save(update_fields=["ssl_status", "ssl_checked_at", "ssl_failure_reason"])
 
 
 def log_monitoring_trace(stage, **context):
@@ -115,13 +188,12 @@ def get_favicon_url(url):
 
 def check_ssl_status(url):
     try:
-        parsed = urlparse(url)
-        hostname = parsed.netloc or parsed.path.split("/")[0]
-        if not hostname:
-            return "Invalid"
+        hostname, _addresses = validate_monitor_target(url)
+        parsed = urlparse(url if "://" in (url or "") else f"https://{url}")
+        ssl_port = parsed.port or 443
 
         context = ssl.create_default_context()
-        with socket.create_connection((hostname, 443), timeout=5) as sock:
+        with socket.create_connection((hostname, ssl_port), timeout=5) as sock:
             with context.wrap_socket(sock, server_hostname=hostname):
                 return "Valid"
     except Exception:
@@ -161,40 +233,14 @@ def safe_url_decode(value):
 
 
 def _extract_hostname(raw_value):
-    value = (raw_value or '').strip()
-    if not value:
-        raise ValidationError('Enter a domain to inspect.')
-
-    candidate = value if '://' in value else f'https://{value}'
-    parsed = urlparse(candidate)
-    if parsed.scheme not in {'http', 'https'}:
-        raise ValidationError('Only HTTP and HTTPS domains are allowed.')
-
-    hostname = (parsed.hostname or '').strip().rstrip('.')
-    if not hostname:
-        raise ValidationError('Enter a valid domain.')
-    return hostname
+    try:
+        return extract_hostname(raw_value)
+    except ValidationError as exc:
+        raise ValidationError(exc.messages[0] if hasattr(exc, 'messages') else str(exc)) from exc
 
 
 def _is_blocked_host(hostname):
-    lowered = hostname.lower()
-    if lowered in {'localhost', 'localhost.localdomain'} or lowered.endswith('.local'):
-        return True
-
-    try:
-        ip_obj = ipaddress.ip_address(lowered)
-    except ValueError:
-        return False
-
-    blocked_flags = (
-        ip_obj.is_private,
-        ip_obj.is_loopback,
-        ip_obj.is_reserved,
-        ip_obj.is_link_local,
-        ip_obj.is_multicast,
-        ip_obj.is_unspecified,
-    )
-    return any(blocked_flags)
+    return is_blocked_hostname(hostname)
 
 
 def _is_blocked_ip_value(value):
@@ -203,14 +249,7 @@ def _is_blocked_ip_value(value):
     except ValueError:
         return False
 
-    return any((
-        ip_obj.is_private,
-        ip_obj.is_loopback,
-        ip_obj.is_reserved,
-        ip_obj.is_link_local,
-        ip_obj.is_multicast,
-        ip_obj.is_unspecified,
-    ))
+    return is_blocked_ip(ip_obj)
 
 
 def normalize_utility_domain(raw_value):
@@ -749,6 +788,29 @@ def build_notification_activity_center(user, limit=8):
             {'label': 'Notifications', 'url': reverse('notifications')},
         ],
     }
+
+
+def prune_expired_monitor_logs(*, retention_days=None, batch_size=None, max_batches=None):
+    retention_days = get_monitor_log_retention_days() if retention_days is None else max(int(retention_days), 1)
+    batch_size = get_monitor_log_retention_batch_size() if batch_size is None else max(int(batch_size), 1)
+    max_batches = get_monitor_log_retention_max_batches() if max_batches is None else max(int(max_batches), 1)
+    cutoff = timezone.now() - timedelta(days=retention_days)
+    deleted_total = 0
+
+    for _ in range(max_batches):
+        stale_ids = list(
+            MonitorLog.objects.filter(checked_at__lt=cutoff)
+            .order_by('checked_at', 'id')
+            .values_list('id', flat=True)[:batch_size]
+        )
+        if not stale_ids:
+            break
+
+        deleted_total += MonitorLog.objects.filter(id__in=stale_ids).delete()[0]
+        if len(stale_ids) < batch_size:
+            break
+
+    return deleted_total
 
 
 def cleanup_old_notifications(user=None, *, retention_days=NOTIFICATION_RETENTION_DAYS):
@@ -2308,15 +2370,20 @@ def run_single_check(website, timeout=5):
     )
 
     try:
-        response = requests.get(url, timeout=timeout)
-        response_time_ms = response.elapsed.total_seconds() * 1000
+        started = perf_counter()
+        response = perform_safe_monitor_request(url, timeout=timeout)
+        elapsed = getattr(response, "elapsed", None)
+        if elapsed is not None and hasattr(elapsed, "total_seconds"):
+            response_time_ms = elapsed.total_seconds() * 1000
+        else:
+            response_time_ms = (perf_counter() - started) * 1000
         status_code = response.status_code
         ssl_status = check_ssl_status(url)
 
         if 200 <= response.status_code < 400:
             status = (
                 MonitorLog.STATUS_SLOW
-                if response_time_ms > 2000
+                if response_time_ms > get_monitor_threshold(website)
                 else MonitorLog.STATUS_UP
             )
             if status == MonitorLog.STATUS_SLOW:
@@ -2346,6 +2413,7 @@ def run_single_check(website, timeout=5):
         )
         with transaction.atomic():
             locked_website = Website.objects.select_for_update().select_related("user").get(pk=website.pk)
+            persist_website_ssl_state(locked_website, ssl_status, ssl_reason)
             previous_log = MonitorLog.objects.filter(website=locked_website).exclude(pk=log.pk).order_by('-checked_at', '-id').first()
             log_monitoring_trace(
                 "run_single_check_transition_evaluation",
@@ -2369,10 +2437,21 @@ def run_single_check(website, timeout=5):
         )
         return log, response
     except Exception as exc:
-        reason = _describe_exception_reason(exc, timeout)
+        if isinstance(exc, ValidationError):
+            reason = exc.messages[0] if hasattr(exc, 'messages') and exc.messages else str(exc)
+        else:
+            reason = _describe_exception_reason(exc, timeout)
+
         if isinstance(exc, requests.exceptions.SSLError):
             ssl_status = "Invalid"
             ssl_reason = "TLS handshake or certificate validation failed during the monitoring request."
+        elif isinstance(exc, ValidationError):
+            ssl_status = "Unknown"
+            ssl_reason = reason
+        else:
+            ssl_status = "Unknown"
+            ssl_reason = reason
+
         log = MonitorLog.objects.create(
             website=website,
             status=MonitorLog.STATUS_DOWN,
@@ -2389,6 +2468,7 @@ def run_single_check(website, timeout=5):
         )
         with transaction.atomic():
             locked_website = Website.objects.select_for_update().select_related("user").get(pk=website.pk)
+            persist_website_ssl_state(locked_website, ssl_status, ssl_reason)
             previous_log = MonitorLog.objects.filter(website=locked_website).exclude(pk=log.pk).order_by('-checked_at', '-id').first()
             log_monitoring_trace(
                 "run_single_check_exception_transition_evaluation",
