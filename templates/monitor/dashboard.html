@@ -1,4 +1,5 @@
 {% load static %}
+{% url "status" as status_url %}
 <!doctype html>
 <html lang="en">
   <head>
@@ -26,15 +27,34 @@
         {% include "monitor/partials/internal_header.html" with global_search_placeholder="Search websites, incidents, alerts..." %}
 
         <div class="content-wrapper">
-          <div class="mb-4">
-            <h2 class="page-title">Dashboard</h2>
-            <p class="page-subtitle">
-              Monitor your websites and check their health status.
-            </p>
-          </div>
+          <section class="dashboard-page-header dash-panel">
+            <div>
+              <span class="section-kicker">Monitoring Workspace</span>
+              <h2 class="page-title mb-2">Dashboard</h2>
+              <p class="page-subtitle mb-0">
+                Track website health, response time, SSL state, and recent activity from one operational workspace.
+              </p>
+            </div>
+            <div class="dashboard-header-meta">
+              <span class="utility-chip font-mono">{{ sites|length }} monitored</span>
+              <span class="utility-chip font-mono">Refreshes every 10s</span>
+              <a href="{% url 'status' %}" class="btn btn-outline-dark-custom btn-sm">Run Status Check</a>
+            </div>
+          </section>
 
-          <div class="dash-panel mb-4">
-            <label class="panel-label" for="websiteUrl">Add New Website</label>
+          <section class="dash-panel mb-4 dashboard-add-panel">
+            <div class="dashboard-section-head">
+              <div>
+                <span class="panel-label">Quick Onboarding</span>
+                <h5 class="panel-title mb-1">Add your first monitored website</h5>
+                <p class="panel-subtitle mb-0">Paste a production URL and SiteGuard will start showing status, latency, SSL state, and incident history in this workspace.</p>
+              </div>
+              <div class="dashboard-inline-actions">
+                <a href="{% url 'status' %}" class="btn btn-outline-dark-custom btn-sm">Try Status Check</a>
+                <a href="{% url 'error_log_upload' %}" class="btn btn-outline-dark-custom btn-sm">Open Analyzer</a>
+              </div>
+            </div>
+            <label class="panel-label mt-4" for="websiteUrl">Website URL</label>
             <form method="POST" action="{% url 'add_website' %}">
               {% csrf_token %}
               <div class="url-check-group">
@@ -78,7 +98,24 @@
               {% endfor %}
             </div>
             {% endif %}
-          </div>
+            <div class="dashboard-helper-grid mt-4">
+              <article class="dashboard-helper-card">
+                <span class="empty-state-eyebrow">Step 1</span>
+                <h6>Monitor a live URL</h6>
+                <p>Add the website you care about most first to establish a baseline for status and latency.</p>
+              </article>
+              <article class="dashboard-helper-card">
+                <span class="empty-state-eyebrow">Step 2</span>
+                <h6>Watch the health signals</h6>
+                <p>Use the stat cards and activity stream to confirm checks are running and timings look healthy.</p>
+              </article>
+              <article class="dashboard-helper-card">
+                <span class="empty-state-eyebrow">Step 3</span>
+                <h6>Investigate issues quickly</h6>
+                <p>Move from incidents to alerts, reports, and uploaded logs without leaving the app shell.</p>
+              </article>
+            </div>
+          </section>
 
           <div class="dash-panel mb-4">
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
@@ -96,7 +133,7 @@
           </div>
 
           <div class="dash-panel mb-4">
-            <div class="stats-grid">
+            <div class="stats-grid dashboard-stats-grid">
               <!-- Card 1: Website Status -->
               <div class="stat-card">
                 <span class="panel-label">Website Status</span>
@@ -140,8 +177,13 @@
           </div>
 
           <div class="dash-panel mb-4">
-            <h5 class="panel-title">Your Websites</h5>
-            <p class="panel-subtitle mb-4">Websites being monitored...</p>
+            <div class="dashboard-section-head mb-4">
+              <div>
+                <h5 class="panel-title mb-1">Your Websites</h5>
+                <p class="panel-subtitle mb-0">A live view of the sites currently being monitored in this workspace.</p>
+              </div>
+              <span class="utility-chip font-mono">{{ sites|length }} active entries</span>
+            </div>
 
             {% if sites %} {% for site in sites %}
             <div id="site-{{ site.id }}" class="website-card p-3 mb-3 rounded-3 shadow-sm" data-skeleton-item>
@@ -217,13 +259,7 @@
               </div>
             </div>
             {% endfor %} {% else %}
-            <div class="empty-state">
-              <i data-lucide="globe"></i>
-              <h6>No websites added yet</h6>
-              <p class="text-sm mb-0">
-                Add your first website using the form above.
-              </p>
-            </div>
+            {% include "monitor/partials/empty_state.html" with eyebrow="Dashboard" icon="globe" title="No websites added yet" message="Start by adding one production URL. SiteGuard will populate monitoring cards, activity history, and incident context here." primary_label="Add a Website" primary_url="#websiteUrl" secondary_label="Try Status Check" secondary_url=status_url extra_classes="dashboard-empty-state" %}
             {% endif %}
           </div>
 
@@ -232,20 +268,25 @@
               class="p-4 border-bottom"
               style="border-color: rgba(255, 255, 255, 0.05) !important"
             >
-              <h5 class="panel-title m-0">Recent Activity</h5>
-              <p class="panel-subtitle mt-1 m-0">
-                Latest website check results
-              </p>
+              <div class="dashboard-section-head">
+                <div>
+                  <h5 class="panel-title m-0">Recent Activity</h5>
+                  <p class="panel-subtitle mt-1 m-0">
+                    Latest website check results and monitoring transitions.
+                  </p>
+                </div>
+                <span class="utility-chip font-mono">Auto-refresh 10s</span>
+              </div>
             </div>
 
-            <div class="table-responsive">
+            <div class="table-responsive table-responsive-shell table-card-stack">
               <table class="table custom-table" id="activityTable">
                 <thead>
                   <tr>
                     <th>URL</th>
                     <th>Status</th>
                     <th>Response Time</th>
-                    <th>Change</th>
+                    <th class="table-priority-low">Change</th>
                     <th class="text-end">Date</th>
                   </tr>
                 </thead>
@@ -253,25 +294,19 @@
                   {% if logs %}
                   {% for log in logs %}
                   <tr class="activity-row">
-                   <td class="font-mono text-light fw-medium">{{ log.display_domain }}</td> 
-                    <td>
+                   <td data-label="URL" class="font-mono text-light fw-medium">{{ log.display_domain }}</td> 
+                    <td data-label="Status">
                       <span class="status-badge {% if log.status == 'UP' %}badge-up{% elif log.status == 'SLOW' %}badge-slow{% else %}badge-down{% endif %}">{{ log.status }}</span>
                     </td>
-                    <td class="text-light opacity-75">{{ log.response_time }} ms</td>
-                    <td class="text-light opacity-75">OK</td>
-                    <td class="text-light opacity-75 font-mono text-end activity-date-cell">{{ log.checked_at|date:"Y-m-d H:i" }}</td>
+                    <td data-label="Response Time" class="text-light opacity-75">{{ log.response_time }} ms</td>
+                    <td data-label="Change" class="text-light opacity-75 table-priority-low">OK</td>
+                    <td data-label="Date" class="text-light opacity-75 font-mono text-end activity-date-cell">{{ log.checked_at|date:"Y-m-d H:i" }}</td>
                   </tr>
                   {% endfor %}
                   {% else %}
                   <tr id="noResultsRow">
-                    <td colspan="5">
-                      <div class="empty-state">
-                        <i data-lucide="activity"></i>
-                        <h6>No activity yet</h6>
-                        <p class="text-sm mb-0">
-                          Run python manage.py monitor_sites to check your websites.
-                        </p>
-                      </div>
+                    <td colspan="5" data-empty-row="true">
+                      {% include "monitor/partials/empty_state.html" with eyebrow="Activity" icon="activity" title="No activity yet" message="Once the first checks run, recent monitor events and response times will appear here." extra_classes="dashboard-activity-empty-state" %}
                     </td>
                   </tr>
                   {% endif %}

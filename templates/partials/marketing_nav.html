@@ -1,0 +1,29 @@
+<nav class="navbar navbar-expand-lg navbar-dark custom-navbar sticky-top unified-glass-nav {{ nav_extra_classes|default:'' }}">
+  <div class="container">
+    <a class="navbar-brand fw-bold d-flex align-items-center gap-2" href="{% url 'index' %}">
+      <div class="logo-icon"><i data-lucide="activity" style="width: 20px; height: 20px;"></i></div>
+      <span>SiteGuard</span>
+    </a>
+    <button
+      class="navbar-toggler"
+      type="button"
+      data-bs-toggle="collapse"
+      data-bs-target="#nav"
+      aria-controls="nav"
+      aria-expanded="false"
+      aria-label="Toggle navigation"
+    >
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="nav">
+      <ul class="navbar-nav mx-auto">
+        <li class="nav-item"><a class="nav-link" href="{% url 'index' %}#features">Features</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'dashboard' %}">Dashboard</a></li>
+      </ul>
+      <div class="landing-nav-actions">
+        <a href="{% url 'login' %}" class="btn btn-outline-light">Sign In</a>
+        <a href="{% url 'signup' %}" class="btn btn-primary-custom">Start Monitoring</a>
+      </div>
+    </div>
+  </div>
+</nav>

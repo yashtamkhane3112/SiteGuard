@@ -1,0 +1,12 @@
+<div class="empty-state empty-state-rich {{ extra_classes|default:'' }}">
+  {% if eyebrow %}<span class="empty-state-eyebrow">{{ eyebrow }}</span>{% endif %}
+  <i data-lucide="{{ icon|default:'sparkles' }}"></i>
+  <h5 class="text-white fw-bold">{{ title }}</h5>
+  <p class="text-slate-300 fw-medium mb-0">{{ message }}</p>
+  {% if primary_label or secondary_label %}
+  <div class="empty-state-actions">
+    {% if primary_label %}<a href="{{ primary_url }}" class="btn btn-primary-custom">{{ primary_label }}</a>{% endif %}
+    {% if secondary_label %}<a href="{{ secondary_url }}" class="btn btn-outline-dark-custom">{{ secondary_label }}</a>{% endif %}
+  </div>
+  {% endif %}
+</div>

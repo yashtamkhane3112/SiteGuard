@@ -434,11 +434,27 @@ const overlay = document.getElementById('mobileOverlay');
 if (mobileToggle && sidebar && overlay) {
     const mobileBreakpoint = 992;
     const sidebarLinks = sidebar.querySelectorAll('a');
+    const toggleIcon = mobileToggle.querySelector('[data-lucide], svg');
+
+    const syncToggleIcon = (isOpen) => {
+        if (!toggleIcon) return;
+        const iconName = isOpen ? 'x' : 'menu';
+        if (window.lucide && lucide.icons[iconName]) {
+            toggleIcon.innerHTML = lucide.icons[iconName].toSvg({ 'aria-hidden': 'true' });
+        } else {
+            toggleIcon.setAttribute('data-lucide', iconName);
+        }
+    };
 
     const syncSidebarAccessibility = (isOpen) => {
+        const isDesktop = window.innerWidth > mobileBreakpoint;
         mobileToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        sidebar.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+        sidebar.setAttribute('aria-hidden', isDesktop ? 'false' : (isOpen ? 'false' : 'true'));
         overlay.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+        syncToggleIcon(isOpen);
+        if (window.lucide) {
+            lucide.createIcons();
+        }
     };
 
     const openSidebar = () => {
@@ -458,9 +474,19 @@ if (mobileToggle && sidebar && overlay) {
         syncSidebarAccessibility(false);
     };
 
+    const syncSidebarMode = () => {
+        if (window.innerWidth > mobileBreakpoint) {
+            closeSidebar();
+            sidebar.setAttribute('aria-hidden', 'false');
+            overlay.setAttribute('aria-hidden', 'true');
+            return;
+        }
+        syncSidebarAccessibility(sidebar.classList.contains('open'));
+    };
+
     mobileToggle.setAttribute('aria-controls', 'sidebar');
     mobileToggle.setAttribute('aria-label', 'Toggle navigation menu');
-    syncSidebarAccessibility(false);
+    syncSidebarMode();
 
     if (mobileToggle.dataset.sidebarBound !== 'true') {
         mobileToggle.dataset.sidebarBound = 'true';
@@ -489,11 +515,7 @@ if (mobileToggle && sidebar && overlay) {
 
     if (!document.body.dataset.sidebarResizeBound) {
         document.body.dataset.sidebarResizeBound = 'true';
-        window.addEventListener('resize', () => {
-            if (window.innerWidth > mobileBreakpoint && sidebar.classList.contains('open')) {
-                closeSidebar();
-            }
-        });
+        window.addEventListener('resize', syncSidebarMode);
     }
 
     sidebarLinks.forEach((link) => {

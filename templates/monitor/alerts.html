@@ -262,16 +262,11 @@
                       </div>
                     </article>
                     {% empty %}
-                    <div id="noIncidentsMsg" class="empty-state">
-                      <i data-lucide="bell-off"></i>
-                      <h5 class="text-white fw-bold">No Alerts Yet</h5>
-                      <p class="text-slate-300 fw-medium">
-                        Alerts will appear here as incidents and recoveries are detected.
-                      </p>
-                    </div>
+                    <div id="noIncidentsMsg">{% include "monitor/partials/empty_state.html" with eyebrow="Alerts" icon="bell-off" title="No alerts yet" message="Alerts will appear here as incidents, recoveries, and delivery events are detected." %}</div>
                     {% endfor %}
                     {% if alerts %}
-                    <div id="noIncidentsMsg" class="empty-state alert-filter-empty-state" style="display: none">
+                    <div id="noIncidentsMsg" class="empty-state empty-state-rich alert-filter-empty-state" style="display: none">
+                      <span class="empty-state-eyebrow">Filters</span>
                       <i data-lucide="bell-off"></i>
                       <h5 class="text-white fw-bold">No Alerts Match</h5>
                       <p class="text-slate-300 fw-medium">
@@ -390,7 +385,8 @@
                     </div>
                   </form>
                   {% empty %}
-                  <div class="empty-state">
+                  <div class="empty-state empty-state-rich">
+                    <span class="empty-state-eyebrow">Preferences</span>
                     <i data-lucide="globe"></i>
                     <h5 class="text-white fw-bold">No Monitored Websites</h5>
                     <p class="text-slate-300 fw-medium">

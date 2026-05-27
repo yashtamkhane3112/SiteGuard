@@ -113,7 +113,7 @@
               </div>
             </div>
 
-            <div class="table-responsive">
+            <div class="table-responsive table-responsive-shell table-card-stack">
               <table class="table custom-table mb-0" id="logsTable">
                 <thead>
                   <tr>
@@ -121,30 +121,24 @@
                     <th>Website</th>
                     <th>Status</th>
                     <th>Response Time</th>
-                    <th class="text-end pe-4">Message</th>
+                    <th class="text-end pe-4 table-priority-low">Message</th>
                   </tr>
                 </thead>
                 <tbody>
                   {% if logs %}
                     {% for log in logs %}
                     <tr class="activity-row">
-                      <td class="font-mono text-slate-300 text-sm fw-bold">{{ log.checked_at|date:"Y-m-d H:i" }}</td>
-                      <td class="font-mono text-white text-sm">{{ log.display_domain }}</td>
-                      <td><span class="status-badge {{ log.badge_class }}">{{ log.status }}</span></td>
-                      <td class="text-white text-sm">{{ log.response_time_display }}</td>
-                      <td class="text-end text-slate-300 text-sm pe-4">{{ log.message }}</td>
+                      <td data-label="Timestamp" class="font-mono text-slate-300 text-sm fw-bold">{{ log.checked_at|date:"Y-m-d H:i" }}</td>
+                      <td data-label="Website" class="font-mono text-white text-sm">{{ log.display_domain }}</td>
+                      <td data-label="Status"><span class="status-badge {{ log.badge_class }}">{{ log.status }}</span></td>
+                      <td data-label="Response Time" class="text-white text-sm">{{ log.response_time_display }}</td>
+                      <td data-label="Message" class="text-end text-slate-300 text-sm pe-4 table-priority-low">{{ log.message }}</td>
                     </tr>
                     {% endfor %}
                   {% else %}
                   <tr>
-                    <td colspan="5">
-                      <div class="empty-state">
-                        <i data-lucide="activity"></i>
-                        <h6>No monitoring logs yet</h6>
-                        <p class="text-sm mb-0">
-                          Run a check or start the monitor to populate real monitoring history.
-                        </p>
-                      </div>
+                    <td colspan="5" data-empty-row="true">
+                      {% include "monitor/partials/empty_state.html" with eyebrow="Logs" icon="activity" title="No monitoring logs yet" message="Run a check or start the monitor to populate real monitoring history." %}
                     </td>
                   </tr>
                   {% endif %}

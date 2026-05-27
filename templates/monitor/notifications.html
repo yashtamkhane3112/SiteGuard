@@ -143,11 +143,7 @@
           </div>
           {% include "monitor/partials/pagination.html" with pagination_label="Notification pages" %}
           {% else %}
-          <div class="dash-panel notification-empty-state notification-empty-state-ops">
-            <i data-lucide="inbox"></i>
-            <h5 class="text-white fw-bold">No notifications found</h5>
-            <p class="page-subtitle mb-0">Adjust your filters or wait for the next monitoring event.</p>
-          </div>
+          {% include "monitor/partials/empty_state.html" with eyebrow="Inbox" icon="inbox" title="No notifications found" message="Adjust your filters or wait for the next monitoring event." extra_classes="dash-panel notification-empty-state notification-empty-state-ops" %}
           {% endif %}
         </div>
       </main>

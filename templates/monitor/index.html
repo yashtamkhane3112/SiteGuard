@@ -21,44 +21,8 @@
     <link rel="stylesheet" href="{% static 'css/style.css' %}" />
   </head>
   <body>
-    <nav
-      class="navbar navbar-expand-lg navbar-dark custom-navbar unified-glass-nav sticky-top reveal active"
-    >
-      <div class="container">
-        <a class="navbar-brand fw-bold d-flex align-items-center gap-2" href="{% url 'index' %}"
-          ><div class="logo-icon"><i data-lucide="activity" style="width: 20px; height: 20px;"></i></div><span>Site Guard</span></a
-        >
-        <button
-          class="navbar-toggler"
-          type="button"
-          data-bs-toggle="collapse"
-          data-bs-target="#nav"
-          aria-controls="nav"
-          aria-expanded="false"
-          aria-label="Toggle navigation"
-        >
-          <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="nav">
-          <ul class="navbar-nav mx-auto">
-            <li class="nav-item">
-              <a class="nav-link" href="#features">Features</a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="{% url 'dashboard' %}">Dashboard</a>
-            </li>
-          </ul>
-          <div class="landing-nav-actions">
-            <a href="{% url 'login' %}" class="btn btn-outline-light"
-              >Sign In</a
-            >
-            <a href="{% url 'signup' %}" class="btn btn-primary-custom"
-              >Sign Up</a
-            >
-          </div>
-        </div>
-      </div>
-    </nav>
+    {% include "partials/marketing_nav.html" with nav_extra_classes="reveal active" %}
+
 
     <section class="hero">
       <div class="orb orb-1"></div>
@@ -68,27 +32,27 @@
           ⚡ Real-time monitoring for modern teams
         </div>
         <h1 class="hero-title reveal">
-          Never Miss a <br />
-          Second of <span class="highlight">Downtime</span>
+          Stay Ahead of <br />
+          <span class="highlight">Downtime</span> Before Users Notice
         </h1>
         <div class="hero-buttons reveal">
           <a href="{% url 'signup' %}" class="btn btn-primary-custom"
-            >Get Started</a
+            >Start Monitoring</a
           >
-          <a href="{% url 'dashboard' %}" class="btn btn-outline-light">Explore Platform</a>
+          <a href="{% url 'dashboard' %}" class="btn btn-outline-light">Explore Dashboard</a>
         </div>
         <div class="hero-mini-stats count-section reveal">
           <div>
             <h6><span class="counter" data-target="12847">0</span>+</h6>
-            <p>Sites</p>
+            <p>Checks Logged</p>
           </div>
           <div>
             <h6><span class="counter" data-target="99">0</span>%</h6>
-            <p>Uptime</p>
+            <p>Visibility</p>
           </div>
           <div>
             <h6><span class="counter" data-target="340">0</span>ms</h6>
-            <p>Speed</p>
+            <p>Median Response</p>
           </div>
         </div>
         <div class="monitor-card reveal">
@@ -105,6 +69,21 @@
             <div><span class="dot"></span> cdn.example.com</div>
             <span>124ms</span>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="marketing-trust-strip reveal active">
+      <div class="container">
+        <div class="marketing-trust-grid">
+          <div class="marketing-trust-card">
+            <span class="marketing-proof-kicker">Built For Daily Ops</span>
+            <p>Monitor uptime, SSL health, response time, and error patterns from one Django-based workspace.</p>
+          </div>
+          <div class="marketing-trust-chip"><i data-lucide="shield-check"></i><span>SSL visibility</span></div>
+          <div class="marketing-trust-chip"><i data-lucide="siren"></i><span>Incident timelines</span></div>
+          <div class="marketing-trust-chip"><i data-lucide="mail"></i><span>Email alerts</span></div>
+          <div class="marketing-trust-chip"><i data-lucide="bug"></i><span>Error analyzer</span></div>
         </div>
       </div>
     </section>
@@ -147,8 +126,7 @@
               <div class="icon-box"><i data-lucide="activity"></i></div>
               <h6>Uptime Monitoring</h6>
               <p>
-                Check your website status with down, or running view from
-                multiple locations worldwide.
+                Track uptime and response health with a clear view of what is up, slow, or failing across your monitored sites.
               </p>
             </div>
           </div>
@@ -160,8 +138,7 @@
               <div class="icon-box"><i data-lucide="bell"></i></div>
               <h6>Instant Alerts</h6>
               <p>
-                Get instant notifications the moment your site goes down to
-                minimize offline time.
+                Receive actionable alerts when downtime, latency spikes, recoveries, or SSL issues need attention.
               </p>
             </div>
           </div>
@@ -173,8 +150,7 @@
               <div class="icon-box"><i data-lucide="bar-chart-3"></i></div>
               <h6>Analytics & Reports</h6>
               <p>
-                Detailed uptime reports, response time charts, and deep
-                performance analysis.
+                Review uptime trends, latency patterns, and incident history in a format that is easy to share with your team.
               </p>
             </div>
           </div>
@@ -186,8 +162,7 @@
               <div class="icon-box"><i data-lucide="shield"></i></div>
               <h6>Error Log Analysis</h6>
               <p>
-                Upload logs and analyze errors quickly with intelligent backend
-                insights.
+                Upload real log files to surface recurring exceptions, tracebacks, and noisy failure clusters faster.
               </p>
             </div>
           </div>
@@ -199,7 +174,7 @@
       <div class="container">
         <h2 class="section-title reveal">See It in Action</h2>
         <p class="section-subtitle reveal">
-          Watch SiteGuard check multiple websites in real time.
+          Get a cleaner picture of monitor health, incidents, and follow-up actions in one place.
         </p>
         <div class="terminal-window mt-5 reveal">
           <div class="terminal-header">
@@ -244,7 +219,7 @@
           href="{% url 'signup' %}"
           class="btn btn-primary-custom mt-5 reveal"
           style="text-decoration: none"
-          >Try It Yourself &rarr;</a
+          >Open the Product Tour &rarr;</a
         >
       </div>
     </section>
@@ -312,7 +287,7 @@
               <div class="logo-icon me-2">
                 <i data-lucide="activity" style="width: 20px; height: 20px"></i>
               </div>
-              <span class="footer-brand-text">Site Guard</span>
+              <span class="footer-brand-text">SiteGuard</span>
             </div>
             <p class="footer-text">
               Website Health & Error Monitoring System.<br />
@@ -347,7 +322,7 @@
           <div
             class="col-12 d-flex flex-column flex-md-row gap-2 gap-md-4 align-items-start align-items-md-center"
           >
-            <span class="text-light-gray">Never Miss A Second of Downtime</span>
+            <span class="text-light-gray">Never Miss a Second of Downtime</span>
             <span class="footer-text"
               >Real-time monitoring for better peace of mind.</span
             >
@@ -357,7 +332,7 @@
         <div class="row pt-3 pb-2 align-items-center">
           <div class="col-md-6 mb-3 mb-md-0 text-center text-md-start">
             <span class="footer-text"
-              >@ 2026 Site Guard. All rights are reserved</span
+              >@ 2026 SiteGuard. All rights are reserved</span
             >
           </div>
           <div class="col-md-6 text-center text-md-end">

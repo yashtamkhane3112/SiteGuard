@@ -232,17 +232,9 @@
                       </div>
                     </div>
                     {% elif incident.ai_state.cache.status == 'failed' %}
-                    <div class="empty-state ai-empty-state">
-                      <i data-lucide="triangle-alert"></i>
-                      <h6>AI incident analysis unavailable</h6>
-                      <p class="text-sm mb-0">{{ incident.ai_state.cache.error_message|default:"The provider request failed." }}</p>
-                    </div>
+                    {% include "monitor/partials/empty_state.html" with eyebrow="AI" icon="triangle-alert" title="AI incident analysis unavailable" message=incident.ai_state.cache.error_message|default:"The provider request failed." extra_classes="ai-empty-state" %}
                     {% else %}
-                    <div class="empty-state ai-empty-state">
-                      <i data-lucide="sparkles"></i>
-                      <h6>{% if incident.ai_state.available %}No AI incident analysis generated yet{% else %}AI is disabled{% endif %}</h6>
-                      <p class="text-sm mb-0">{{ incident.ai_state.message }}</p>
-                    </div>
+                    {% include "monitor/partials/empty_state.html" with eyebrow="AI" icon="sparkles" title=incident.ai_state.available|yesno:"No AI incident analysis generated yet,AI is disabled" message=incident.ai_state.message extra_classes="ai-empty-state" %}
                     {% endif %}
                   </div>
                 </div>
@@ -251,7 +243,7 @@
 
             <div
               id="noIncidentsMsg"
-              class="empty-state"
+              class="empty-state empty-state-rich"
               {% if incidents %}style="display: none"{% endif %}
             >
               <i
@@ -264,6 +256,7 @@
                   opacity: 0.8;
                 "
               ></i>
+              <span class="empty-state-eyebrow">Incidents</span>
               <h5 class="text-white fw-bold">All Systems Clear</h5>
               <p class="text-slate-300 fw-medium">
                 No incidents match your current filter.

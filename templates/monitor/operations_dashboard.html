@@ -181,11 +181,7 @@
                   <p class="text-light mb-0">{{ latest_email_result.message|truncatechars:180 }}</p>
                 </div>
                 {% else %}
-                <div class="empty-state ops-empty-state">
-                  <i data-lucide="mail"></i>
-                  <h6>No email sends recorded</h6>
-                  <p class="text-sm mb-0">Alert delivery activity will appear here after the first email-backed alert is generated.</p>
-                </div>
+                {% include "monitor/partials/empty_state.html" with eyebrow="Email" icon="mail" title="No email sends recorded" message="Alert delivery activity will appear here after the first email-backed alert is generated." extra_classes="ops-empty-state" %}
                 {% endif %}
               </div>
             </section>
@@ -197,14 +193,14 @@
                   <p class="panel-subtitle mt-1 m-0">Latest monitor runs across all monitored websites.</p>
                 </div>
               </div>
-              <div class="table-responsive">
+              <div class="table-responsive table-responsive-shell table-card-stack">
                 <table class="table custom-table">
                   <thead>
                     <tr>
                       <th>Website</th>
                       <th>Account</th>
                       <th>Status</th>
-                      <th>Latency</th>
+                      <th class="table-priority-low">Latency</th>
                       <th class="text-end">Checked At</th>
                     </tr>
                   </thead>
@@ -212,25 +208,21 @@
                     {% if recent_monitor_history %}
                     {% for log in recent_monitor_history %}
                     <tr class="activity-row">
-                      <td class="font-mono text-light fw-medium">{{ log.display_domain }}</td>
-                      <td class="text-light opacity-75">{{ log.website.user.username }}</td>
-                      <td>
+                      <td data-label="Website" class="font-mono text-light fw-medium">{{ log.display_domain }}</td>
+                      <td data-label="Account" class="text-light opacity-75">{{ log.website.user.username }}</td>
+                      <td data-label="Status">
                         <span class="status-badge {% if log.resolved_status == 'UP' %}badge-up{% elif log.resolved_status == 'SLOW' %}badge-slow{% else %}badge-down{% endif %}">
                           {{ log.resolved_status }}
                         </span>
                       </td>
-                      <td class="text-light opacity-75">{{ log.response_time_display }}</td>
-                      <td class="text-light opacity-75 font-mono text-end">{{ log.checked_at|date:"Y-m-d H:i" }}</td>
+                      <td data-label="Latency" class="text-light opacity-75 table-priority-low">{{ log.response_time_display }}</td>
+                      <td data-label="Checked At" class="text-light opacity-75 font-mono text-end">{{ log.checked_at|date:"Y-m-d H:i" }}</td>
                     </tr>
                     {% endfor %}
                     {% else %}
                     <tr>
-                      <td colspan="5">
-                        <div class="empty-state ops-empty-state">
-                          <i data-lucide="activity"></i>
-                          <h6>No monitor history yet</h6>
-                          <p class="text-sm mb-0">Once the scheduler starts writing monitor logs, execution history will appear here.</p>
-                        </div>
+                      <td colspan="5" data-empty-row="true">
+                        {% include "monitor/partials/empty_state.html" with eyebrow="Operations" icon="activity" title="No monitor history yet" message="Once the scheduler starts writing monitor logs, execution history will appear here." extra_classes="ops-empty-state" %}
                       </td>
                     </tr>
                     {% endif %}
@@ -271,11 +263,7 @@
                 {% endfor %}
               </div>
               {% else %}
-              <div class="empty-state ops-empty-state">
-                <i data-lucide="bug"></i>
-                <h6>No parsed exceptions available</h6>
-                <p class="text-sm mb-0">Upload operational logs in the Error Analyzer to populate exception summaries here.</p>
-              </div>
+              {% include "monitor/partials/empty_state.html" with eyebrow="Analyzer" icon="bug" title="No parsed exceptions available" message="Upload operational logs in the Error Analyzer to populate exception summaries here." extra_classes="ops-empty-state" %}
               {% endif %}
             </section>
           </div>
