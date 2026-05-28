@@ -84,7 +84,7 @@
             <div class="mt-3">
               {% for message in messages %}
               <div
-                class="alert {% if message.tags == 'success' %}alert-success{% else %}alert-danger{% endif %} alert-dismissible fade show"
+                class="alert dashboard-flash-alert {% if message.tags == 'success' %}alert-success{% else %}alert-danger{% endif %} alert-dismissible fade show"
                 role="alert"
               >
                 {{ message }}

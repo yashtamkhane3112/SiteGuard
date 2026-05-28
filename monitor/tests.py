@@ -333,7 +333,7 @@ class AuthFlowTests(TestCase):
         CSRF_COOKIE_SECURE=True,
         SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https"),
         USE_X_FORWARDED_HOST=True,
-        ALLOWED_HOSTS=["testserver", "siteguard.onrender.com"],
+        ALLOWED_HOSTS=["testserver", "siteguard-monitor.onrender.com"],
     )
     def test_login_sets_secure_cookie_and_honors_render_proxy_https(self):
         User.objects.create_user(username="tester", password="StrongPass123!")
@@ -347,8 +347,8 @@ class AuthFlowTests(TestCase):
                     "remember_me": "on",
                 },
                 HTTP_X_FORWARDED_PROTO="https",
-                HTTP_X_FORWARDED_HOST="siteguard.onrender.com",
-                HTTP_HOST="siteguard.onrender.com",
+                HTTP_X_FORWARDED_HOST="siteguard-monitor.onrender.com",
+                HTTP_HOST="siteguard-monitor.onrender.com",
             )
 
         session_cookie = response.cookies[settings.SESSION_COOKIE_NAME]
@@ -361,13 +361,13 @@ class AuthFlowTests(TestCase):
         )
         self.assertTrue(auth_log_call.kwargs["extra"]["auth_context"]["request_is_secure"])
         self.assertEqual(auth_log_call.kwargs["extra"]["auth_context"]["forwarded_proto"], "https")
-        self.assertEqual(auth_log_call.kwargs["extra"]["auth_context"]["host"], "siteguard.onrender.com")
+        self.assertEqual(auth_log_call.kwargs["extra"]["auth_context"]["host"], "siteguard-monitor.onrender.com")
 
         dashboard_response = self.client.get(
             reverse("dashboard"),
             HTTP_X_FORWARDED_PROTO="https",
-            HTTP_X_FORWARDED_HOST="siteguard.onrender.com",
-            HTTP_HOST="siteguard.onrender.com",
+            HTTP_X_FORWARDED_HOST="siteguard-monitor.onrender.com",
+            HTTP_HOST="siteguard-monitor.onrender.com",
         )
         self.assertEqual(dashboard_response.status_code, 200)
 
@@ -403,8 +403,8 @@ class AuthFlowTests(TestCase):
 
     @override_settings(
         EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
-        APP_BASE_URL="https://siteguard.onrender.com",
-        CANONICAL_BASE_URL="https://siteguard.onrender.com",
+        APP_BASE_URL="https://siteguard-monitor.onrender.com",
+        CANONICAL_BASE_URL="https://siteguard-monitor.onrender.com",
         SUPPORT_EMAIL="support@siteguard.example",
     )
     def test_password_reset_email_uses_canonical_https_render_link(self):
@@ -422,15 +422,15 @@ class AuthFlowTests(TestCase):
         self.assertRedirects(response, reverse("password_reset_done"))
         self.assertEqual(len(mail.outbox), 1)
         body = mail.outbox[0].body
-        self.assertIn("https://siteguard.onrender.com/reset/", body)
+        self.assertIn("https://siteguard-monitor.onrender.com/reset/", body)
         self.assertNotIn("http://testserver", body)
         self.assertNotIn("localhost", body.lower())
 
     @override_settings(
         EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
         DEBUG=True,
-        APP_BASE_URL="https://siteguard.onrender.com",
-        CANONICAL_BASE_URL="https://siteguard.onrender.com",
+        APP_BASE_URL="https://siteguard-monitor.onrender.com",
+        CANONICAL_BASE_URL="https://siteguard-monitor.onrender.com",
     )
     def test_password_reset_email_uses_request_host_during_local_development(self):
         User.objects.create_user(
@@ -449,12 +449,12 @@ class AuthFlowTests(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         body = mail.outbox[0].body
         self.assertIn("http://127.0.0.1:8000/reset/", body)
-        self.assertNotIn("https://siteguard.onrender.com/reset/", body)
+        self.assertNotIn("https://siteguard-monitor.onrender.com/reset/", body)
 
     @override_settings(
         DEBUG=True,
-        APP_BASE_URL="https://siteguard.onrender.com",
-        CANONICAL_BASE_URL="https://siteguard.onrender.com",
+        APP_BASE_URL="https://siteguard-monitor.onrender.com",
+        CANONICAL_BASE_URL="https://siteguard-monitor.onrender.com",
     )
     def test_password_reset_email_options_fall_back_to_localhost_without_request_in_debug(self):
         options = build_password_reset_email_options()
@@ -465,8 +465,8 @@ class AuthFlowTests(TestCase):
 
     @override_settings(
         DEBUG=True,
-        APP_BASE_URL="https://siteguard.onrender.com",
-        CANONICAL_BASE_URL="https://siteguard.onrender.com",
+        APP_BASE_URL="https://siteguard-monitor.onrender.com",
+        CANONICAL_BASE_URL="https://siteguard-monitor.onrender.com",
     )
     def test_email_base_url_uses_request_host_in_debug(self):
         request = self.request_factory.get("/password-reset/", HTTP_HOST="localhost:8000")
@@ -1065,7 +1065,7 @@ class MonitorEmailAlertTests(TestCase):
         self.assertIn("Alerts Dashboard:", kwargs["text_body"])
         self.assertIn("Open alerts dashboard", kwargs["html_body"])
 
-    @override_settings(DEBUG=True, APP_BASE_URL="https://siteguard.onrender.com", CANONICAL_BASE_URL="https://siteguard.onrender.com")
+    @override_settings(DEBUG=True, APP_BASE_URL="https://siteguard-monitor.onrender.com", CANONICAL_BASE_URL="https://siteguard-monitor.onrender.com")
     @patch("monitor.utils.check_ssl_status", return_value="Valid")
     @patch("monitor.utils.send_siteguard_email", return_value=True)
     @patch("monitor.utils.requests.get")
@@ -1081,7 +1081,7 @@ class MonitorEmailAlertTests(TestCase):
 
         kwargs = mock_send_email.call_args.kwargs
         self.assertIn("http://127.0.0.1:8000/alerts/", kwargs["text_body"])
-        self.assertNotIn("https://siteguard.onrender.com/alerts/", kwargs["text_body"])
+        self.assertNotIn("https://siteguard-monitor.onrender.com/alerts/", kwargs["text_body"])
 
     @patch("monitor.utils.check_ssl_status", return_value="Valid")
     @patch("monitor.utils.send_siteguard_email", return_value=True)
@@ -3314,9 +3314,9 @@ class ProductionEmailValidationTests(TestCase):
         kwargs = {
             "secret_key": "SiteGuard-Prod-Secret-Key-1234567890-abcdefghijklmnopqrstuvwxyz",
             "debug": False,
-            "allowed_hosts": ["siteguard.onrender.com"],
-            "app_base_url": "https://siteguard.onrender.com",
-            "csrf_trusted_origins": ["https://siteguard.onrender.com"],
+            "allowed_hosts": ["siteguard-monitor.onrender.com"],
+            "app_base_url": "https://siteguard-monitor.onrender.com",
+            "csrf_trusted_origins": ["https://siteguard-monitor.onrender.com"],
             "email_backend": "monitor.emailing.BrevoEmailBackend",
             "email_host": "",
             "email_use_tls": True,
