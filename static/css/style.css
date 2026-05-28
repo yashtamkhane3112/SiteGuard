@@ -5842,6 +5842,215 @@ body.sidebar-open {
     }
 }
 
+/* Safe frontend polish pass: scoped landing and dashboard refinements */
+html {
+    scroll-behavior: smooth;
+}
+
+.custom-navbar .navbar-nav {
+    gap: 4px;
+}
+
+.custom-navbar .nav-link {
+    border-radius: 999px;
+    padding: 8px 12px;
+    color: #cbd5e1;
+    font-weight: 600;
+    transition: background 0.18s ease, color 0.18s ease;
+}
+
+.custom-navbar .nav-link:hover,
+.custom-navbar .nav-link:focus {
+    background: rgba(255,255,255,0.06);
+    color: #fff;
+}
+
+.hero-badge {
+    font-size: 0;
+}
+
+.hero-badge::before {
+    content: "Built For Daily Ops";
+    font-size: 0.9rem;
+}
+
+.hero-supporting-copy {
+    max-width: 720px;
+    margin: -12px auto 18px;
+    color: #d7d2e4;
+    font-size: clamp(1rem, 1.8vw, 1.18rem);
+    line-height: 1.7;
+}
+
+.marketing-trust-card,
+.marketing-trust-chip,
+.testimonial-card {
+    border-color: rgba(167, 139, 250, 0.18);
+}
+
+.marketing-trust-chip {
+    position: relative;
+    overflow: hidden;
+    min-width: 178px;
+    justify-content: flex-start;
+    transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.marketing-trust-chip:hover {
+    transform: translateY(-2px);
+    border-color: rgba(168, 85, 247, 0.36);
+    background: linear-gradient(180deg, rgba(32, 22, 49, 0.96), rgba(18, 12, 31, 0.94));
+}
+
+.pricing-section {
+    padding: 84px 0 36px;
+    border-top: 1px solid rgba(255,255,255,0.04);
+    background: linear-gradient(180deg, rgba(23,15,36,0.2), rgba(10,5,20,0.22));
+}
+
+.testimonial-card {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 32px;
+    min-height: 300px;
+}
+
+.testimonial-card .stars {
+    display: inline-flex;
+    align-self: flex-start;
+    margin-bottom: 0;
+    padding: 5px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(251, 191, 36, 0.26);
+    background: rgba(251, 191, 36, 0.08);
+    color: #fde68a;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0;
+    letter-spacing: 0;
+}
+
+.testimonial-card .stars::before {
+    content: "5/5";
+    font-size: 0.82rem;
+}
+
+.testimonial-card .quote {
+    margin-bottom: auto;
+    color: #e8e3f1;
+}
+
+.testimonial-card .author-name {
+    margin-top: 8px;
+}
+
+#activityTable {
+    table-layout: fixed;
+}
+
+#activityTable th,
+#activityTable td {
+    padding-top: 12px;
+    padding-bottom: 12px;
+}
+
+#activityTable th:nth-child(1),
+#activityTable td:nth-child(1) {
+    width: 36%;
+}
+
+#activityTable th:nth-child(2),
+#activityTable td:nth-child(2) {
+    width: 14%;
+}
+
+#activityTable th:nth-child(3),
+#activityTable td:nth-child(3) {
+    width: 18%;
+}
+
+#activityTable th:nth-child(4),
+#activityTable td:nth-child(4) {
+    width: 12%;
+}
+
+#activityTable th:nth-child(5),
+#activityTable td:nth-child(5) {
+    width: 20%;
+    min-width: 150px;
+    white-space: nowrap;
+    overflow-wrap: normal;
+}
+
+#activityTable .activity-date-cell {
+    font-size: 0.82rem;
+    line-height: 1.35;
+    white-space: nowrap !important;
+}
+
+#activityTable td[data-label="URL"] {
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 991.98px) {
+    .custom-navbar .navbar-nav {
+        gap: 2px;
+    }
+
+    .custom-navbar .nav-link {
+        padding: 10px 12px;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .hero-supporting-copy {
+        margin-top: -6px;
+        padding-inline: 4px;
+    }
+
+    .pricing-section {
+        padding: 64px 0 24px;
+    }
+
+    .testimonial-card {
+        min-height: 0;
+    }
+}
+
+@media (max-width: 575.98px) {
+    #activityTable {
+        table-layout: auto;
+    }
+
+    #activityTable .activity-row {
+        padding: 12px;
+    }
+
+    #activityTable th,
+    #activityTable td {
+        width: auto !important;
+    }
+
+    #activityTable td {
+        gap: 14px;
+        padding: 7px 0;
+    }
+
+    #activityTable td::before {
+        flex-basis: 38%;
+    }
+
+    #activityTable .activity-date-cell {
+        white-space: nowrap !important;
+        font-size: 0.78rem;
+    }
+
+    .marketing-trust-card,
+    .marketing-trust-chip {
+        width: 100%;
+    }
+}
+
 @media (max-width: 575.98px) {
     .top-header {
         padding: 14px 12px;
