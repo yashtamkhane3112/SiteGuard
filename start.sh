@@ -16,6 +16,9 @@ command -v gunicorn >/dev/null 2>&1
 echo "Running migrations..."
 python manage.py migrate --settings="${DJANGO_SETTINGS_MODULE}" --noinput
 
+echo "Ensuring database cache table exists..."
+python manage.py createcachetable --settings="${DJANGO_SETTINGS_MODULE}" --database default
+
 bootstrap_admin_flag="$(printf '%s' "${DJANGO_BOOTSTRAP_ADMIN:-False}" | tr '[:upper:]' '[:lower:]')"
 if [[ "${bootstrap_admin_flag}" == "true" ]]; then
   echo "Admin bootstrap executed: running bootstrap_admin..."

@@ -18,6 +18,18 @@ DATABASES["default"] = build_production_database_config(
     sqlite_timeout=SQLITE_TIMEOUT,
 )
 
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "siteguard_cache",
+        "TIMEOUT": 900,
+        "OPTIONS": {
+            "MAX_ENTRIES": 10000,
+            "CULL_FREQUENCY": 3,
+        },
+    }
+}
+
 SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", default=True, cast=bool)
 SESSION_ENGINE = _config_text(
     "SESSION_ENGINE",

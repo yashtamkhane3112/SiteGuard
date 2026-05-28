@@ -5,6 +5,7 @@ services:
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: bash ./start.sh
+    healthCheckPath: /health/
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.3
@@ -30,10 +31,6 @@ services:
         sync: false
       - key: APP_BASE_URL
         sync: false
-      - key: MONITOR_LOG_RETENTION_DAYS
-        value: "90"
-      - key: MONITOR_LOG_RETENTION_BATCH_SIZE
-        value: "500"
       - key: CRON_SECRET
         sync: false
       - key: EMAIL_BACKEND

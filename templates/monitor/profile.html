@@ -148,7 +148,7 @@
             <div class="dash-panel">
               <h5 class="panel-title mb-1 text-white">Security Settings</h5>
               <p class="panel-subtitle mb-4 text-slate-300">
-                Persist core alert behavior and prepare future 2FA safely.
+                Persist core alert behavior. Stronger authentication controls will be introduced separately.
               </p>
 
               <form method="post">
@@ -169,12 +169,9 @@
                 <div class="site-item mb-3">
                   <div>
                     <span class="text-white font-mono text-sm fw-medium">Two-Factor Authentication</span>
-                    <div class="account-help-text">Preference is saved now. Full verification flow is coming soon.</div>
+                    <div class="account-help-text">Coming soon. No 2FA enforcement is active yet.</div>
                   </div>
-                  <label class="custom-toggle" for="{{ security_form.two_factor_enabled.id_for_label }}">
-                    {{ security_form.two_factor_enabled }}
-                    <span class="toggle-slider"></span>
-                  </label>
+                  <span class="utility-chip">Coming Soon</span>
                 </div>
 
                 {% for error in security_form.non_field_errors %}

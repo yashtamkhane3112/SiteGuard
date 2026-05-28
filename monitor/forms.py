@@ -412,7 +412,7 @@ class ProfileUpdateForm(forms.Form):
 class AccountSecurityForm(forms.ModelForm):
     class Meta:
         model = UserProfile
-        fields = ('email_alerts_enabled', 'two_factor_enabled')
+        fields = ('email_alerts_enabled',)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -434,20 +434,16 @@ class AccountPreferencesForm(forms.ModelForm):
             'ssl_alerts_enabled',
             'incident_alerts_enabled',
             'marketing_emails_enabled',
-            'monitoring_frequency',
-            'two_factor_enabled',
         )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['timezone'].widget.attrs.update({'class': 'form-select custom-input'})
-        self.fields['monitoring_frequency'].widget.attrs.update({'class': 'form-select custom-input'})
         for field_name in (
             'email_alerts_enabled',
             'ssl_alerts_enabled',
             'incident_alerts_enabled',
             'marketing_emails_enabled',
-            'two_factor_enabled',
         ):
             self.fields[field_name].widget.attrs.update({
                 'class': 'custom-toggle-input',

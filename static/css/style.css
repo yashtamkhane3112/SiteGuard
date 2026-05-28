@@ -5902,12 +5902,6 @@ html {
     background: linear-gradient(180deg, rgba(32, 22, 49, 0.96), rgba(18, 12, 31, 0.94));
 }
 
-.pricing-section {
-    padding: 84px 0 36px;
-    border-top: 1px solid rgba(255,255,255,0.04);
-    background: linear-gradient(180deg, rgba(23,15,36,0.2), rgba(10,5,20,0.22));
-}
-
 .testimonial-card {
     display: flex;
     flex-direction: column;
@@ -5942,6 +5936,15 @@ html {
 
 .testimonial-card .author-name {
     margin-top: 8px;
+}
+
+.disabled-readout {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    color: #cbd5e1;
+    background: rgba(255,255,255,0.025);
+    border-style: dashed;
 }
 
 #activityTable {
@@ -6006,10 +6009,6 @@ html {
     .hero-supporting-copy {
         margin-top: -6px;
         padding-inline: 4px;
-    }
-
-    .pricing-section {
-        padding: 64px 0 24px;
     }
 
     .testimonial-card {

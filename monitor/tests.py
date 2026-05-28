@@ -1447,6 +1447,14 @@ class MonitorStatusSyncTests(TestCase):
         self.assertEqual(json_sites, expected)
         self.assertEqual(dashboard_response.context["status"], "DOWN")
 
+    @patch("monitor.views.Website.cleanup_existing")
+    def test_dashboard_status_and_json_do_not_run_website_cleanup_on_read_paths(self, mock_cleanup):
+        self.client.get(reverse("dashboard"))
+        self.client.get(reverse("status"))
+        self.client.get(reverse("dashboard_data"))
+
+        mock_cleanup.assert_not_called()
+
     def test_favicon_helper_builds_google_favicon_url(self):
         favicon_url = get_favicon_url("https://gmail.com")
 
@@ -3861,7 +3869,11 @@ class AccountManagementTests(TestCase):
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("StrongPass123!"))
 
-    def test_settings_persist_preferences_and_monitoring_frequency(self):
+    def test_settings_persist_preferences_without_unimplemented_controls(self):
+        self.user.profile.monitoring_frequency = UserProfile.FREQ_5_MIN
+        self.user.profile.two_factor_enabled = False
+        self.user.profile.save(update_fields=["monitoring_frequency", "two_factor_enabled"])
+
         response = self.client.post(
             reverse("settings"),
             {
@@ -3883,8 +3895,8 @@ class AccountManagementTests(TestCase):
         self.assertFalse(profile.ssl_alerts_enabled)
         self.assertTrue(profile.incident_alerts_enabled)
         self.assertTrue(profile.marketing_emails_enabled)
-        self.assertEqual(profile.monitoring_frequency, UserProfile.FREQ_15_MIN)
-        self.assertTrue(profile.two_factor_enabled)
+        self.assertEqual(profile.monitoring_frequency, UserProfile.FREQ_5_MIN)
+        self.assertFalse(profile.two_factor_enabled)
 
     @patch("monitor.utils.check_ssl_status", return_value="Valid")
     @patch("monitor.utils.send_siteguard_email", return_value=True)

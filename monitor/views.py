@@ -1973,7 +1973,6 @@ def operations_dashboard(request):
 @login_required
 def dashboard(request):
     ensure_admin_user()
-    Website.cleanup_existing(user=request.user)
     cleanup_monitoring_state(user=request.user)
 
     websites = _get_sites_with_latest_monitor_state(request.user)
@@ -2031,7 +2030,6 @@ def dashboard(request):
 
 @login_required
 def dashboard_data(request):
-    Website.cleanup_existing(user=request.user)
     cleanup_monitoring_state(user=request.user)
     sites = _get_sites_with_latest_monitor_state(request.user)
     data = []
@@ -2051,7 +2049,6 @@ def dashboard_data(request):
 
 @login_required
 def status(request):
-    Website.cleanup_existing(user=request.user)
     cleanup_monitoring_state(user=request.user)
     websites = _get_sites_with_latest_monitor_state(request.user)
     return render(request, 'monitor/status.html', {'sites': websites})
@@ -2433,13 +2430,9 @@ def profile(request):
             security_form = AccountSecurityForm(request.POST, instance=profile_obj)
             password_form = AccountPasswordChangeForm(request.user)
             delete_account_form = DeleteAccountForm(user=request.user)
-            previous_two_factor = profile_obj.two_factor_enabled
             if security_form.is_valid():
                 security_form.save()
-                if not previous_two_factor and security_form.cleaned_data.get('two_factor_enabled'):
-                    messages.warning(request, 'Two-factor is saved as a preference. Full 2FA verification is coming soon.')
-                else:
-                    messages.success(request, 'Security preferences updated successfully.')
+                messages.success(request, 'Security preferences updated successfully.')
                 return redirect('profile')
             messages.error(request, 'Security preferences could not be saved. Review the highlighted fields.')
         elif action == 'change_password':
@@ -2493,12 +2486,8 @@ def settings(request):
     if request.method == 'POST':
         preferences_form = AccountPreferencesForm(request.POST, instance=profile_obj)
         if preferences_form.is_valid():
-            previous_two_factor = profile_obj.two_factor_enabled
             preferences_form.save()
-            if not previous_two_factor and preferences_form.cleaned_data.get('two_factor_enabled'):
-                messages.warning(request, 'Two-factor is saved as a preference. Full 2FA verification is coming soon.')
-            else:
-                messages.success(request, 'Settings saved successfully.')
+            messages.success(request, 'Settings saved successfully.')
             return redirect('settings')
         messages.error(request, 'Settings could not be saved. Review the highlighted fields.')
     else:
