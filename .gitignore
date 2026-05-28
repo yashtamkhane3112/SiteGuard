@@ -38,6 +38,12 @@ db.sqlite3-journal
 /data/
 /release_exports/
 /release_snapshots/
+/release-archives/
+/project-backups/
+/review-zips/
+/screenshots/
+/temp-dev-files/
+/archived-notes/
 /SiteGuard-release-v1.zip
 /SiteGuard-production-stable-final.zip
 /SiteGuard-v2.1.0-production-stable.zip
@@ -78,4 +84,3 @@ tmp/
 py
 *.zip
 *.png
-/release-archives/
