@@ -1,3 +1,4 @@
+import mimetypes
 from pathlib import Path
 from urllib.parse import urlparse
 from email.utils import formataddr
@@ -8,6 +9,8 @@ from .validation import build_sqlite_database_config, resolve_email_backend
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+mimetypes.add_type("application/manifest+json", ".webmanifest", True)
 
 
 def _normalize_config_text(value, *, default=""):
@@ -161,6 +164,9 @@ STORAGES = {
 }
 WHITENOISE_MAX_AGE = config("WHITENOISE_MAX_AGE", default=31536000, cast=int)
 WHITENOISE_USE_FINDERS = DEBUG
+WHITENOISE_MIMETYPES = {
+    ".webmanifest": "application/manifest+json",
+}
 
 MEDIA_URL = "/media/"
 FILE_UPLOAD_PERMISSIONS = 0o644

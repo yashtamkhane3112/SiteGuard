@@ -4,19 +4,19 @@
   "description": "Website uptime, SSL, incident, and health monitoring dashboard.",
   "icons": [
     {
-      "src": "/static/icons/android-chrome-192x192.png?v=v3.0.1-production-polish",
+      "src": "/static/icons/android-chrome-192x192.png?v=v3.0.2-favicon-svg-master",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/static/icons/android-chrome-512x512.png?v=v3.0.1-production-polish",
+      "src": "/static/icons/android-chrome-512x512.png?v=v3.0.2-favicon-svg-master",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/static/icons/android-chrome-512x512.png?v=v3.0.1-production-polish",
+      "src": "/static/icons/android-chrome-512x512.png?v=v3.0.2-favicon-svg-master",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

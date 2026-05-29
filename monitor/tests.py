@@ -607,7 +607,7 @@ class OperationsDashboardTests(TestCase):
         response = self.client.get("/favicon.ico")
 
         self.assertEqual(response.status_code, 301)
-        self.assertEqual(response["Location"], "/static/icons/favicon.ico?v=v3.0.1-production-polish")
+        self.assertEqual(response["Location"], "/static/icons/favicon.ico?v=v3.0.2-favicon-svg-master")
 
 
 class ErrorAnalyzerTests(TestCase):
