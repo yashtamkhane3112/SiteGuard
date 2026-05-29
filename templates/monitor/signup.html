@@ -20,6 +20,7 @@
       rel="stylesheet"
     />
 
+    {% include "partials/favicon.html" %}
     <link rel="stylesheet" href="{% static 'css/style.css' %}" />
   </head>
   <body>
@@ -33,7 +34,7 @@
 
       <div class="auth-container">
         <div class="text-center mb-4">
-          <div class="auth-logo mb-2"><i data-lucide="activity"></i></div>
+          <div class="auth-logo mb-2"><img src="{% static 'icons/android-chrome-192x192.png' %}?v=v3.0.1-production-polish" alt="" class="auth-logo-img" /></div>
           <h5 class="auth-brand-name">SiteGuard</h5>
         </div>
 

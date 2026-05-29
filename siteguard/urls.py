@@ -33,7 +33,7 @@ def serve_media(request, path):
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('favicon.ico', RedirectView.as_view(url=f"{settings.STATIC_URL}favicon.svg", permanent=True)),
+    path('favicon.ico', RedirectView.as_view(url=f"{settings.STATIC_URL}icons/favicon.ico?v=v3.0.1-production-polish", permanent=True)),
     path('', include('monitor.urls')),
 ]
 

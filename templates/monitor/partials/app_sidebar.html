@@ -1,9 +1,10 @@
+{% load static %}
 <div class="overlay" id="mobileOverlay" aria-hidden="true"></div>
 
 <aside class="sidebar" id="sidebar" aria-hidden="true">
   <a href="{% url 'index' %}" style="text-decoration: none">
     <div class="sidebar-brand">
-      <div class="logo-icon"><i data-lucide="activity"></i></div>
+      <div class="logo-icon"><img src="{% static 'icons/favicon-32x32.png' %}?v=v3.0.1-production-polish" alt="" class="brand-icon-img" /></div>
       <span>SiteGuard</span>
     </div>
   </a>

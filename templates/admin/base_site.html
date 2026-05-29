@@ -1,0 +1,16 @@
+{% extends "admin/base.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }} | SiteGuard admin{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+{% include "partials/favicon.html" %}
+{% endblock %}
+
+{% block branding %}
+<div id="site-name"><a href="{% url 'admin:index' %}">SiteGuard administration</a></div>
+{% if subtitle %}<div id="site-name">{{ subtitle }}</div>{% endif %}
+{% endblock %}
+
+{% block nav-global %}{% endblock %}

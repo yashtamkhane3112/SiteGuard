@@ -84,3 +84,5 @@ tmp/
 py
 *.zip
 *.png
+!static/icons/
+!static/icons/*.png

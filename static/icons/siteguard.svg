@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <radialGradient id="bg-glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(24 18) rotate(48) scale(34 34)">
+      <stop offset="0" stop-color="#2F1C4A"/>
+      <stop offset="1" stop-color="#0F0A18"/>
+    </radialGradient>
+    <linearGradient id="pulse" x1="15" y1="32" x2="49" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#A855F7"/>
+      <stop offset="1" stop-color="#C084FC"/>
+    </linearGradient>
+    <filter id="pulse-glow" x="9" y="17" width="46" height="30" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="2.6"/>
+    </filter>
+  </defs>
+
+  <circle cx="32" cy="32" r="30" fill="#090612"/>
+  <circle cx="32" cy="32" r="26" fill="url(#bg-glow)"/>
+  <circle cx="32" cy="32" r="25.25" stroke="#C4B5FD" stroke-opacity=".16" stroke-width="1.5"/>
+
+  <path
+    d="M16 32H23L27 24L32 40L37 28L40 32H48"
+    stroke="#8B5CF6"
+    stroke-opacity=".34"
+    stroke-width="6"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    filter="url(#pulse-glow)"
+  />
+  <path
+    d="M16 32H23L27 24L32 40L37 28L40 32H48"
+    stroke="url(#pulse)"
+    stroke-width="4.5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

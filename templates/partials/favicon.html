@@ -1,0 +1,21 @@
+{% load static %}
+{% with icon_version="v3.0.1-production-polish" %}
+<link rel="icon" type="image/svg+xml" href="{% static 'icons/siteguard.svg' %}?v={{ icon_version }}" />
+<link rel="icon" type="image/png" sizes="32x32" href="{% static 'icons/favicon-32x32.png' %}?v={{ icon_version }}" />
+<link rel="icon" type="image/png" sizes="16x16" href="{% static 'icons/favicon-16x16.png' %}?v={{ icon_version }}" />
+<link rel="shortcut icon" href="{% static 'icons/favicon.ico' %}?v={{ icon_version }}" />
+<link rel="apple-touch-icon" sizes="180x180" href="{% static 'icons/apple-touch-icon.png' %}?v={{ icon_version }}" />
+<link rel="manifest" href="{% static 'site.webmanifest' %}?v={{ icon_version }}" />
+<meta name="theme-color" content="#090612" />
+<meta name="application-name" content="SiteGuard" />
+<meta name="apple-mobile-web-app-title" content="SiteGuard" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="msapplication-TileColor" content="#090612" />
+<meta property="og:site_name" content="SiteGuard" />
+{% if request.get_host %}
+<meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}{% static 'icons/android-chrome-512x512.png' %}?v={{ icon_version }}" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:image" content="{{ request.scheme }}://{{ request.get_host }}{% static 'icons/android-chrome-512x512.png' %}?v={{ icon_version }}" />
+{% endif %}
+{% endwith %}

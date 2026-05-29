@@ -116,7 +116,9 @@ body { animation: pageLoad 0.5s cubic-bezier(0.165, 0.84, 0.44, 1) forwards; }
 .back-to-home:hover { color: #fff; background: rgba(255,255,255,0.08); }
 
 .auth-container { width: 100%; max-width: 460px; padding: 20px; z-index: 2; }
-.auth-logo { width: 54px; height: 54px; background: rgba(116, 48, 232, 0.15); border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; color: #a855f7; margin: 0 auto; border: 1px solid rgba(116, 48, 232, 0.3); box-shadow: 0 0 20px rgba(116, 48, 232, 0.2); }
+.auth-logo { width: 54px; height: 54px; background: rgba(116, 48, 232, 0.15); border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; color: #a855f7; margin: 0 auto; border: 1px solid rgba(116, 48, 232, 0.3); box-shadow: 0 0 20px rgba(116, 48, 232, 0.2); overflow: hidden; }
+.auth-logo-img { width: 42px; height: 42px; display: block; }
+.brand-icon-img { width: 100%; height: 100%; display: block; object-fit: contain; }
 .auth-brand-name { color: #fff; font-weight: 800; letter-spacing: 2px; font-size: 1.1rem; margin-top: 12px; }
 
 .auth-card { background: rgba(23, 15, 36, 0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; padding: clamp(24px, 4vw, 40px); box-shadow: 0 30px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1); }
